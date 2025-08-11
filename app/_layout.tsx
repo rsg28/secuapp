@@ -22,6 +22,11 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="login" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="create-form" options={{ headerShown: false }} />
+        <Stack.Screen name="create-company" options={{ headerShown: false }} />
+        <Stack.Screen name="inspection-types" options={{ headerShown: false }} />
+        <Stack.Screen name="open-inspections" options={{ headerShown: false }} />
+        <Stack.Screen name="closed-inspections" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

@@ -1,18 +1,108 @@
-import React from 'react';
+import { IconSymbol } from '@/components/ui/IconSymbol';
+import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
+import { router } from 'expo-router';
+import React, { useState } from 'react';
 import {
-  View,
-  Text,
+  Alert,
+  Dimensions,
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Modal,
+  Platform,
   ScrollView,
   StyleSheet,
+  Text,
+  TextInput,
   TouchableOpacity,
-  Dimensions,
+  View,
 } from 'react-native';
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { router } from 'expo-router';
 
 const { width } = Dimensions.get('window');
 
 export default function DashboardScreen() {
+  const [showPhotoModal, setShowPhotoModal] = useState(false);
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoText, setPhotoText] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+
+  const handleTakePhoto = async () => {
+    try {
+      // Solicitar permisos de cámara
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Se necesitan permisos de cámara para tomar fotos');
+        return;
+      }
+
+      // Abrir cámara
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setPhotoUri(result.assets[0].uri);
+        setShowPhotoModal(true);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  const handleSendWhatsApp = () => {
+    if (!photoUri || !phoneNumber.trim()) {
+      Alert.alert('Error', 'Por favor toma una foto e ingresa un número de teléfono');
+      return;
+    }
+
+    // Formatear número de teléfono (eliminar espacios, guiones, etc.)
+    const cleanPhone = phoneNumber.replace(/\s|-|\(|\)/g, '');
+    
+    // Crear mensaje para WhatsApp
+    const message = photoText.trim() || 'Mensaje desde la app de seguridad';
+    
+    // Crear URL de WhatsApp
+    const whatsappUrl = `whatsapp://send?phone=${cleanPhone}&text=${encodeURIComponent(message)}`;
+    
+    // Mostrar instrucciones para el usuario
+    Alert.alert(
+      'Enviar por WhatsApp',
+      'Para incluir la foto en WhatsApp:\n\n1. Se abrirá WhatsApp con el mensaje\n2. Toca el clip 📎 para adjuntar\n3. Selecciona "Galería" y busca la foto\n\n¿Continuar?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { 
+          text: 'Abrir WhatsApp', 
+          onPress: () => {
+            Linking.canOpenURL(whatsappUrl).then((supported) => {
+              if (supported) {
+                Linking.openURL(whatsappUrl);
+                // Limpiar estado y cerrar modal
+                setPhotoUri(null);
+                setPhotoText('');
+                setPhoneNumber('');
+                setShowPhotoModal(false);
+              } else {
+                Alert.alert('Error', 'WhatsApp no está instalado en este dispositivo');
+              }
+            });
+          }
+        }
+      ]
+    );
+  };
+
+  const handleResetPhoto = () => {
+    setPhotoUri(null);
+    setPhotoText('');
+    setPhoneNumber('');
+    setShowPhotoModal(false);
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -36,27 +126,34 @@ export default function DashboardScreen() {
       {/* Stats Cards */}
       <View style={styles.statsContainer}>
         <View style={styles.statsRow}>
+          <TouchableOpacity 
+            style={[styles.statCard, styles.blueCard]}
+            onPress={() => router.push('/inspection-types')}
+          >
+            <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
+            <Text style={styles.statNumber}>15</Text>
+            <Text style={styles.statLabel}>Inspecciones</Text>
+            <Text style={styles.statSubtext}>Abiertas/Cerradas</Text>
+          </TouchableOpacity>
           <View style={[styles.statCard, styles.greenCard]}>
-            <IconSymbol name="checkmark.shield.fill" size={24} color="#22c55e" />
-            <Text style={styles.statNumber}>12</Text>
-            <Text style={styles.statLabel}>Áreas Seguras</Text>
-          </View>
-          <View style={[styles.statCard, styles.yellowCard]}>
-            <IconSymbol name="exclamationmark.triangle.fill" size={24} color="#f59e0b" />
-            <Text style={styles.statNumber}>3</Text>
-            <Text style={styles.statLabel}>Pendientes</Text>
+            <IconSymbol name="eye.fill" size={24} color="#22c55e" />
+            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statLabel}>Observaciones</Text>
+            <Text style={styles.statSubtext}>de Tarea</Text>
           </View>
         </View>
         <View style={styles.statsRow}>
-          <View style={[styles.statCard, styles.blueCard]}>
-            <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>85%</Text>
-            <Text style={styles.statLabel}>Completado</Text>
+          <View style={[styles.statCard, styles.purpleCard]}>
+            <IconSymbol name="chart.bar.fill" size={24} color="#8b5cf6" />
+            <Text style={styles.statNumber}>12</Text>
+            <Text style={styles.statLabel}>Análisis</Text>
+            <Text style={styles.statSubtext}>Trabajo Seguro</Text>
           </View>
-          <View style={[styles.statCard, styles.redCard]}>
-            <IconSymbol name="xmark.shield.fill" size={24} color="#ef4444" />
-            <Text style={styles.statNumber}>2</Text>
-            <Text style={styles.statLabel}>Críticos</Text>
+          <View style={[styles.statCard, styles.orangeCard]}>
+            <IconSymbol name="ellipsis.circle.fill" size={24} color="#f97316" />
+            <Text style={styles.statNumber}>5</Text>
+            <Text style={styles.statLabel}>Otros</Text>
+            <Text style={styles.statSubtext}>Documentos</Text>
           </View>
         </View>
       </View>
@@ -69,10 +166,10 @@ export default function DashboardScreen() {
             style={styles.actionButton}
             onPress={() => router.push('/explore')}
           >
-            <IconSymbol name="checkmark.square.fill" size={24} color="#3b82f6" />
-            <Text style={styles.actionText}>Nuevo Formulario</Text>
+            <Ionicons name="add-circle" size={24} color="#3b82f6" />
+            <Text style={styles.actionText}>Nuevo Template</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionButton}>
+          <TouchableOpacity style={styles.actionButton} onPress={handleTakePhoto}>
             <IconSymbol name="camera.fill" size={24} color="#10b981" />
             <Text style={styles.actionText}>Tomar Foto</Text>
           </TouchableOpacity>
@@ -96,54 +193,90 @@ export default function DashboardScreen() {
               <Text style={styles.activityTime}>Hace 2 horas</Text>
             </View>
           </View>
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, styles.yellowBackground]}>
-              <IconSymbol name="exclamationmark" size={16} color="#fff" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Oficina Principal - Pendiente</Text>
-              <Text style={styles.activityTime}>Hace 4 horas</Text>
-            </View>
-          </View>
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, styles.blueBackground]}>
-              <IconSymbol name="camera" size={16} color="#fff" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Foto de evidencia subida</Text>
-              <Text style={styles.activityTime}>Ayer</Text>
-            </View>
-          </View>
         </View>
       </View>
 
-      {/* Areas to Review */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Áreas por Revisar</Text>
-        <View style={styles.areasList}>
-          <TouchableOpacity style={styles.areaItem}>
-            <View style={styles.areaInfo}>
-              <Text style={styles.areaName}>Área de Producción</Text>
-              <Text style={styles.areaStatus}>Revisión pendiente</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color="#666" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.areaItem}>
-            <View style={styles.areaInfo}>
-              <Text style={styles.areaName}>Zona de Carga</Text>
-              <Text style={styles.areaStatus}>Revisión vencida</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color="#666" />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.areaItem}>
-            <View style={styles.areaInfo}>
-              <Text style={styles.areaName}>Laboratorio</Text>
-              <Text style={styles.areaStatus}>Programada para hoy</Text>
-            </View>
-            <IconSymbol name="chevron.right" size={20} color="#666" />
-          </TouchableOpacity>
-        </View>
-      </View>
+      {/* Bottom spacing for tabs */}
+      <View style={styles.bottomSpacing} />
+
+      {/* Modal para foto y envío por WhatsApp */}
+      <Modal
+        visible={showPhotoModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleResetPhoto}
+      >
+        <KeyboardAvoidingView 
+          style={styles.modalOverlay}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        >
+          <View style={styles.modalContent}>
+            <ScrollView 
+              contentContainerStyle={styles.modalScrollContent}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
+              <Text style={styles.modalTitle}>Enviar Foto por WhatsApp</Text>
+              
+              {/* Vista previa de la foto */}
+              {photoUri && (
+                <View style={styles.photoPreview}>
+                  <Image
+                    source={{ uri: photoUri }}
+                    style={styles.photoViewer}
+                    resizeMode="contain"
+                  />
+                </View>
+              )}
+
+              {/* Campo para número de teléfono */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Número de Teléfono *</Text>
+                <TextInput
+                  style={styles.textInput}
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  placeholder="Ej: +56 9 1234 5678"
+                  keyboardType="phone-pad"
+                  autoFocus={true}
+                />
+              </View>
+
+              {/* Campo para texto del mensaje */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Mensaje (opcional)</Text>
+                <TextInput
+                  style={[styles.textInput, styles.textArea]}
+                  value={photoText}
+                  onChangeText={setPhotoText}
+                  placeholder="Añade un mensaje a la foto..."
+                  multiline
+                  numberOfLines={3}
+                  textAlignVertical="top"
+                />
+              </View>
+
+              {/* Botones de acción */}
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  style={styles.modalButtonCancel}
+                  onPress={handleResetPhoto}
+                >
+                  <Text style={styles.modalButtonTextCancel}>Cancelar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.modalButtonSend}
+                  onPress={handleSendWhatsApp}
+                  disabled={!phoneNumber.trim()}
+                >
+                  <Text style={styles.modalButtonTextSend}>Enviar por WhatsApp</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
     </ScrollView>
   );
 }
@@ -219,6 +352,14 @@ const styles = StyleSheet.create({
     borderLeftWidth: 4,
     borderLeftColor: '#ef4444',
   },
+  purpleCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#8b5cf6',
+  },
+  orangeCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: '#f97316',
+  },
   statNumber: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -229,6 +370,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#6b7280',
     marginTop: 4,
+  },
+  statSubtext: {
+    fontSize: 10,
+    color: '#9ca3af',
+    marginTop: 2,
+    textAlign: 'center',
   },
   section: {
     padding: 20,
@@ -308,29 +455,92 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 2,
   },
-  areasList: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
+  bottomSpacing: {
+    height: 100,
   },
-  areaItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  areaInfo: {
+  // Modal styles
+  modalOverlay: {
     flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  areaName: {
-    fontSize: 16,
-    fontWeight: '600',
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  modalScrollContent: {
+    padding: 24,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
     color: '#1f2937',
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  areaStatus: {
+  photoPreview: {
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  photoViewer: {
+    width: 200,
+    height: 150,
+    borderRadius: 8,
+  },
+  inputGroup: {
+    marginBottom: 20,
+  },
+  inputLabel: {
     fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  textInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#fff',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 20,
+  },
+  modalButtonCancel: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    alignItems: 'center',
+  },
+  modalButtonSend: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+  },
+  modalButtonTextCancel: {
+    fontSize: 16,
+    fontWeight: '500',
     color: '#6b7280',
-    marginTop: 2,
+  },
+  modalButtonTextSend: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#fff',
   },
 });

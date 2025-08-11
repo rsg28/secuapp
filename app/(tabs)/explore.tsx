@@ -1,13 +1,16 @@
-import React, { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-  View,
-  Text,
+  Alert,
+  Modal,
   ScrollView,
   StyleSheet,
+  Text,
   TouchableOpacity,
-  Alert,
+  View,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { storage } from '../../utils/storage';
 
 interface FormTemplate {
   id: string;
@@ -29,124 +32,103 @@ interface Category {
 
 export default function FormulariosScreen() {
   const [selectedCategory, setSelectedCategory] = useState('todos');
-  const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([
-    // Templates de Vestimenta
-    {
-      id: 'vest-001',
-      title: 'Inspección EPP General',
-      description: 'Verificación de equipos de protección personal básicos',
-      category: 'vestimenta',
-      isTemplate: true,
-      createdDate: '2024-01-15',
-      lastModified: '2024-01-15',
-      itemCount: 8,
-    },
-    {
-      id: 'vest-002',
-      title: 'Control Calzado de Seguridad',
-      description: 'Revisión de botas y zapatos de seguridad',
-      category: 'vestimenta',
-      isTemplate: true,
-      createdDate: '2024-01-10',
-      lastModified: '2024-01-10',
-      itemCount: 5,
-    },
-    // Templates de Químicos
-    {
-      id: 'quim-001',
-      title: 'Manejo de Sustancias Peligrosas',
-      description: 'Control de almacenamiento y manipulación de químicos',
-      category: 'quimicos',
-      isTemplate: true,
-      createdDate: '2024-01-12',
-      lastModified: '2024-01-12',
-      itemCount: 12,
-    },
-    {
-      id: 'quim-002',
-      title: 'Ventilación Área Química',
-      description: 'Verificación de sistemas de ventilación en laboratorio',
-      category: 'quimicos',
-      isTemplate: true,
-      createdDate: '2024-01-08',
-      lastModified: '2024-01-08',
-      itemCount: 6,
-    },
-    // Templates de Equipos
-    {
-      id: 'equip-001',
-      title: 'Mantenimiento Maquinaria',
-      description: 'Lista de verificación para mantenimiento preventivo',
-      category: 'equipos',
-      isTemplate: true,
-      createdDate: '2024-01-14',
-      lastModified: '2024-01-14',
-      itemCount: 15,
-    },
-    {
-      id: 'equip-002',
-      title: 'Herramientas Eléctricas',
-      description: 'Inspección de herramientas eléctricas portátiles',
-      category: 'equipos',
-      isTemplate: true,
-      createdDate: '2024-01-11',
-      lastModified: '2024-01-11',
-      itemCount: 7,
-    },
-    // Templates de Instalaciones
-    {
-      id: 'inst-001',
-      title: 'Rutas de Evacuación',
-      description: 'Verificación de salidas de emergencia y señalización',
-      category: 'instalaciones',
-      isTemplate: true,
-      createdDate: '2024-01-13',
-      lastModified: '2024-01-13',
-      itemCount: 10,
-    },
-    {
-      id: 'inst-002',
-      title: 'Sistemas Contra Incendios',
-      description: 'Control de extintores y sistemas de detección',
-      category: 'instalaciones',
-      isTemplate: true,
-      createdDate: '2024-01-09',
-      lastModified: '2024-01-09',
-      itemCount: 9,
-    },
-    // Templates de Capacitación
-    {
-      id: 'cap-001',
-      title: 'Inducción Nuevos Empleados',
-      description: 'Lista de verificación para capacitación inicial',
-      category: 'capacitacion',
-      isTemplate: true,
-      createdDate: '2024-01-16',
-      lastModified: '2024-01-16',
-      itemCount: 11,
-    },
-    // Formularios personalizados del usuario
-    {
-      id: 'user-001',
-      title: 'Inspección Área de Soldadura',
-      description: 'Formulario personalizado para área específica',
-      category: 'equipos',
-      isTemplate: false,
-      createdDate: '2024-01-17',
-      lastModified: '2024-01-18',
-      itemCount: 13,
-    },
-    {
-      id: 'user-002',
-      title: 'Control EPP Visitantes',
-      description: 'Verificación personalizada para visitantes',
-      category: 'vestimenta',
-      isTemplate: false,
-      createdDate: '2024-01-16',
-      lastModified: '2024-01-17',
-      itemCount: 6,
-    },
-  ]);
+  const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null);
+
+  // Cargar formularios guardados al iniciar
+  useEffect(() => {
+    clearDuplicateTemplates();
+    loadSavedForms();
+    initializeDefaultTemplate();
+  }, []);
+
+  // Recargar formularios cuando la pantalla vuelva a tener foco
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSavedForms();
+    }, [])
+  );
+
+  const loadSavedForms = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      
+      // Convertir formularios guardados al formato FormTemplate
+      const userForms = savedForms.map((form: any) => ({
+        id: form.id,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        isTemplate: form.isTemplate || false,
+        createdDate: form.createdDate || '2024-01-15',
+        lastModified: form.lastModified || '2024-01-15',
+        itemCount: form.items ? form.items.length : 0,
+      }));
+
+      // Solo mostrar los formularios guardados (sin duplicar)
+      setFormTemplates(userForms);
+    } catch (error) {
+      console.error('Error loading forms:', error);
+      setFormTemplates([]);
+    }
+  };
+
+  // Limpiar templates duplicados
+  const clearDuplicateTemplates = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      const uniqueForms = savedForms.filter((form: any, index: number, self: any[]) => 
+        index === self.findIndex((f: any) => f.id === form.id)
+      );
+      
+      if (uniqueForms.length !== savedForms.length) {
+        await storage.saveForms(uniqueForms);
+        console.log('Templates duplicados eliminados');
+      }
+    } catch (error) {
+      console.error('Error clearing duplicate templates:', error);
+    }
+  };
+
+  // Inicializar template por defecto si no existe
+  const initializeDefaultTemplate = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      const defaultTemplateExists = savedForms.some((form: any) => form.id === 'seg-001');
+      
+      if (!defaultTemplateExists) {
+        const defaultTemplate = {
+          id: 'seg-001',
+          title: 'Template de Inspección de Seguridad General',
+          description: 'Template base para inspecciones de seguridad en áreas de trabajo',
+          category: 'seguridad',
+          isTemplate: true,
+          createdDate: '2024-01-15',
+          lastModified: '2024-01-15',
+          items: [
+            { id: '1', text: '¿Los empleados están usando el equipo de protección personal requerido?' },
+            { id: '2', text: '¿Las áreas de trabajo están libres de obstáculos y desorden?' },
+            { id: '3', text: '¿Los equipos de emergencia están accesibles y funcionando correctamente?' },
+            { id: '4', text: '¿Las señales de seguridad están visibles y en buen estado?' },
+            { id: '5', text: '¿Los extintores están en su lugar y no han expirado?' },
+            { id: '6', text: '¿Las salidas de emergencia están despejadas y marcadas correctamente?' },
+            { id: '7', text: '¿El piso está en buenas condiciones sin resbalones o tropiezos?' },
+            { id: '8', text: '¿La iluminación es adecuada para el trabajo que se realiza?' },
+            { id: '9', text: '¿Los equipos eléctricos están en buen estado y sin cables expuestos?' },
+            { id: '10', text: '¿Los productos químicos están almacenados y etiquetados correctamente?' },
+            { id: '11', text: '¿Los empleados han recibido la capacitación necesaria para su trabajo?' },
+            { id: '12', text: '¿Se están siguiendo los procedimientos de seguridad establecidos?' },
+          ],
+        };
+        
+        await storage.addForm(defaultTemplate);
+        console.log('Template por defecto inicializado');
+      }
+    } catch (error) {
+      console.error('Error initializing default template:', error);
+    }
+  };
 
   const categories: Category[] = [
     { id: 'todos', name: 'Todos', icon: 'apps', color: '#6366f1' },
@@ -180,29 +162,49 @@ export default function FormulariosScreen() {
   };
 
   const handleAddForm = () => {
-    Alert.alert(
-      'Nuevo Formulario',
-      '¿Cómo deseas crear el formulario?',
-      [
-        { text: 'Desde Template', onPress: () => console.log('Template') },
-        { text: 'Crear Nuevo', onPress: () => console.log('Nuevo') },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
+    router.push('/create-form');
+  };
+
+  // Datos de empresas disponibles
+  const companies = [
+    {
+      id: '1',
+      name: 'Industrias del Norte S.A.',
+      industry: 'Manufactura',
+      contactPerson: 'Juan Pérez',
+    },
+    {
+      id: '2',
+      name: 'Minería del Sur Ltda.',
+      industry: 'Minería',
+      contactPerson: 'María González',
+    },
+    {
+      id: '3',
+      name: 'Construcciones Central',
+      industry: 'Construcción',
+      contactPerson: 'Carlos Rodríguez',
+    },
+  ];
+
+  // Función para usar template con asignación de empresa
+  const handleUseTemplateWithCompany = (form: FormTemplate) => {
+    setSelectedTemplate(form);
+    setShowCompanyModal(true);
+  };
+
+  // Función para recargar formularios cuando se regrese de crear uno nuevo
+  const handleFocus = () => {
+    loadSavedForms();
   };
 
   const handleFormPress = (form: FormTemplate) => {
     Alert.alert(
       form.title,
-      `${form.description}\n\nElementos: ${form.itemCount}\nÚltima modificación: ${form.lastModified}`,
+      `${form.description}\n\nElementos: ${form.itemCount}`,
       [
+        { text: 'Usar con Empresa', onPress: () => handleUseTemplateWithCompany(form) },
         { text: 'Editar', onPress: () => console.log('Editar', form.id) },
-        { text: 'Usar', onPress: () => console.log('Usar', form.id) },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: () => handleDeleteForm(form),
-        },
         { text: 'Cancelar', style: 'cancel' },
       ]
     );
@@ -210,7 +212,7 @@ export default function FormulariosScreen() {
 
   const handleDeleteForm = (form: FormTemplate) => {
     Alert.alert(
-      'Eliminar Formulario',
+      'Eliminar Template',
       `¿Estás seguro de que deseas eliminar "${form.title}"?`,
       [
         {
@@ -220,7 +222,7 @@ export default function FormulariosScreen() {
         {
           text: 'Eliminar',
           style: 'destructive',
-          onPress: () => {
+          onPress: async () => {
             setFormTemplates(prev => prev.filter(f => f.id !== form.id));
             
             // Si la categoría actual ya no tiene formularios, cambiar a "todos"
@@ -230,6 +232,15 @@ export default function FormulariosScreen() {
             
             if (remainingInCategory.length === 0 && selectedCategory !== 'todos') {
               setSelectedCategory('todos');
+            }
+
+            // Si es un template personalizado, eliminarlo de AsyncStorage
+            if (!form.isTemplate) {
+              try {
+                await storage.deleteForm(form.id);
+              } catch (error) {
+                console.error('Error deleting template from AsyncStorage:', error);
+              }
             }
           },
         },
@@ -245,9 +256,9 @@ export default function FormulariosScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Formularios de Seguridad</Text>
+          <Text style={styles.headerTitle}>Formularios de Inspección</Text>
           <Text style={styles.headerSubtitle}>
-            Gestiona tus checklists y templates
+            Gestiona tus templates de inspección de seguridad
           </Text>
         </View>
       </View>
@@ -286,12 +297,12 @@ export default function FormulariosScreen() {
           </ScrollView>
         </View>
 
-        {/* Lista de Formularios */}
+        {/* Lista de Templates */}
         <View style={styles.formsContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {selectedCategory === 'todos' ? 'Todos los Formularios' : 
-               categories.find(c => c.id === selectedCategory)?.name || 'Formularios'}
+              {selectedCategory === 'todos' ? 'Todos los Templates' : 
+               categories.find(c => c.id === selectedCategory)?.name || 'Templates'}
               {' '}({filteredForms.length})
             </Text>
             <TouchableOpacity style={styles.addButtonFloating} onPress={handleAddForm}>
@@ -334,9 +345,6 @@ export default function FormulariosScreen() {
                 <Text style={styles.formMeta}>
                   {form.itemCount} elementos
                 </Text>
-                <Text style={styles.formMeta}>
-                  Modificado: {form.lastModified}
-                </Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -345,6 +353,59 @@ export default function FormulariosScreen() {
         {/* Espacio adicional para el bottom tab */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Modal para selección de empresa */}
+      <Modal
+        visible={showCompanyModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCompanyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              Asignar Template a Empresa
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedTemplate?.title}
+            </Text>
+            
+            <ScrollView style={styles.companiesList}>
+              {companies.map((company) => (
+                <TouchableOpacity
+                  key={company.id}
+                  style={styles.companyOption}
+                  onPress={() => {
+                    setShowCompanyModal(false);
+                    setSelectedTemplate(null);
+                    // Aquí se navegaría al form-detail con la empresa seleccionada
+                    router.push(`/form-detail?id=${selectedTemplate?.id}&companyId=${company.id}&companyName=${company.name}`);
+                  }}
+                >
+                  <View style={styles.companyOptionHeader}>
+                    <Ionicons name="business" size={20} color="#3b82f6" />
+                    <Text style={styles.companyOptionName}>{company.name}</Text>
+                  </View>
+                  <View style={styles.companyOptionDetails}>
+                    <Text style={styles.companyOptionIndustry}>{company.industry}</Text>
+                    <Text style={styles.companyOptionContact}>{company.contactPerson}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setShowCompanyModal(false);
+                setSelectedTemplate(null);
+              }}
+            >
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -521,5 +582,80 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 120,
+  },
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  companiesList: {
+    maxHeight: 300,
+  },
+  companyOption: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  companyOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  companyOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginLeft: 12,
+    flex: 1,
+  },
+  companyOptionDetails: {
+    marginLeft: 32,
+  },
+  companyOptionIndustry: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  companyOptionContact: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  modalCancelButton: {
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b7280',
   },
 });

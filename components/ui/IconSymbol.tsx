@@ -1,11 +1,11 @@
 // Fallback for using MaterialIcons on Android and web.
 
 import MaterialIcons from '@expo/vector-icons/MaterialIcons';
-import { SymbolWeight, SymbolViewProps } from 'expo-symbols';
+import { SymbolWeight } from 'expo-symbols';
 import { ComponentProps } from 'react';
 import { OpaqueColorValue, type StyleProp, type TextStyle } from 'react-native';
 
-type IconMapping = Record<SymbolViewProps['name'], ComponentProps<typeof MaterialIcons>['name']>;
+type IconMapping = Record<string, ComponentProps<typeof MaterialIcons>['name']>;
 type IconSymbolName = keyof typeof MAPPING;
 
 /**
@@ -18,6 +18,31 @@ const MAPPING = {
   'paperplane.fill': 'send',
   'chevron.left.forwardslash.chevron.right': 'code',
   'chevron.right': 'chevron-right',
+  'list.clipboard.fill': 'assignment',
+  'checkmark.circle.fill': 'check-circle',
+  'eye.fill': 'visibility',
+  'chart.bar.fill': 'bar-chart',
+  'ellipsis.circle.fill': 'more-horiz',
+  'plus.circle.fill': 'add-circle',
+  'camera.fill': 'camera-alt',
+  'document.fill': 'description',
+  'list.clipboard': 'assignment',
+  'checkmark': 'check',
+  'exclamationmark.triangle': 'warning',
+  'person.fill': 'person',
+  'person.badge.key.fill': 'badge',
+  'envelope.fill': 'email',
+  'phone.fill': 'phone',
+  'calendar': 'event',
+  'checkmark.circle': 'check-circle',
+  'camera': 'camera-alt',
+  'exclamationmark.triangle.fill': 'warning',
+  'ellipsis-circle': 'more-horiz',
+  'close-circle': 'cancel',
+  'time': 'schedule',
+  'cube': 'inventory',
+  'shield-checkmark': 'verified-user',
+  'ellipsis': 'more-horiz',
 } as IconMapping;
 
 /**

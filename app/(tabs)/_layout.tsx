@@ -1,7 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Platform, TouchableOpacity, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { View } from 'react-native';
 
 export default function TabLayout() {
   return (
@@ -50,21 +50,22 @@ export default function TabLayout() {
           ),
         }}
       />
+                <Tabs.Screen
+            name="explore"
+            options={{
+              title: 'Formularios de Inspección',
+              tabBarIcon: ({ color }) => (
+                <Ionicons name="clipboard" size={22} color={color} />
+              ),
+            }}
+          />
+
       <Tabs.Screen
-        name="explore"
+        name="procedures"
         options={{
-          title: 'Formularios',
+          title: 'Procedimientos',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="clipboard" size={22} color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'Historial',
-          tabBarIcon: ({ color }) => (
-            <Ionicons name="time" size={22} color={color} />
+            <Ionicons name="document-text" size={22} color={color} />
           ),
         }}
       />
