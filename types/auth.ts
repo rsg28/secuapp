@@ -25,6 +25,12 @@ export interface AuthContextType {
   login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   isManager: boolean;
+  userCompanies: any[];
+  currentCompany: any | null;
+  hasMultipleCompanies: boolean;
+  getCurrentCompany: () => any | null;
+  changeCurrentCompany: (company: any) => void;
+  loadUserCompanies: () => Promise<void>;
 }
 
 

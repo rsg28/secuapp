@@ -150,7 +150,7 @@ export default function LoginScreen() {
         <View style={styles.welcomeContent}>
           <Text style={styles.welcomeMainTitle}>Bienvenido</Text>
           <Text style={styles.welcomeMainSubtitle}>
-            Seguridad y Salud{'\n'}en el Trabajo
+            Seguridad de Salud{'\n'}en el Trabajo
           </Text>
         </View>
         

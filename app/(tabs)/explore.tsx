@@ -12,13 +12,33 @@ import {
 
 
 
-export default function InspeccionesScreen() {
+export default function ServiciosScreen() {
   const handleOpenInspections = () => {
-    router.push('/open-inspections');
+    router.push('/inspection-types');
   };
 
   const handleClosedInspections = () => {
     router.push('/closed-inspections');
+  };
+
+  const handleObservaciones = () => {
+    // TODO: Implementar pantalla de observaciones
+    console.log('Navegar a observaciones');
+  };
+
+  const handleAuditoria = () => {
+    // TODO: Implementar pantalla de auditoría
+    console.log('Navegar a auditoría');
+  };
+
+  const handleLineaBase = () => {
+    // TODO: Implementar pantalla de línea de base
+    console.log('Navegar a línea de base');
+  };
+
+  const handleMonitoreo = () => {
+    // TODO: Implementar pantalla de monitoreo
+    console.log('Navegar a monitoreo');
   };
 
   return (
@@ -26,24 +46,24 @@ export default function InspeccionesScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.headerTitle}>Inspecciones</Text>
+          <Text style={styles.headerTitle}>Servicios</Text>
           <Text style={styles.headerSubtitle}>
-            Selecciona el tipo de inspección que deseas realizar
+            Catálogo de servicios de seguridad y salud en el trabajo
           </Text>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Open Inspections Card */}
+        {/* Inspecciones Card */}
         <TouchableOpacity style={styles.inspectionCard} onPress={handleOpenInspections}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
               <IconSymbol name="list.clipboard.fill" size={32} color="#3b82f6" />
             </View>
             <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Inspecciones Abiertas</Text>
+              <Text style={styles.cardTitle}>Inspecciones</Text>
               <Text style={styles.cardDescription}>
-                Inspecciones en curso y pendientes de completar
+                Inspecciones de seguridad en áreas de trabajo
               </Text>
               <Text style={styles.cardCount}>8 inspecciones activas</Text>
             </View>
@@ -52,33 +72,105 @@ export default function InspeccionesScreen() {
           <View style={styles.cardFooter}>
             <View style={styles.statusIndicator}>
               <View style={[styles.statusDot, styles.openStatus]} />
-              <Text style={styles.statusText}>Abiertas</Text>
+              <Text style={styles.statusText}>Disponible</Text>
             </View>
             <Text style={styles.lastUpdate}>Última actualización: hace 2 horas</Text>
           </View>
         </TouchableOpacity>
 
-        {/* Closed Inspections Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleClosedInspections}>
+        {/* Observaciones Card */}
+        <TouchableOpacity style={styles.inspectionCard} onPress={handleObservaciones}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <IconSymbol name="checkmark.circle.fill" size={32} color="#22c55e" />
+              <IconSymbol name="eye.fill" size={32} color="#10b981" />
             </View>
             <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Inspecciones Cerradas</Text>
+              <Text style={styles.cardTitle}>Observaciones</Text>
               <Text style={styles.cardDescription}>
-                Gestión de templates y formularios de inspección
+                Observaciones de comportamiento seguro en el trabajo
               </Text>
-              <Text style={styles.cardCount}>15 templates disponibles</Text>
+              <Text style={styles.cardCount}>12 observaciones este mes</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
           </View>
           <View style={styles.cardFooter}>
             <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.closedStatus]} />
-              <Text style={styles.statusText}>Cerradas</Text>
+              <View style={[styles.statusDot, styles.observationsStatus]} />
+              <Text style={styles.statusText}>Disponible</Text>
             </View>
-            <Text style={styles.lastUpdate}>Última actualización: ayer</Text>
+            <Text style={styles.lastUpdate}>Última actualización: hace 1 día</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Auditoría Card */}
+        <TouchableOpacity style={styles.inspectionCard} onPress={handleAuditoria}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIconContainer}>
+              <Ionicons name="document-text" size={32} color="#8b5cf6" />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle}>Auditoría</Text>
+              <Text style={styles.cardDescription}>
+                Auditorías de cumplimiento de seguridad
+              </Text>
+              <Text style={styles.cardCount}>3 auditorías programadas</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+          <View style={styles.cardFooter}>
+            <View style={styles.statusIndicator}>
+              <View style={[styles.statusDot, styles.auditStatus]} />
+              <Text style={styles.statusText}>Disponible</Text>
+            </View>
+            <Text style={styles.lastUpdate}>Última actualización: hace 3 días</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Línea de Base Card */}
+        <TouchableOpacity style={styles.inspectionCard} onPress={handleLineaBase}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIconContainer}>
+              <IconSymbol name="chart.bar.fill" size={32} color="#f59e0b" />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle}>Línea de Base</Text>
+              <Text style={styles.cardDescription}>
+                Establecimiento de estándares de seguridad
+              </Text>
+              <Text style={styles.cardCount}>5 líneas de base activas</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+          <View style={styles.cardFooter}>
+            <View style={styles.statusIndicator}>
+              <View style={[styles.statusDot, styles.baselineStatus]} />
+              <Text style={styles.statusText}>Disponible</Text>
+            </View>
+            <Text style={styles.lastUpdate}>Última actualización: hace 1 semana</Text>
+          </View>
+        </TouchableOpacity>
+
+        {/* Monitoreo Card */}
+        <TouchableOpacity style={styles.inspectionCard} onPress={handleMonitoreo}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIconContainer}>
+              <Ionicons name="trending-up" size={32} color="#ef4444" />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle}>Monitoreo</Text>
+              <Text style={styles.cardDescription}>
+                Monitoreo continuo de indicadores de seguridad
+              </Text>
+              <Text style={styles.cardCount}>15 indicadores activos</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+          <View style={styles.cardFooter}>
+            <View style={styles.statusIndicator}>
+              <View style={[styles.statusDot, styles.monitoringStatus]} />
+              <Text style={styles.statusText}>Disponible</Text>
+            </View>
+            <Text style={styles.lastUpdate}>Última actualización: hace 2 horas</Text>
           </View>
         </TouchableOpacity>
 
@@ -192,8 +284,17 @@ const styles = StyleSheet.create({
   openStatus: {
     backgroundColor: '#3b82f6',
   },
-  closedStatus: {
-    backgroundColor: '#22c55e',
+  observationsStatus: {
+    backgroundColor: '#10b981',
+  },
+  auditStatus: {
+    backgroundColor: '#8b5cf6',
+  },
+  baselineStatus: {
+    backgroundColor: '#f59e0b',
+  },
+  monitoringStatus: {
+    backgroundColor: '#ef4444',
   },
   statusText: {
     fontSize: 12,

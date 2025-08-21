@@ -171,4 +171,23 @@ export const storage = {
       console.error('Error deleting employee:', error);
     }
   },
+
+  // Gestión de empresas
+  async saveCompanies(companies: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem('companies', JSON.stringify(companies));
+    } catch (error) {
+      console.error('Error saving companies:', error);
+    }
+  },
+
+  async loadCompanies(): Promise<any[]> {
+    try {
+      const companies = await AsyncStorage.getItem('companies');
+      return companies ? JSON.parse(companies) : [];
+    } catch (error) {
+      console.error('Error loading companies:', error);
+      return [];
+    }
+  },
 };

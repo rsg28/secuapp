@@ -41,9 +41,9 @@ export default function TabLayout() {
       <Tabs.Screen
         name="explore"
         options={{
-          title: 'Inspecciones',
+          title: 'Servicios',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="clipboard" size={22} color={color} />
+            <Ionicons name="grid" size={22} color={color} />
           ),
         }}
       />

@@ -2,14 +2,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
 import { storage } from '../utils/storage';
 
 interface FormTemplate {
@@ -31,10 +31,10 @@ interface Category {
 }
 
 export default function ClosedInspectionsScreen() {
+  const { user, hasMultipleCompanies, getCurrentCompany } = useAuth();
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
-  const [showCompanyModal, setShowCompanyModal] = useState(false);
-  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null);
+
 
   // Cargar formularios guardados al iniciar
   useEffect(() => {
@@ -165,49 +165,20 @@ export default function ClosedInspectionsScreen() {
     router.push('/create-form');
   };
 
-  // Datos de empresas disponibles
-  const companies = [
-    {
-      id: '1',
-      name: 'Industrias del Norte S.A.',
-      industry: 'Manufactura',
-      contactPerson: 'Juan Pérez',
-    },
-    {
-      id: '2',
-      name: 'Minería del Sur Ltda.',
-      industry: 'Minería',
-      contactPerson: 'María González',
-    },
-    {
-      id: '3',
-      name: 'Construcciones Central',
-      industry: 'Construcción',
-      contactPerson: 'Carlos Rodríguez',
-    },
-  ];
 
-  // Función para usar template con asignación de empresa
-  const handleUseTemplateWithCompany = (form: FormTemplate) => {
-    setSelectedTemplate(form);
-    setShowCompanyModal(true);
-  };
 
-  // Función para recargar formularios cuando se regrese de crear uno nuevo
-  const handleFocus = () => {
-    loadSavedForms();
-  };
+
+
+
 
   const handleFormPress = (form: FormTemplate) => {
-    Alert.alert(
-      form.title,
-      `${form.description}\n\nElementos: ${form.itemCount}`,
-      [
-        { text: 'Usar con Empresa', onPress: () => handleUseTemplateWithCompany(form) },
-        { text: 'Editar', onPress: () => console.log('Editar', form.id) },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
+    // Ir directamente al form-detail con la empresa actual
+    const company = getCurrentCompany();
+    if (company) {
+      router.push(`/form-detail?id=${form.id}&companyId=${company.id}&companyName=${company.name}`);
+    } else {
+      Alert.alert('Error', 'No hay empresa seleccionada');
+    }
   };
 
   const handleDeleteForm = (form: FormTemplate) => {
@@ -354,58 +325,7 @@ export default function ClosedInspectionsScreen() {
         <View style={styles.bottomSpacing} />
       </ScrollView>
 
-      {/* Modal para selección de empresa */}
-      <Modal
-        visible={showCompanyModal}
-        transparent={true}
-        animationType="slide"
-        onRequestClose={() => setShowCompanyModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Asignar Template a Empresa
-            </Text>
-            <Text style={styles.modalSubtitle}>
-              {selectedTemplate?.title}
-            </Text>
-            
-            <ScrollView style={styles.companiesList}>
-              {companies.map((company) => (
-                <TouchableOpacity
-                  key={company.id}
-                  style={styles.companyOption}
-                  onPress={() => {
-                    setShowCompanyModal(false);
-                    setSelectedTemplate(null);
-                    // Aquí se navegaría al form-detail con la empresa seleccionada
-                    router.push(`/form-detail?id=${selectedTemplate?.id}&companyId=${company.id}&companyName=${company.name}`);
-                  }}
-                >
-                  <View style={styles.companyOptionHeader}>
-                    <Ionicons name="business" size={20} color="#3b82f6" />
-                    <Text style={styles.companyOptionName}>{company.name}</Text>
-                  </View>
-                  <View style={styles.companyOptionDetails}>
-                    <Text style={styles.companyOptionIndustry}>{company.industry}</Text>
-                    <Text style={styles.companyOptionContact}>{company.contactPerson}</Text>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
 
-            <TouchableOpacity
-              style={styles.modalCancelButton}
-              onPress={() => {
-                setShowCompanyModal(false);
-                setSelectedTemplate(null);
-              }}
-            >
-              <Text style={styles.modalCancelText}>Cancelar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
@@ -580,81 +500,7 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 120,
   },
-  // Modal styles
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 24,
-    width: '90%',
-    maxWidth: 400,
-    maxHeight: '80%',
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 8,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  companiesList: {
-    maxHeight: 300,
-  },
-  companyOption: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  companyOptionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  companyOptionName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginLeft: 12,
-    flex: 1,
-  },
-  companyOptionDetails: {
-    marginLeft: 32,
-  },
-  companyOptionIndustry: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 2,
-  },
-  companyOptionContact: {
-    fontSize: 12,
-    color: '#9ca3af',
-  },
-  modalCancelButton: {
-    backgroundColor: '#f3f4f6',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  modalCancelText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6b7280',
-  },
+
 });
 
 

@@ -18,14 +18,17 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useAuth } from '../../contexts/AuthContext';
 
 const { width } = Dimensions.get('window');
 
 export default function DashboardScreen() {
+  const { user, hasMultipleCompanies, currentCompany, getCurrentCompany, userCompanies, changeCurrentCompany } = useAuth();
   const [showPhotoModal, setShowPhotoModal] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [photoText, setPhotoText] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [showCompanySelector, setShowCompanySelector] = useState(false);
 
   const handleTakePhoto = async () => {
     try {
@@ -103,6 +106,11 @@ export default function DashboardScreen() {
     setShowPhotoModal(false);
   };
 
+  const handleCompanyChange = (company: any) => {
+    changeCurrentCompany(company);
+    setShowCompanySelector(false);
+  };
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -117,6 +125,28 @@ export default function DashboardScreen() {
               day: 'numeric',
             })}
           </Text>
+          {/* Indicador de Empresa */}
+          <View style={styles.companyIndicator}>
+            {hasMultipleCompanies ? (
+              <TouchableOpacity 
+                style={[styles.companyBadge, styles.multipleCompaniesBadge]}
+                onPress={() => setShowCompanySelector(true)}
+              >
+                <Ionicons name="business" size={16} color="#fff" />
+                <Text style={styles.companyBadgeText}>
+                  {currentCompany?.name || 'Seleccionar Empresa'}
+                </Text>
+                <Ionicons name="chevron-down" size={14} color="#fff" style={{ marginLeft: 4 }} />
+              </TouchableOpacity>
+            ) : (
+              <View style={[styles.companyBadge, styles.singleCompanyBadge]}>
+                <Ionicons name="business" size={16} color="#fff" />
+                <Text style={styles.companyBadgeText}>
+                  {getCurrentCompany()?.name || 'Sin empresa asignada'}
+                </Text>
+              </View>
+            )}
+          </View>
         </View>
         <View style={styles.profileIcon}>
           <IconSymbol name="person.circle.fill" size={40} color="#fff" />
@@ -131,29 +161,37 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/explore')}
           >
             <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>15</Text>
+            <Text style={styles.statNumber}>8</Text>
             <Text style={styles.statLabel}>Inspecciones</Text>
-            <Text style={styles.statSubtext}>Ver todas</Text>
+            <Text style={styles.statSubtext}>Activas</Text>
           </TouchableOpacity>
           <View style={[styles.statCard, styles.greenCard]}>
             <IconSymbol name="eye.fill" size={24} color="#22c55e" />
-            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statNumber}>12</Text>
             <Text style={styles.statLabel}>Observaciones</Text>
-            <Text style={styles.statSubtext}>de Tarea</Text>
+            <Text style={styles.statSubtext}>Este mes</Text>
           </View>
         </View>
         <View style={styles.statsRow}>
           <View style={[styles.statCard, styles.purpleCard]}>
-            <IconSymbol name="chart.bar.fill" size={24} color="#8b5cf6" />
-            <Text style={styles.statNumber}>12</Text>
-            <Text style={styles.statLabel}>Análisis</Text>
-            <Text style={styles.statSubtext}>Trabajo Seguro</Text>
+            <Ionicons name="document-text" size={24} color="#8b5cf6" />
+            <Text style={styles.statNumber}>3</Text>
+            <Text style={styles.statLabel}>Auditorías</Text>
+            <Text style={styles.statSubtext}>Programadas</Text>
           </View>
           <View style={[styles.statCard, styles.orangeCard]}>
-            <IconSymbol name="ellipsis.circle.fill" size={24} color="#f97316" />
+            <IconSymbol name="chart.bar.fill" size={24} color="#f59e0b" />
             <Text style={styles.statNumber}>5</Text>
-            <Text style={styles.statLabel}>Otros</Text>
-            <Text style={styles.statSubtext}>Documentos</Text>
+            <Text style={styles.statLabel}>Línea Base</Text>
+            <Text style={styles.statSubtext}>Activas</Text>
+          </View>
+        </View>
+        <View style={styles.statsRow}>
+          <View style={[styles.statCard, styles.redCard]}>
+            <Ionicons name="trending-up" size={24} color="#ef4444" />
+            <Text style={styles.statNumber}>15</Text>
+            <Text style={styles.statLabel}>Monitoreo</Text>
+            <Text style={styles.statSubtext}>Indicadores</Text>
           </View>
         </View>
       </View>
@@ -164,10 +202,10 @@ export default function DashboardScreen() {
         <View style={styles.quickActions}>
           <TouchableOpacity 
             style={styles.actionButton}
-            onPress={() => router.push('/explore')}
+            onPress={() => router.push('/(tabs)/explore')}
           >
-            <Ionicons name="add-circle" size={24} color="#3b82f6" />
-            <Text style={styles.actionText}>Nuevo Template</Text>
+            <Ionicons name="grid" size={24} color="#3b82f6" />
+            <Text style={styles.actionText}>Ver Servicios</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionButton} onPress={handleTakePhoto}>
             <IconSymbol name="camera.fill" size={24} color="#10b981" />
@@ -275,7 +313,55 @@ export default function DashboardScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-      </Modal>
+              </Modal>
+
+        {/* Modal Selector de Empresas */}
+        <Modal
+          visible={showCompanySelector}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setShowCompanySelector(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>
+                Seleccionar Empresa
+              </Text>
+              
+              <ScrollView style={styles.companiesList}>
+                {userCompanies.map((company) => (
+                  <TouchableOpacity
+                    key={company.id}
+                    style={[
+                      styles.companyOption,
+                      currentCompany?.id === company.id && styles.companyOptionActive
+                    ]}
+                    onPress={() => handleCompanyChange(company)}
+                  >
+                    <View style={styles.companyOptionHeader}>
+                      <Ionicons name="business" size={20} color="#3b82f6" />
+                      <Text style={styles.companyOptionName}>{company.name}</Text>
+                      {currentCompany?.id === company.id && (
+                        <Ionicons name="checkmark-circle" size={20} color="#10b981" />
+                      )}
+                    </View>
+                    <View style={styles.companyOptionDetails}>
+                      <Text style={styles.companyOptionIndustry}>{company.industry}</Text>
+                      <Text style={styles.companyOptionContact}>{company.contactPerson}</Text>
+                    </View>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowCompanySelector(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
 
     </ScrollView>
   );
@@ -467,20 +553,31 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#fff',
-    borderRadius: 16,
+    borderRadius: 20,
+    padding: 28,
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 8,
   },
   modalScrollContent: {
     padding: 24,
   },
   modalTitle: {
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 20,
+    marginBottom: 24,
     textAlign: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 8,
   },
   photoPreview: {
     alignItems: 'center',
@@ -542,5 +639,119 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
     color: '#fff',
+  },
+  // Estilos para indicador de empresa
+  companyIndicator: {
+    marginTop: 12,
+    marginBottom: 4,
+  },
+  companyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    alignSelf: 'flex-start',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    minWidth: 140,
+    justifyContent: 'space-between',
+  },
+  multipleCompaniesBadge: {
+    backgroundColor: '#3b82f6',
+    borderWidth: 1,
+    borderColor: '#2563eb',
+  },
+  singleCompanyBadge: {
+    backgroundColor: '#10b981',
+    borderWidth: 1,
+    borderColor: '#059669',
+  },
+  companyBadgeText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+    marginLeft: 8,
+    flex: 1,
+    textAlign: 'center',
+  },
+  // Estilos para el selector de empresas
+  companiesList: {
+    maxHeight: 350,
+    marginVertical: 16,
+  },
+  companyOption: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  companyOptionActive: {
+    backgroundColor: '#eff6ff',
+    borderColor: '#3b82f6',
+    borderWidth: 2,
+    shadowColor: '#3b82f6',
+    shadowOpacity: 0.15,
+  },
+  companyOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  companyOptionName: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginLeft: 14,
+    flex: 1,
+  },
+  companyOptionDetails: {
+    marginLeft: 34,
+    backgroundColor: '#f8fafc',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: '#e5e7eb',
+  },
+  companyOptionIndustry: {
+    fontSize: 14,
+    color: '#4b5563',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  companyOptionContact: {
+    fontSize: 13,
+    color: '#6b7280',
+    fontWeight: '400',
+  },
+  modalCancelButton: {
+    backgroundColor: '#f1f5f9',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#475569',
   },
 });

@@ -1,5 +1,6 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
 import { AuthContextType, User } from '../types/auth';
+import { initializeCompanies } from '../utils/initialData';
 import { storage } from '../utils/storage';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -19,9 +20,12 @@ interface AuthProviderProps {
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [userCompanies, setUserCompanies] = useState<any[]>([]);
+  const [currentCompany, setCurrentCompany] = useState<any | null>(null);
 
   useEffect(() => {
     loadUserSession();
+    loadUserCompanies();
   }, []);
 
   const loadUserSession = async () => {
@@ -75,9 +79,42 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     try {
       await storage.clearUserSession();
       setUser(null);
+      setUserCompanies([]);
+      setCurrentCompany(null);
     } catch (error) {
       console.error('Error during logout:', error);
     }
+  };
+
+  // Cargar empresas del usuario
+  const loadUserCompanies = async () => {
+    try {
+      // Inicializar empresas si no existen
+      await initializeCompanies(storage);
+      
+      const companies = await storage.loadCompanies();
+      setUserCompanies(companies);
+      
+      // Si solo hay una empresa, establecerla como actual
+      if (companies.length === 1) {
+        setCurrentCompany(companies[0]);
+      }
+    } catch (error) {
+      console.error('Error loading user companies:', error);
+    }
+  };
+
+  // Cambiar empresa actual
+  const changeCurrentCompany = (company: any) => {
+    setCurrentCompany(company);
+  };
+
+  // Verificar si el usuario trabaja para múltiples empresas
+  const hasMultipleCompanies = userCompanies.length > 1;
+  
+  // Obtener empresa actual o primera empresa
+  const getCurrentCompany = () => {
+    return currentCompany || userCompanies[0];
   };
 
   const value: AuthContextType = {
@@ -85,7 +122,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     isLoading,
     login,
     logout,
-    isManager: user?.role === 'manager'
+    isManager: user?.role === 'manager',
+    userCompanies,
+    currentCompany,
+    hasMultipleCompanies,
+    getCurrentCompany,
+    changeCurrentCompany,
+    loadUserCompanies
   };
 
   return (
