@@ -1,14 +1,12 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
-import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-    Alert,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
-    View,
+    View
 } from 'react-native';
 
 interface OpenInspection {
@@ -17,9 +15,15 @@ interface OpenInspection {
   area: string;
   inspector: string;
   startDate: string;
-  progress: number;
   priority: 'high' | 'medium' | 'low';
-  estimatedCompletion: string;
+  status: 'pending' | 'in-progress' | 'completed';
+  customQuestions: CustomQuestion[];
+}
+
+interface CustomQuestion {
+  id: string;
+  text: string;
+  notes: string;
 }
 
 export default function OpenInspectionsScreen() {
@@ -30,79 +34,66 @@ export default function OpenInspectionsScreen() {
       area: 'Producción',
       inspector: 'Carlos Mendoza',
       startDate: '2024-01-15 08:00',
-      progress: 65,
       priority: 'high',
-      estimatedCompletion: '2024-01-16 17:00',
+      status: 'in-progress',
+      customQuestions: [
+        {
+          id: '1',
+          text: 'Verificar estado de extintores en zona A',
+          notes: 'Se reportó que algunos extintores podrían estar vencidos'
+        },
+        {
+          id: '2',
+          text: 'Revisar señalización de emergencia',
+          notes: 'Falta señalización en pasillo principal'
+        }
+      ]
     },
     {
       id: '2',
-      title: 'Verificación EPP - Personal de Mantenimiento',
+      title: 'Control de EPP - Personal de Mantenimiento',
       area: 'Mantenimiento',
       inspector: 'Ana García',
-      startDate: '2024-01-15 09:30',
-      progress: 40,
+      startDate: '2024-01-14 09:00',
       priority: 'medium',
-      estimatedCompletion: '2024-01-17 15:00',
+      status: 'pending',
+      customQuestions: [
+        {
+          id: '1',
+          text: 'Verificar uso correcto de cascos de seguridad',
+          notes: 'Personal nuevo requiere capacitación'
+        }
+      ]
     },
     {
       id: '3',
-      title: 'Control de Sustancias Químicas - Laboratorio',
-      area: 'Laboratorio',
-      inspector: 'Luis Rodríguez',
-      startDate: '2024-01-14 14:00',
-      progress: 80,
-      priority: 'high',
-      estimatedCompletion: '2024-01-15 18:00',
-    },
-    {
-      id: '4',
       title: 'Inspección de Equipos - Zona de Carga',
       area: 'Almacén',
-      inspector: 'María López',
-      startDate: '2024-01-14 10:00',
-      progress: 25,
-      priority: 'low',
-      estimatedCompletion: '2024-01-18 12:00',
-    },
-    {
-      id: '5',
-      title: 'Verificación de Rutas de Evacuación',
-      area: 'Instalaciones',
-      inspector: 'Roberto Silva',
-      startDate: '2024-01-13 16:00',
-      progress: 90,
-      priority: 'medium',
-      estimatedCompletion: '2024-01-15 10:00',
+      inspector: 'Luis Rodríguez',
+      startDate: '2024-01-13 10:00',
+      priority: 'high',
+      status: 'in-progress',
+      customQuestions: [
+        {
+          id: '1',
+          text: 'Revisar funcionamiento de montacargas',
+          notes: 'Se reportó ruido extraño en motor'
+        },
+        {
+          id: '2',
+          text: 'Verificar estado de neumáticos',
+          notes: 'Posible desgaste excesivo'
+        }
+      ]
     },
   ]);
 
-  const handleBack = () => {
-    router.back();
+  const handleNewInspection = () => {
+    router.push('/create-open-inspection');
   };
 
   const handleInspectionPress = (inspection: OpenInspection) => {
-    Alert.alert(
-      inspection.title,
-      `Área: ${inspection.area}\nInspector: ${inspection.inspector}\nProgreso: ${inspection.progress}%\nFecha de inicio: ${inspection.startDate}\nEstimado de finalización: ${inspection.estimatedCompletion}`,
-      [
-        { text: 'Continuar', onPress: () => router.push('/inspection-form') },
-        { text: 'Editar', onPress: () => console.log('Editar inspección:', inspection.id) },
-        { text: 'Pausar', onPress: () => console.log('Pausar inspección:', inspection.id) },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
-  };
-
-  const handleNewInspection = () => {
-    Alert.alert(
-      'Nueva Inspección',
-      '¿Cómo deseas crear la inspección?',
-      [
-        { text: 'Desde Template', onPress: () => router.push('/inspection-form') },
-        { text: 'Crear Nueva', onPress: () => router.push('/inspection-form') },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
+    router.push(`/open-inspection-detail/${inspection.id}`);
   };
 
   const getPriorityColor = (priority: string) => {
@@ -131,14 +122,40 @@ export default function OpenInspectionsScreen() {
     }
   };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return '#10b981';
+      case 'in-progress':
+        return '#3b82f6';
+      case 'pending':
+        return '#f59e0b';
+      default:
+        return '#6b7280';
+    }
+  };
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'completed':
+        return 'Completada';
+      case 'in-progress':
+        return 'En Progreso';
+      case 'pending':
+        return 'Pendiente';
+      default:
+        return 'N/A';
+    }
+  };
+
+  const totalOpen = inspections.filter(i => i.status !== 'completed').length;
+  const highPriority = inspections.filter(i => i.priority === 'high' && i.status !== 'completed').length;
+
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
+        <View>
           <Text style={styles.headerTitle}>Inspecciones Abiertas</Text>
           <Text style={styles.headerSubtitle}>
             Inspecciones en curso y pendientes
@@ -150,20 +167,12 @@ export default function OpenInspectionsScreen() {
         {/* Quick Stats */}
         <View style={styles.statsContainer}>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{inspections.length}</Text>
-            <Text style={styles.statLabel}>Total Abiertas</Text>
+            <Text style={styles.statNumber}>{totalOpen}</Text>
+            <Text style={styles.statLabel}>Abiertas</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {inspections.filter(i => i.priority === 'high').length}
-            </Text>
-            <Text style={styles.statLabel}>Prioridad Alta</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {Math.round(inspections.reduce((acc, i) => acc + i.progress, 0) / inspections.length)}%
-            </Text>
-            <Text style={styles.statLabel}>Progreso Promedio</Text>
+            <Text style={styles.statNumber}>{highPriority}</Text>
+            <Text style={styles.statLabel}>Alta Prioridad</Text>
           </View>
         </View>
 
@@ -177,7 +186,7 @@ export default function OpenInspectionsScreen() {
         <View style={styles.inspectionsContainer}>
           <Text style={styles.sectionTitle}>Inspecciones Activas</Text>
           
-          {inspections.map((inspection) => (
+          {inspections.filter(i => i.status !== 'completed').map((inspection) => (
             <TouchableOpacity 
               key={inspection.id} 
               style={styles.inspectionCard}
@@ -188,14 +197,12 @@ export default function OpenInspectionsScreen() {
                   <Text style={styles.inspectionTitle}>{inspection.title}</Text>
                   <Text style={styles.inspectionArea}>{inspection.area}</Text>
                 </View>
-                <View style={[
-                  styles.priorityBadge,
-                  { backgroundColor: getPriorityColor(inspection.priority) + '20' }
-                ]}>
-                  <Text style={[
-                    styles.priorityText,
-                    { color: getPriorityColor(inspection.priority) }
-                  ]}>
+                <View style={styles.priorityBadge}>
+                  <View style={[
+                    styles.priorityDot,
+                    { backgroundColor: getPriorityColor(inspection.priority) }
+                  ]} />
+                  <Text style={styles.priorityText}>
                     {getPriorityText(inspection.priority)}
                   </Text>
                 </View>
@@ -208,38 +215,35 @@ export default function OpenInspectionsScreen() {
                 </View>
                 <View style={styles.dateInfo}>
                   <IconSymbol name="calendar" size={16} color="#6b7280" />
-                  <Text style={styles.dateText}>Inicio: {inspection.startDate}</Text>
+                  <Text style={styles.dateText}>Iniciada: {inspection.startDate}</Text>
                 </View>
               </View>
 
-              <View style={styles.progressContainer}>
-                <View style={styles.progressHeader}>
-                  <Text style={styles.progressText}>Progreso: {inspection.progress}%</Text>
-                  <Text style={styles.estimatedText}>
-                    Estimado: {inspection.estimatedCompletion}
-                  </Text>
-                </View>
-                <View style={styles.progressBar}>
-                  <View 
-                    style={[
-                      styles.progressFill, 
-                      { width: `${inspection.progress}%` }
-                    ]} 
-                  />
-                </View>
-              </View>
+                             <View style={styles.statusContainer}>
+                 <View style={[
+                   styles.statusBadge,
+                   { backgroundColor: getStatusColor(inspection.status) + '20' }
+                 ]}>
+                   <Text style={[
+                     styles.statusText,
+                     { color: getStatusColor(inspection.status) }
+                   ]}>
+                     {getStatusText(inspection.status)}
+                   </Text>
+                 </View>
+               </View>
 
               <View style={styles.cardActions}>
                 <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="camera.fill" size={16} color="#3b82f6" />
-                  <Text style={styles.actionText}>Foto</Text>
+                  <IconSymbol name="camera.fill" size={16} color="#10b981" />
+                  <Text style={styles.actionText}>Fotos</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="document.fill" size={16} color="#10b981" />
-                  <Text style={styles.actionText}>Notas</Text>
+                  <IconSymbol name="pencil" size={16} color="#3b82f6" />
+                  <Text style={styles.actionText}>Editar</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="checkmark.circle.fill" size={16} color="#f59e0b" />
+                  <IconSymbol name="checkmark.circle.fill" size={16} color="#22c55e" />
                   <Text style={styles.actionText}>Completar</Text>
                 </TouchableOpacity>
               </View>
@@ -263,47 +267,41 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     padding: 20,
     paddingTop: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  headerContent: {
-    flex: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#fff',
-    marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 14,
     color: '#dbeafe',
+    marginTop: 2,
   },
   content: {
     flex: 1,
-    padding: 20,
   },
   statsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
+    justifyContent: 'space-around',
+    padding: 20,
+    paddingBottom: 0,
   },
   statCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
-    padding: 16,
+    padding: 20,
     alignItems: 'center',
     flex: 1,
-    marginHorizontal: 4,
+    marginHorizontal: 8,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -314,7 +312,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   statNumber: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#1f2937',
     marginBottom: 4,
@@ -331,7 +329,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingVertical: 16,
     borderRadius: 12,
-    marginBottom: 24,
+    margin: 20,
+    marginTop: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -348,7 +347,8 @@ const styles = StyleSheet.create({
     marginLeft: 8,
   },
   inspectionsContainer: {
-    marginBottom: 24,
+    padding: 20,
+    paddingTop: 0,
   },
   sectionTitle: {
     fontSize: 18,
@@ -392,13 +392,23 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   priorityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f3f4f6',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 16,
   },
+  priorityDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 6,
+  },
   priorityText: {
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: '500',
+    color: '#374151',
   },
   cardBody: {
     marginBottom: 16,
@@ -422,34 +432,27 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginLeft: 8,
   },
-  progressContainer: {
-    marginBottom: 16,
-  },
-  progressHeader: {
+  statusContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: '#f3f4f6',
   },
-  progressText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+  statusBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
-  estimatedText: {
+  statusText: {
     fontSize: 12,
-    color: '#9ca3af',
+    fontWeight: '600',
   },
-  progressBar: {
-    height: 8,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#10b981',
-    borderRadius: 4,
+  questionsCount: {
+    fontSize: 12,
+    color: '#6b7280',
   },
   cardActions: {
     flexDirection: 'row',
@@ -470,9 +473,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#374151',
     marginLeft: 6,
-    fontWeight: '500',
   },
   bottomSpacing: {
-    height: 40,
+    height: 100,
   },
 });

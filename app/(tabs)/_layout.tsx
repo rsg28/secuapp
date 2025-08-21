@@ -1,22 +1,10 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { View } from 'react-native';
 
 export default function TabLayout() {
   return (
-    <>
-      {/* Línea blanca superior */}
-      <View style={{
-        position: 'absolute',
-        bottom: 100,
-        left: 0,
-        right: 0,
-        height: 3,
-        backgroundColor: '#ffffff',
-        zIndex: 1000,
-      }} />
-      <Tabs
+    <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#1e40af', // Azul profesional
         tabBarInactiveTintColor: '#6b7280', // Gris más oscuro
@@ -50,16 +38,15 @@ export default function TabLayout() {
           ),
         }}
       />
-                <Tabs.Screen
-            name="explore"
-            options={{
-              title: 'Formularios de Inspección',
-              tabBarIcon: ({ color }) => (
-                <Ionicons name="clipboard" size={22} color={color} />
-              ),
-            }}
-          />
-
+      <Tabs.Screen
+        name="explore"
+        options={{
+          title: 'Inspecciones',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="clipboard" size={22} color={color} />
+          ),
+        }}
+      />
       <Tabs.Screen
         name="procedures"
         options={{
@@ -79,6 +66,5 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
-    </>
   );
 }

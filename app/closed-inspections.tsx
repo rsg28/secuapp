@@ -1,310 +1,411 @@
-import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
+    Modal,
     ScrollView,
     StyleSheet,
     Text,
     TouchableOpacity,
     View,
 } from 'react-native';
+import { storage } from '../utils/storage';
 
-interface ClosedInspection {
+interface FormTemplate {
   id: string;
   title: string;
-  area: string;
-  inspector: string;
-  startDate: string;
-  completionDate: string;
-  result: 'passed' | 'failed' | 'conditional';
-  score: number;
-  totalItems: number;
-  passedItems: number;
-  failedItems: number;
-  observations: string[];
+  description: string;
+  category: string;
+  isTemplate: boolean;
+  createdDate: string;
+  lastModified: string;
+  itemCount: number;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
 }
 
 export default function ClosedInspectionsScreen() {
-  const [inspections, setInspections] = useState<ClosedInspection[]>([
+  const [selectedCategory, setSelectedCategory] = useState('todos');
+  const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [selectedTemplate, setSelectedTemplate] = useState<FormTemplate | null>(null);
+
+  // Cargar formularios guardados al iniciar
+  useEffect(() => {
+    clearDuplicateTemplates();
+    loadSavedForms();
+    initializeDefaultTemplate();
+  }, []);
+
+  // Recargar formularios cuando la pantalla vuelva a tener foco
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSavedForms();
+    }, [])
+  );
+
+  const loadSavedForms = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      
+      // Convertir formularios guardados al formato FormTemplate
+      const userForms = savedForms.map((form: any) => ({
+        id: form.id,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        isTemplate: form.isTemplate || false,
+        createdDate: form.createdDate || '2024-01-15',
+        lastModified: form.lastModified || '2024-01-15',
+        itemCount: form.items ? form.items.length : 0,
+      }));
+
+      // Solo mostrar los formularios guardados (sin duplicar)
+      setFormTemplates(userForms);
+    } catch (error) {
+      console.error('Error loading forms:', error);
+      setFormTemplates([]);
+    }
+  };
+
+  // Limpiar templates duplicados
+  const clearDuplicateTemplates = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      const uniqueForms = savedForms.filter((form: any, index: number, self: any[]) => 
+        index === self.findIndex((f: any) => f.id === form.id)
+      );
+      
+      if (uniqueForms.length !== savedForms.length) {
+        await storage.saveForms(uniqueForms);
+        console.log('Templates duplicados eliminados');
+      }
+    } catch (error) {
+      console.error('Error clearing duplicate templates:', error);
+    }
+  };
+
+  // Inicializar template por defecto si no existe
+  const initializeDefaultTemplate = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      const defaultTemplateExists = savedForms.some((form: any) => form.id === 'seg-001');
+      
+      if (!defaultTemplateExists) {
+        const defaultTemplate = {
+          id: 'seg-001',
+          title: 'Template de Inspección de Seguridad General',
+          description: 'Template base para inspecciones de seguridad en áreas de trabajo',
+          category: 'seguridad',
+          isTemplate: true,
+          createdDate: '2024-01-15',
+          lastModified: '2024-01-15',
+          items: [
+            { id: '1', text: '¿Los empleados están usando el equipo de protección personal requerido?' },
+            { id: '2', text: '¿Las áreas de trabajo están libres de obstáculos y desorden?' },
+            { id: '3', text: '¿Los equipos de emergencia están accesibles y funcionando correctamente?' },
+            { id: '4', text: '¿Las señales de seguridad están visibles y en buen estado?' },
+            { id: '5', text: '¿Los extintores están en su lugar y no han expirado?' },
+            { id: '6', text: '¿Las salidas de emergencia están despejadas y marcadas correctamente?' },
+            { id: '7', text: '¿El piso está en buenas condiciones sin resbalones o tropiezos?' },
+            { id: '8', text: '¿La iluminación es adecuada para el trabajo que se realiza?' },
+            { id: '9', text: '¿Los equipos eléctricos están en buen estado y sin cables expuestos?' },
+            { id: '10', text: '¿Los productos químicos están almacenados y etiquetados correctamente?' },
+            { id: '11', text: '¿Los empleados han recibido la capacitación necesaria para su trabajo?' },
+            { id: '12', text: '¿Se están siguiendo los procedimientos de seguridad establecidos?' },
+          ],
+        };
+        
+        await storage.addForm(defaultTemplate);
+        console.log('Template por defecto inicializado');
+      }
+    } catch (error) {
+      console.error('Error initializing default template:', error);
+    }
+  };
+
+  const categories: Category[] = [
+    { id: 'todos', name: 'Todos', icon: 'apps', color: '#6366f1' },
+    { id: 'vestimenta', name: 'Vestimenta', icon: 'shirt', color: '#8b5cf6' },
+    { id: 'quimicos', name: 'Químicos', icon: 'flask', color: '#ef4444' },
+    { id: 'equipos', name: 'Equipos', icon: 'build', color: '#f59e0b' },
+    { id: 'instalaciones', name: 'Instalaciones', icon: 'business', color: '#10b981' },
+    { id: 'capacitacion', name: 'Capacitación', icon: 'school', color: '#06b6d4' },
+  ];
+
+  const getFilteredForms = () => {
+    if (selectedCategory === 'todos') {
+      return formTemplates;
+    }
+    return formTemplates.filter(form => form.category === selectedCategory);
+  };
+
+  const getAvailableCategories = () => {
+    // Siempre mostrar "Todos"
+    const availableCategories = [categories[0]]; // "Todos" es el primero
+    
+    // Agregar solo categorías que tengan formularios
+    categories.slice(1).forEach(category => {
+      const hasTemplates = formTemplates.some(form => form.category === category.id);
+      if (hasTemplates) {
+        availableCategories.push(category);
+      }
+    });
+    
+    return availableCategories;
+  };
+
+  const handleAddForm = () => {
+    router.push('/create-form');
+  };
+
+  // Datos de empresas disponibles
+  const companies = [
     {
       id: '1',
-      title: 'Inspección de Seguridad - Área de Producción',
-      area: 'Producción',
-      inspector: 'Carlos Mendoza',
-      startDate: '2024-01-10 08:00',
-      completionDate: '2024-01-12 16:30',
-      result: 'passed',
-      score: 92,
-      totalItems: 25,
-      passedItems: 23,
-      failedItems: 2,
-      observations: [
-        'Se requiere actualizar señalización en zona de maquinaria',
-        'EPP en buen estado para todo el personal',
-      ],
+      name: 'Industrias del Norte S.A.',
+      industry: 'Manufactura',
+      contactPerson: 'Juan Pérez',
     },
     {
       id: '2',
-      title: 'Verificación EPP - Personal de Mantenimiento',
-      area: 'Mantenimiento',
-      inspector: 'Ana García',
-      startDate: '2024-01-08 09:00',
-      completionDate: '2024-01-09 14:00',
-      result: 'conditional',
-      score: 78,
-      totalItems: 18,
-      passedItems: 14,
-      failedItems: 4,
-      observations: [
-        'Falta reemplazar 3 cascos vencidos',
-        'Se requiere capacitación adicional en uso de EPP',
-      ],
+      name: 'Minería del Sur Ltda.',
+      industry: 'Minería',
+      contactPerson: 'María González',
     },
     {
       id: '3',
-      title: 'Control de Sustancias Químicas - Laboratorio',
-      area: 'Laboratorio',
-      inspector: 'Luis Rodríguez',
-      startDate: '2024-01-05 10:00',
-      completionDate: '2024-01-06 17:00',
-      result: 'passed',
-      score: 95,
-      totalItems: 20,
-      passedItems: 19,
-      failedItems: 1,
-      observations: [
-        'Sistema de ventilación funcionando correctamente',
-        'Inventario de sustancias actualizado',
-      ],
+      name: 'Construcciones Central',
+      industry: 'Construcción',
+      contactPerson: 'Carlos Rodríguez',
     },
-    {
-      id: '4',
-      title: 'Inspección de Equipos - Zona de Carga',
-      area: 'Almacén',
-      inspector: 'María López',
-      startDate: '2024-01-03 08:30',
-      completionDate: '2024-01-04 12:00',
-      result: 'failed',
-      score: 65,
-      totalItems: 22,
-      passedItems: 14,
-      failedItems: 8,
-      observations: [
-        'Montacargas requiere mantenimiento urgente',
-        'Señalización de seguridad insuficiente',
-        'Falta implementar protocolo de carga',
-      ],
-    },
-    {
-      id: '5',
-      title: 'Verificación de Rutas de Evacuación',
-      area: 'Instalaciones',
-      inspector: 'Roberto Silva',
-      startDate: '2024-01-01 14:00',
-      completionDate: '2024-01-02 11:00',
-      result: 'passed',
-      score: 88,
-      totalItems: 15,
-      passedItems: 13,
-      failedItems: 2,
-      observations: [
-        'Rutas de evacuación despejadas',
-        'Señales de emergencia visibles',
-      ],
-    },
-  ]);
+  ];
 
-  const handleBack = () => {
-    router.back();
+  // Función para usar template con asignación de empresa
+  const handleUseTemplateWithCompany = (form: FormTemplate) => {
+    setSelectedTemplate(form);
+    setShowCompanyModal(true);
   };
 
-  const handleInspectionPress = (inspection: ClosedInspection) => {
+  // Función para recargar formularios cuando se regrese de crear uno nuevo
+  const handleFocus = () => {
+    loadSavedForms();
+  };
+
+  const handleFormPress = (form: FormTemplate) => {
     Alert.alert(
-      inspection.title,
-      `Área: ${inspection.area}\nInspector: ${inspection.inspector}\nResultado: ${getResultText(inspection.result)}\nPuntuación: ${inspection.score}/100\nFecha de inicio: ${inspection.startDate}\nFecha de finalización: ${inspection.completionDate}\n\nObservaciones:\n${inspection.observations.map(obs => `• ${obs}`).join('\n')}`,
+      form.title,
+      `${form.description}\n\nElementos: ${form.itemCount}`,
       [
-        { text: 'Ver Reporte', onPress: () => console.log('Ver reporte:', inspection.id) },
-        { text: 'Exportar PDF', onPress: () => console.log('Exportar PDF:', inspection.id) },
-        { text: 'Compartir', onPress: () => console.log('Compartir:', inspection.id) },
+        { text: 'Usar con Empresa', onPress: () => handleUseTemplateWithCompany(form) },
+        { text: 'Editar', onPress: () => console.log('Editar', form.id) },
         { text: 'Cancelar', style: 'cancel' },
       ]
     );
   };
 
-  const handleNewInspection = () => {
-    router.push('/inspection-form');
+  const handleDeleteForm = (form: FormTemplate) => {
+    Alert.alert(
+      'Eliminar Template',
+      `¿Estás seguro de que deseas eliminar "${form.title}"?`,
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setFormTemplates(prev => prev.filter(f => f.id !== form.id));
+            
+            // Si la categoría actual ya no tiene formularios, cambiar a "todos"
+            const remainingInCategory = formTemplates.filter(
+              f => f.id !== form.id && f.category === selectedCategory
+            );
+            
+            if (remainingInCategory.length === 0 && selectedCategory !== 'todos') {
+              setSelectedCategory('todos');
+            }
+
+            // Si es un template personalizado, eliminarlo de AsyncStorage
+            if (!form.isTemplate) {
+              try {
+                await storage.deleteForm(form.id);
+              } catch (error) {
+                console.error('Error deleting template from AsyncStorage:', error);
+              }
+            }
+          },
+        },
+      ],
+    );
   };
 
-  const getResultColor = (result: string) => {
-    switch (result) {
-      case 'passed':
-        return '#22c55e';
-      case 'conditional':
-        return '#f59e0b';
-      case 'failed':
-        return '#ef4444';
-      default:
-        return '#6b7280';
-    }
-  };
-
-  const getResultText = (result: string) => {
-    switch (result) {
-      case 'passed':
-        return 'Aprobada';
-      case 'conditional':
-        return 'Condicional';
-      case 'failed':
-        return 'Rechazada';
-      default:
-        return 'N/A';
-    }
-  };
-
-  const getScoreColor = (score: number) => {
-    if (score >= 90) return '#22c55e';
-    if (score >= 70) return '#f59e0b';
-    return '#ef4444';
-  };
+  const filteredForms = getFilteredForms();
+  const availableCategories = getAvailableCategories();
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
+        <View>
           <Text style={styles.headerTitle}>Inspecciones Cerradas</Text>
           <Text style={styles.headerSubtitle}>
-            Inspecciones completadas y archivadas
+            Gestiona tus templates de inspección de seguridad
           </Text>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Quick Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{inspections.length}</Text>
-            <Text style={styles.statLabel}>Total Completadas</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {inspections.filter(i => i.result === 'passed').length}
+        {/* Categorías */}
+        <View style={styles.categoriesContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesScrollContent}
+          >
+            {availableCategories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryButton,
+                  selectedCategory === category.id && styles.categoryButtonActive,
+                  { borderColor: category.color }
+                ]}
+                onPress={() => setSelectedCategory(category.id)}
+              >
+                <Ionicons 
+                  name={category.icon as any} 
+                  size={16} 
+                  color={selectedCategory === category.id ? '#fff' : category.color} 
+                />
+                <Text style={[
+                  styles.categoryText,
+                  selectedCategory === category.id && styles.categoryTextActive
+                ]}>
+                  {category.name}
             </Text>
-            <Text style={styles.statLabel}>Aprobadas</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>
-              {Math.round(inspections.reduce((acc, i) => acc + i.score, 0) / inspections.length)}%
+
+        {/* Lista de Templates */}
+        <View style={styles.formsContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory === 'todos' ? 'Todos los Templates' : 
+               categories.find(c => c.id === selectedCategory)?.name || 'Templates'}
+              {' '}({filteredForms.length})
             </Text>
-            <Text style={styles.statLabel}>Puntuación Promedio</Text>
+            <TouchableOpacity style={styles.addButtonFloating} onPress={handleAddForm}>
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.addButtonText}>Nuevo</Text>
+            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* New Inspection Button */}
-        <TouchableOpacity style={styles.newInspectionButton} onPress={handleNewInspection}>
-          <IconSymbol name="plus.circle.fill" size={24} color="#fff" />
-          <Text style={styles.newInspectionText}>Nueva Inspección</Text>
-        </TouchableOpacity>
-
-        {/* Inspections List */}
-        <View style={styles.inspectionsContainer}>
-          <Text style={styles.sectionTitle}>Inspecciones Completadas</Text>
-          
-          {inspections.map((inspection) => (
+          {filteredForms.map((form) => (
             <TouchableOpacity 
-              key={inspection.id} 
-              style={styles.inspectionCard}
-              onPress={() => handleInspectionPress(inspection)}
+              key={form.id} 
+              style={styles.formCard}
+              onPress={() => handleFormPress(form)}
             >
-              <View style={styles.cardHeader}>
-                <View style={styles.inspectionInfo}>
-                  <Text style={styles.inspectionTitle}>{inspection.title}</Text>
-                  <Text style={styles.inspectionArea}>{inspection.area}</Text>
+              <View style={styles.formCardHeader}>
+                <View style={styles.formInfo}>
+                  <View style={styles.formTitleRow}>
+                    <Text style={styles.formTitle}>{form.title}</Text>
+                    {form.isTemplate && (
+                      <View style={styles.templateBadge}>
+                        <Text style={styles.templateBadgeText}>Template</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.formDescription}>{form.description}</Text>
                 </View>
                 <View style={[
-                  styles.resultBadge,
-                  { backgroundColor: getResultColor(inspection.result) + '20' }
+                  styles.categoryIcon,
+                  { backgroundColor: categories.find(c => c.id === form.category)?.color + '20' }
                 ]}>
-                  <Text style={[
-                    styles.resultText,
-                    { color: getResultColor(inspection.result) }
-                  ]}>
-                    {getResultText(inspection.result)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardBody}>
-                <View style={styles.inspectorInfo}>
-                  <IconSymbol name="person.fill" size={16} color="#6b7280" />
-                  <Text style={styles.inspectorText}>{inspection.inspector}</Text>
-                </View>
-                <View style={styles.dateInfo}>
-                  <IconSymbol name="calendar" size={16} color="#6b7280" />
-                  <Text style={styles.dateText}>Finalizada: {inspection.completionDate}</Text>
-                </View>
-              </View>
-
-              <View style={styles.scoreContainer}>
-                <View style={styles.scoreHeader}>
-                  <Text style={styles.scoreText}>Puntuación: {inspection.score}/100</Text>
-                  <Text style={styles.itemsText}>
-                    {inspection.passedItems}/{inspection.totalItems} elementos aprobados
-                  </Text>
-                </View>
-                <View style={styles.scoreBar}>
-                  <View 
-                    style={[
-                      styles.scoreFill, 
-                      { 
-                        width: `${inspection.score}%`,
-                        backgroundColor: getScoreColor(inspection.score)
-                      }
-                    ]} 
+                  <Ionicons 
+                    name={categories.find(c => c.id === form.category)?.icon as any || 'document'}
+                    size={20} 
+                    color={categories.find(c => c.id === form.category)?.color || '#6366f1'} 
                   />
                 </View>
               </View>
 
-              <View style={styles.observationsContainer}>
-                <Text style={styles.observationsTitle}>Observaciones Principales:</Text>
-                {inspection.observations.slice(0, 2).map((observation, index) => (
-                  <Text key={index} style={styles.observationText}>
-                    • {observation}
+              <View style={styles.formCardFooter}>
+                <Text style={styles.formMeta}>
+                  {form.itemCount} elementos
                   </Text>
-                ))}
-                {inspection.observations.length > 2 && (
-                  <Text style={styles.moreObservationsText}>
-                    +{inspection.observations.length - 2} observaciones más
-                  </Text>
-                )}
-              </View>
-
-              <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="document.fill" size={16} color="#3b82f6" />
-                  <Text style={styles.actionText}>Reporte</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="camera.fill" size={16} color="#10b981" />
-                  <Text style={styles.actionText}>Fotos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="share" size={16} color="#f59e0b" />
-                  <Text style={styles.actionText}>Compartir</Text>
-                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Bottom spacing */}
+        {/* Espacio adicional para el bottom tab */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Modal para selección de empresa */}
+      <Modal
+        visible={showCompanyModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCompanyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              Asignar Template a Empresa
+            </Text>
+            <Text style={styles.modalSubtitle}>
+              {selectedTemplate?.title}
+            </Text>
+            
+            <ScrollView style={styles.companiesList}>
+              {companies.map((company) => (
+                <TouchableOpacity
+                  key={company.id}
+                  style={styles.companyOption}
+                  onPress={() => {
+                    setShowCompanyModal(false);
+                    setSelectedTemplate(null);
+                    // Aquí se navegaría al form-detail con la empresa seleccionada
+                    router.push(`/form-detail?id=${selectedTemplate?.id}&companyId=${company.id}&companyName=${company.name}`);
+                  }}
+                >
+                  <View style={styles.companyOptionHeader}>
+                    <Ionicons name="business" size={20} color="#3b82f6" />
+                    <Text style={styles.companyOptionName}>{company.name}</Text>
+                  </View>
+                  <View style={styles.companyOptionDetails}>
+                    <Text style={styles.companyOptionIndustry}>{company.industry}</Text>
+                    <Text style={styles.companyOptionContact}>{company.contactPerson}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => {
+                setShowCompanyModal(false);
+                setSelectedTemplate(null);
+              }}
+            >
+              <Text style={styles.modalCancelText}>Cancelar</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -318,75 +419,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#22c55e',
     padding: 20,
     paddingTop: 60,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 16,
-  },
-  headerContent: {
-    flex: 1,
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#dcfce7',
-  },
-  content: {
-    flex: 1,
-    padding: 20,
-  },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
-  },
-  statCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  newInspectionButton: {
-    backgroundColor: '#10b981',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    marginBottom: 24,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -396,161 +428,233 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  newInspectionText: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
   },
-  inspectionsContainer: {
-    marginBottom: 24,
+  headerSubtitle: {
+    fontSize: 14,
+    color: '#dcfce7',
+    marginTop: 2,
+  },
+  content: {
+    flex: 1,
+  },
+  categoriesContainer: {
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  categoriesScrollContent: {
+    paddingHorizontal: 20,
+  },
+  categoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    marginRight: 12,
+  },
+  categoryButtonActive: {
+    backgroundColor: '#6366f1',
+    borderColor: '#6366f1',
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginLeft: 6,
+  },
+  categoryTextActive: {
+    color: '#fff',
+  },
+  formsContainer: {
+    padding: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 16,
   },
-  inspectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+  addButtonFloating: {
+    backgroundColor: '#3b82f6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 25,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  cardHeader: {
+  addButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  formCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  formCardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  inspectionInfo: {
+  formInfo: {
     flex: 1,
-    marginRight: 16,
+    marginRight: 12,
   },
-  inspectionTitle: {
+  formTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  formTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1f2937',
-    marginBottom: 4,
-    lineHeight: 22,
+    flex: 1,
   },
-  inspectionArea: {
-    fontSize: 14,
-    color: '#6b7280',
-  },
-  resultBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  resultText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  cardBody: {
-    marginBottom: 16,
-  },
-  inspectorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  inspectorText: {
-    fontSize: 14,
-    color: '#6b7280',
+  templateBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
     marginLeft: 8,
   },
-  dateInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  templateBadgeText: {
+    fontSize: 10,
+    fontWeight: '500',
+    color: '#3b82f6',
   },
-  dateText: {
+  formDescription: {
     fontSize: 14,
     color: '#6b7280',
-    marginLeft: 8,
+    lineHeight: 20,
   },
-  scoreContainer: {
-    marginBottom: 16,
+  categoryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  scoreHeader: {
+  formCardFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
   },
-  scoreText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
-  },
-  itemsText: {
+  formMeta: {
     fontSize: 12,
     color: '#9ca3af',
   },
-  scoreBar: {
-    height: 8,
-    backgroundColor: '#e5e7eb',
-    borderRadius: 4,
-    overflow: 'hidden',
+  bottomSpacing: {
+    height: 120,
   },
-  scoreFill: {
-    height: '100%',
-    borderRadius: 4,
+  // Modal styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
-  observationsContainer: {
-    marginBottom: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    maxHeight: '80%',
   },
-  observationsTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#374151',
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
     marginBottom: 8,
+    textAlign: 'center',
   },
-  observationText: {
-    fontSize: 13,
+  modalSubtitle: {
+    fontSize: 14,
     color: '#6b7280',
-    marginBottom: 4,
-    lineHeight: 18,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  moreObservationsText: {
-    fontSize: 12,
-    color: '#3b82f6',
-    fontStyle: 'italic',
-    marginTop: 4,
+  companiesList: {
+    maxHeight: 300,
   },
-  cardActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
+  companyOption: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
-  actionButton: {
+  companyOptionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#f9fafb',
+    marginBottom: 8,
   },
-  actionText: {
+  companyOptionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginLeft: 12,
+    flex: 1,
+  },
+  companyOptionDetails: {
+    marginLeft: 32,
+  },
+  companyOptionIndustry: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 2,
+  },
+  companyOptionContact: {
     fontSize: 12,
-    color: '#374151',
-    marginLeft: 6,
-    fontWeight: '500',
+    color: '#9ca3af',
   },
-  bottomSpacing: {
-    height: 40,
+  modalCancelButton: {
+    backgroundColor: '#f3f4f6',
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b7280',
   },
 });
+
+

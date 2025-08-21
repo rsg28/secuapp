@@ -1,21 +1,22 @@
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
   Alert,
+  Animated,
+  Dimensions,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Dimensions,
-  Animated,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
-import { router } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import { Ionicons } from '@expo/vector-icons';
 import Svg, { Path } from 'react-native-svg';
+import { useAuth } from '../contexts/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -28,6 +29,8 @@ export default function LoginScreen() {
   const [currentStep, setCurrentStep] = useState(1); // 1 = Welcome, 2 = Login Form, 3 = Register Form
   const [slideAnimation] = useState(new Animated.Value(0));
   const [registerAnimation] = useState(new Animated.Value(0));
+  
+  const { login } = useAuth();
 
   const handleNext = () => {
     setCurrentStep(2);
@@ -77,16 +80,25 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     
-    // Simulamos autenticación (por ahora sin backend)
-    setTimeout(() => {
-      setIsLoading(false);
-      // Por ahora aceptamos cualquier credencial
-      if (email.length > 0 && password.length > 0) {
-        router.replace('/(tabs)');
+    try {
+      const success = await login(email, password);
+      if (success) {
+        // Verificar si es manager para mostrar mensaje especial
+        if (email === 'raul.gomero.c@gmail.com') {
+          Alert.alert('Bienvenido Manager', 'Acceso completo a la aplicación', [
+            { text: 'Continuar', onPress: () => router.replace('/(tabs)') }
+          ]);
+        } else {
+          router.replace('/(tabs)');
+        }
       } else {
         Alert.alert('Error', 'Credenciales inválidas');
       }
-    }, 1000);
+    } catch (error) {
+      Alert.alert('Error', 'Error durante el inicio de sesión');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -138,7 +150,7 @@ export default function LoginScreen() {
         <View style={styles.welcomeContent}>
           <Text style={styles.welcomeMainTitle}>Bienvenido</Text>
           <Text style={styles.welcomeMainSubtitle}>
-            Sistema de Monitoreo{'\n'}de Seguridad Laboral
+            Seguridad y Salud{'\n'}en el Trabajo
           </Text>
         </View>
         

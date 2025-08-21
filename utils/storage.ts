@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const STORAGE_KEYS = {
   SAVED_FORMS: 'savedForms',
   CUSTOM_CATEGORIES: 'customCategories',
+  USER_SESSION: 'userSession',
+  EMPLOYEES: 'employees',
 };
 
 export const storage = {
@@ -88,6 +90,85 @@ export const storage = {
       await AsyncStorage.multiRemove(Object.values(STORAGE_KEYS));
     } catch (error) {
       console.error('Error clearing storage:', error);
+    }
+  },
+
+  // Autenticación y sesión de usuario
+  async saveUserSession(userData: any): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.USER_SESSION, JSON.stringify(userData));
+    } catch (error) {
+      console.error('Error saving user session:', error);
+    }
+  },
+
+  async getUserSession(): Promise<any | null> {
+    try {
+      const session = await AsyncStorage.getItem(STORAGE_KEYS.USER_SESSION);
+      return session ? JSON.parse(session) : null;
+    } catch (error) {
+      console.error('Error loading user session:', error);
+      return null;
+    }
+  },
+
+  async clearUserSession(): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEYS.USER_SESSION);
+    } catch (error) {
+      console.error('Error clearing user session:', error);
+    }
+  },
+
+  // Gestión de empleados
+  async saveEmployees(employees: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.EMPLOYEES, JSON.stringify(employees));
+    } catch (error) {
+      console.error('Error saving employees:', error);
+    }
+  },
+
+  async loadEmployees(): Promise<any[]> {
+    try {
+      const employees = await AsyncStorage.getItem(STORAGE_KEYS.EMPLOYEES);
+      return employees ? JSON.parse(employees) : [];
+    } catch (error) {
+      console.error('Error loading employees:', error);
+      return [];
+    }
+  },
+
+  async addEmployee(employee: any): Promise<void> {
+    try {
+      const employees = await this.loadEmployees();
+      employees.push(employee);
+      await this.saveEmployees(employees);
+    } catch (error) {
+      console.error('Error adding employee:', error);
+    }
+  },
+
+  async updateEmployee(updatedEmployee: any): Promise<void> {
+    try {
+      const employees = await this.loadEmployees();
+      const index = employees.findIndex((emp: any) => emp.id === updatedEmployee.id);
+      if (index !== -1) {
+        employees[index] = updatedEmployee;
+        await this.saveEmployees(employees);
+      }
+    } catch (error) {
+      console.error('Error updating employee:', error);
+    }
+  },
+
+  async deleteEmployee(employeeId: string): Promise<void> {
+    try {
+      const employees = await this.loadEmployees();
+      const filteredEmployees = employees.filter((emp: any) => emp.id !== employeeId);
+      await this.saveEmployees(filteredEmployees);
+    } catch (error) {
+      console.error('Error deleting employee:', error);
     }
   },
 };

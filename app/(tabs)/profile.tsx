@@ -1,28 +1,20 @@
-import React from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  Image,
-} from 'react-native';
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { router } from 'expo-router';
+import React from 'react';
+import {
+    Alert,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TouchableOpacity,
+    View
+} from 'react-native';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function ProfileScreen() {
-  const userInfo = {
-    name: 'Carlos Mendoza',
-    position: 'Supervisor de Seguridad',
-    department: 'Área de Producción',
-    employeeId: 'SUP-001',
-    email: 'carlos.mendoza@empresa.com',
-    phone: '+1 (555) 123-4567',
-    joinDate: 'Enero 2020',
-  };
+  const { user, logout } = useAuth();
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     Alert.alert(
       'Cerrar Sesión',
       '¿Estás seguro de que deseas cerrar sesión?',
@@ -34,8 +26,8 @@ export default function ProfileScreen() {
         {
           text: 'Cerrar Sesión',
           style: 'destructive',
-          onPress: () => {
-            // Navegar de vuelta al login
+          onPress: async () => {
+            await logout();
             router.replace('/login');
           },
         },
@@ -59,6 +51,14 @@ export default function ProfileScreen() {
     Alert.alert('Ayuda', 'Para soporte técnico contacta al administrador del sistema');
   };
 
+  if (!user) {
+    return (
+      <View style={styles.container}>
+        <Text>Usuario no autenticado</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -71,9 +71,13 @@ export default function ProfileScreen() {
             <IconSymbol name="camera.fill" size={16} color="#fff" />
           </TouchableOpacity>
         </View>
-        <Text style={styles.userName}>{userInfo.name}</Text>
-        <Text style={styles.userPosition}>{userInfo.position}</Text>
-        <Text style={styles.userDepartment}>{userInfo.department}</Text>
+        <Text style={styles.userName}>{user.fullName}</Text>
+        <Text style={styles.userPosition}>
+          {user.role === 'manager' ? 'Manager de Seguridad' : 'Empleado'}
+        </Text>
+        <Text style={styles.userDepartment}>
+          {user.company || 'Departamento de Seguridad'}
+        </Text>
       </View>
 
       {/* User Information */}
@@ -85,8 +89,8 @@ export default function ProfileScreen() {
               <IconSymbol name="person.badge.key.fill" size={20} color="#3b82f6" />
             </View>
             <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>ID de Empleado</Text>
-              <Text style={styles.infoValue}>{userInfo.employeeId}</Text>
+              <Text style={styles.infoLabel}>ID de Usuario</Text>
+              <Text style={styles.infoValue}>{user.id}</Text>
             </View>
           </View>
           
@@ -96,7 +100,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Email</Text>
-              <Text style={styles.infoValue}>{userInfo.email}</Text>
+              <Text style={styles.infoValue}>{user.email}</Text>
             </View>
           </View>
           
@@ -106,7 +110,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Teléfono</Text>
-              <Text style={styles.infoValue}>{userInfo.phone}</Text>
+              <Text style={styles.infoValue}>{user.phone}</Text>
             </View>
           </View>
           
@@ -116,7 +120,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Fecha de Ingreso</Text>
-              <Text style={styles.infoValue}>{userInfo.joinDate}</Text>
+              <Text style={styles.infoValue}>{user.joinDate}</Text>
             </View>
           </View>
         </View>
@@ -179,6 +183,17 @@ export default function ProfileScreen() {
             </View>
             <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
           </TouchableOpacity>
+          
+          {/* Botón de Gestión de Empleados solo para managers */}
+          {user.role === 'manager' && (
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/employees')}>
+              <View style={styles.settingLeft}>
+                <IconSymbol name="people.fill" size={20} color="#1e40af" />
+                <Text style={styles.settingText}>Gestión de Empleados</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            </TouchableOpacity>
+          )}
         </View>
       </View>
 

@@ -4,19 +4,19 @@ import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
 import React, { useState } from 'react';
 import {
-  Alert,
-  Dimensions,
-  Image,
-  KeyboardAvoidingView,
-  Linking,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    Dimensions,
+    Image,
+    KeyboardAvoidingView,
+    Linking,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View,
 } from 'react-native';
 
 const { width } = Dimensions.get('window');
@@ -128,12 +128,12 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <TouchableOpacity 
             style={[styles.statCard, styles.blueCard]}
-            onPress={() => router.push('/inspection-types')}
+            onPress={() => router.push('/(tabs)/explore')}
           >
             <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
             <Text style={styles.statNumber}>15</Text>
             <Text style={styles.statLabel}>Inspecciones</Text>
-            <Text style={styles.statSubtext}>Abiertas/Cerradas</Text>
+            <Text style={styles.statSubtext}>Ver todas</Text>
           </TouchableOpacity>
           <View style={[styles.statCard, styles.greenCard]}>
             <IconSymbol name="eye.fill" size={24} color="#22c55e" />
