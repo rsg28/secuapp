@@ -18,8 +18,8 @@ export default function TabLayout() {
           right: 0,
           backgroundColor: '#f3f4f6',
           borderTopWidth: 0,
-          height: 100,
-          paddingBottom: 15,
+          height: 80,
+          paddingBottom: 45,
           paddingTop: 8,
         },
         tabBarLabelStyle: {
@@ -53,6 +53,15 @@ export default function TabLayout() {
           title: 'Procedimientos',
           tabBarIcon: ({ color }) => (
             <Ionicons name="document-text" size={22} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="history"
+        options={{
+          title: 'Historial',
+          tabBarIcon: ({ color }) => (
+            <Ionicons name="time" size={22} color={color} />
           ),
         }}
       />

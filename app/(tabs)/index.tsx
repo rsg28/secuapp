@@ -134,7 +134,7 @@ export default function DashboardScreen() {
               >
                 <Ionicons name="business" size={16} color="#fff" />
                 <Text style={styles.companyBadgeText}>
-                  {currentCompany?.name || 'Seleccionar Empresa'}
+                  Empresa
                 </Text>
                 <Ionicons name="chevron-down" size={14} color="#fff" style={{ marginLeft: 4 }} />
               </TouchableOpacity>
@@ -660,13 +660,13 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    minWidth: 140,
+    minWidth: 180,
     justifyContent: 'space-between',
   },
   multipleCompaniesBadge: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#6366f1',
     borderWidth: 1,
-    borderColor: '#2563eb',
+    borderColor: '#4f46e5',
   },
   singleCompanyBadge: {
     backgroundColor: '#10b981',

@@ -1,155 +1,200 @@
-import { IconSymbol } from '@/components/ui/IconSymbol';
-import { router } from 'expo-router';
-import React, { useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router, useFocusEffect } from 'expo-router';
+import React, { useEffect, useState } from 'react';
 import {
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
+import { useAuth } from '../contexts/AuthContext';
+import { storage } from '../utils/storage';
 
-interface OpenInspection {
+interface FormTemplate {
   id: string;
   title: string;
-  area: string;
-  inspector: string;
-  startDate: string;
-  priority: 'high' | 'medium' | 'low';
-  status: 'pending' | 'in-progress' | 'completed';
-  customQuestions: CustomQuestion[];
+  description: string;
+  category: string;
+  isTemplate: boolean;
+  createdDate: string;
+  lastModified: string;
+  itemCount: number;
 }
 
-interface CustomQuestion {
+interface Category {
   id: string;
-  text: string;
-  notes: string;
+  name: string;
+  icon: string;
+  color: string;
 }
 
 export default function OpenInspectionsScreen() {
-  const [inspections, setInspections] = useState<OpenInspection[]>([
-    {
-      id: '1',
-      title: 'Inspección de Seguridad - Área de Producción',
-      area: 'Producción',
-      inspector: 'Carlos Mendoza',
-      startDate: '2024-01-15 08:00',
-      priority: 'high',
-      status: 'in-progress',
-      customQuestions: [
+  const { user, hasMultipleCompanies, getCurrentCompany } = useAuth();
+  const [selectedCategory, setSelectedCategory] = useState('todos');
+  const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
+
+
+  // Cargar formularios guardados al iniciar
+  useEffect(() => {
+    clearUnwantedTemplates();
+    loadSavedForms();
+    initializeDefaultTemplate();
+  }, []);
+
+  // Recargar formularios cuando la pantalla vuelva a tener foco
+  useFocusEffect(
+    React.useCallback(() => {
+      loadSavedForms();
+    }, [])
+  );
+
+  const loadSavedForms = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      
+      // Convertir formularios guardados al formato FormTemplate
+      const userForms = savedForms.map((form: any) => ({
+        id: form.id,
+        title: form.title,
+        description: form.description,
+        category: form.category,
+        isTemplate: form.isTemplate || false,
+        createdDate: form.createdDate || '2024-01-15',
+        lastModified: form.lastModified || '2024-01-15',
+        itemCount: form.items ? form.items.length : 0,
+      }));
+
+      // Solo mostrar los formularios guardados (sin duplicar)
+      setFormTemplates(userForms);
+    } catch (error) {
+      console.error('Error loading forms:', error);
+      setFormTemplates([]);
+    }
+  };
+
+  // Limpiar todos los templates - eliminar todos los formularios guardados
+  const clearUnwantedTemplates = async () => {
+    try {
+      // Eliminar todos los formularios guardados
+      await storage.saveForms([]);
+      console.log('Todos los templates eliminados');
+    } catch (error) {
+      console.error('Error clearing templates:', error);
+    }
+  };
+
+  // Inicializar templates por defecto si no existen
+  const initializeDefaultTemplate = async () => {
+    try {
+      const savedForms = await storage.loadForms();
+      
+      const defaultTemplates: any[] = [];
+
+      // Verificar cuáles templates ya existen
+      const existingIds = savedForms.map((form: any) => form.id);
+      const templatesToAdd = defaultTemplates.filter(template => !existingIds.includes(template.id));
+      
+      // Agregar solo los templates que no existen
+      for (const template of templatesToAdd) {
+        await storage.addForm(template);
+      }
+      
+      if (templatesToAdd.length > 0) {
+        console.log(`${templatesToAdd.length} templates por defecto inicializados`);
+      }
+    } catch (error) {
+      console.error('Error initializing default templates:', error);
+    }
+  };
+
+  const categories: Category[] = [
+    { id: 'todos', name: 'Todos', icon: 'apps', color: '#6366f1' },
+    { id: 'higiene-industrial', name: 'Higiene Industrial', icon: 'medical', color: '#8b5cf6' },
+    { id: 'productos-quimicos', name: 'Productos Químicos', icon: 'flask', color: '#ef4444' },
+  ];
+
+  const getFilteredForms = () => {
+    if (selectedCategory === 'todos') {
+      return formTemplates;
+    }
+    return formTemplates.filter(form => form.category === selectedCategory);
+  };
+
+  const getAvailableCategories = () => {
+    // Siempre mostrar "Todos"
+    const availableCategories = [categories[0]]; // "Todos" es el primero
+    
+    // Agregar solo categorías que tengan formularios
+    categories.slice(1).forEach(category => {
+      const hasTemplates = formTemplates.some(form => form.category === category.id);
+      if (hasTemplates) {
+        availableCategories.push(category);
+      }
+    });
+    
+    return availableCategories;
+  };
+
+  const handleAddForm = () => {
+    Alert.alert(
+      'Estamos trabajando en ello',
+      'Esta funcionalidad estará disponible próximamente',
+      [{ text: 'Entendido', style: 'default' }]
+    );
+  };
+
+  const handleFormPress = (form: FormTemplate) => {
+    // Ir directamente al form-detail con la empresa actual
+    const company = getCurrentCompany();
+    if (company) {
+      router.push(`/form-detail?id=${form.id}&companyId=${company.id}&companyName=${company.name}`);
+    } else {
+      Alert.alert('Error', 'No hay empresa seleccionada');
+    }
+  };
+
+  const handleDeleteForm = (form: FormTemplate) => {
+    Alert.alert(
+      'Eliminar Template',
+      `¿Estás seguro de que deseas eliminar "${form.title}"?`,
+      [
         {
-          id: '1',
-          text: 'Verificar estado de extintores en zona A',
-          notes: 'Se reportó que algunos extintores podrían estar vencidos'
+          text: 'Cancelar',
+          style: 'cancel',
         },
         {
-          id: '2',
-          text: 'Revisar señalización de emergencia',
-          notes: 'Falta señalización en pasillo principal'
-        }
-      ]
-    },
-    {
-      id: '2',
-      title: 'Control de EPP - Personal de Mantenimiento',
-      area: 'Mantenimiento',
-      inspector: 'Ana García',
-      startDate: '2024-01-14 09:00',
-      priority: 'medium',
-      status: 'pending',
-      customQuestions: [
-        {
-          id: '1',
-          text: 'Verificar uso correcto de cascos de seguridad',
-          notes: 'Personal nuevo requiere capacitación'
-        }
-      ]
-    },
-    {
-      id: '3',
-      title: 'Inspección de Equipos - Zona de Carga',
-      area: 'Almacén',
-      inspector: 'Luis Rodríguez',
-      startDate: '2024-01-13 10:00',
-      priority: 'high',
-      status: 'in-progress',
-      customQuestions: [
-        {
-          id: '1',
-          text: 'Revisar funcionamiento de montacargas',
-          notes: 'Se reportó ruido extraño en motor'
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            setFormTemplates(prev => prev.filter(f => f.id !== form.id));
+            
+            // Si la categoría actual ya no tiene formularios, cambiar a "todos"
+            const remainingInCategory = formTemplates.filter(
+              f => f.id !== form.id && f.category === selectedCategory
+            );
+            
+            if (remainingInCategory.length === 0 && selectedCategory !== 'todos') {
+              setSelectedCategory('todos');
+            }
+
+            // Si es un template personalizado, eliminarlo de AsyncStorage
+            if (!form.isTemplate) {
+              try {
+                await storage.deleteForm(form.id);
+              } catch (error) {
+                console.error('Error deleting template from AsyncStorage:', error);
+              }
+            }
+          },
         },
-        {
-          id: '2',
-          text: 'Verificar estado de neumáticos',
-          notes: 'Posible desgaste excesivo'
-        }
-      ]
-    },
-  ]);
-
-  const handleNewInspection = () => {
-    router.push('/create-open-inspection');
+      ],
+    );
   };
 
-  const handleInspectionPress = (inspection: OpenInspection) => {
-    router.push(`/open-inspection-detail/${inspection.id}`);
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return '#ef4444';
-      case 'medium':
-        return '#f59e0b';
-      case 'low':
-        return '#10b981';
-      default:
-        return '#6b7280';
-    }
-  };
-
-  const getPriorityText = (priority: string) => {
-    switch (priority) {
-      case 'high':
-        return 'Alta';
-      case 'medium':
-        return 'Media';
-      case 'low':
-        return 'Baja';
-      default:
-        return 'N/A';
-    }
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return '#10b981';
-      case 'in-progress':
-        return '#3b82f6';
-      case 'pending':
-        return '#f59e0b';
-      default:
-        return '#6b7280';
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'completed':
-        return 'Completada';
-      case 'in-progress':
-        return 'En Progreso';
-      case 'pending':
-        return 'Pendiente';
-      default:
-        return 'N/A';
-    }
-  };
-
-  const totalOpen = inspections.filter(i => i.status !== 'completed').length;
-  const highPriority = inspections.filter(i => i.priority === 'high' && i.status !== 'completed').length;
+  const filteredForms = getFilteredForms();
+  const availableCategories = getAvailableCategories();
 
   return (
     <View style={styles.container}>
@@ -158,102 +203,103 @@ export default function OpenInspectionsScreen() {
         <View>
           <Text style={styles.headerTitle}>Inspecciones Abiertas</Text>
           <Text style={styles.headerSubtitle}>
-            Inspecciones en curso y pendientes
+            Gestiona tus templates de inspección de seguridad
           </Text>
         </View>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        {/* Quick Stats */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{totalOpen}</Text>
-            <Text style={styles.statLabel}>Abiertas</Text>
+        {/* Categorías */}
+        <View style={styles.categoriesContainer}>
+          <ScrollView 
+            horizontal 
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoriesScrollContent}
+          >
+            {availableCategories.map((category) => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  styles.categoryButton,
+                  selectedCategory === category.id && styles.categoryButtonActive,
+                  { borderColor: category.color }
+                ]}
+                onPress={() => setSelectedCategory(category.id)}
+              >
+                <Ionicons 
+                  name={category.icon as any} 
+                  size={16} 
+                  color={selectedCategory === category.id ? '#fff' : category.color} 
+                />
+                <Text style={[
+                  styles.categoryText,
+                  selectedCategory === category.id && styles.categoryTextActive
+                ]}>
+                  {category.name}
+            </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
           </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statNumber}>{highPriority}</Text>
-            <Text style={styles.statLabel}>Alta Prioridad</Text>
+
+        {/* Lista de Templates */}
+        <View style={styles.formsContainer}>
+          <View style={styles.sectionHeader}>
+            <Text style={styles.sectionTitle}>
+              {selectedCategory === 'todos' ? 'Todos los Templates' : 
+               categories.find(c => c.id === selectedCategory)?.name || 'Templates'}
+              {' '}({filteredForms.length})
+            </Text>
+            <TouchableOpacity style={styles.addButtonFloating} onPress={handleAddForm}>
+              <Ionicons name="add" size={20} color="#fff" />
+              <Text style={styles.addButtonText}>Nuevo</Text>
+            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* New Inspection Button */}
-        <TouchableOpacity style={styles.newInspectionButton} onPress={handleNewInspection}>
-          <IconSymbol name="plus.circle.fill" size={24} color="#fff" />
-          <Text style={styles.newInspectionText}>Nueva Inspección</Text>
-        </TouchableOpacity>
-
-        {/* Inspections List */}
-        <View style={styles.inspectionsContainer}>
-          <Text style={styles.sectionTitle}>Inspecciones Activas</Text>
-          
-          {inspections.filter(i => i.status !== 'completed').map((inspection) => (
+          {filteredForms.map((form) => (
             <TouchableOpacity 
-              key={inspection.id} 
-              style={styles.inspectionCard}
-              onPress={() => handleInspectionPress(inspection)}
+              key={form.id} 
+              style={styles.formCard}
+              onPress={() => handleFormPress(form)}
             >
-              <View style={styles.cardHeader}>
-                <View style={styles.inspectionInfo}>
-                  <Text style={styles.inspectionTitle}>{inspection.title}</Text>
-                  <Text style={styles.inspectionArea}>{inspection.area}</Text>
+              <View style={styles.formCardHeader}>
+                <View style={styles.formInfo}>
+                  <View style={styles.formTitleRow}>
+                    <Text style={styles.formTitle}>{form.title}</Text>
+                    {form.isTemplate && (
+                      <View style={styles.templateBadge}>
+                        <Text style={styles.templateBadgeText}>Template</Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.formDescription}>{form.description}</Text>
                 </View>
-                <View style={styles.priorityBadge}>
-                  <View style={[
-                    styles.priorityDot,
-                    { backgroundColor: getPriorityColor(inspection.priority) }
-                  ]} />
-                  <Text style={styles.priorityText}>
-                    {getPriorityText(inspection.priority)}
+                <View style={[
+                  styles.categoryIcon,
+                  { backgroundColor: categories.find(c => c.id === form.category)?.color + '20' }
+                ]}>
+                  <Ionicons 
+                    name={categories.find(c => c.id === form.category)?.icon as any || 'document'}
+                    size={20} 
+                    color={categories.find(c => c.id === form.category)?.color || '#6366f1'} 
+                  />
+                </View>
+              </View>
+
+              <View style={styles.formCardFooter}>
+                <Text style={styles.formMeta}>
+                  {form.itemCount} elementos
                   </Text>
-                </View>
-              </View>
-
-              <View style={styles.cardBody}>
-                <View style={styles.inspectorInfo}>
-                  <IconSymbol name="person.fill" size={16} color="#6b7280" />
-                  <Text style={styles.inspectorText}>{inspection.inspector}</Text>
-                </View>
-                <View style={styles.dateInfo}>
-                  <IconSymbol name="calendar" size={16} color="#6b7280" />
-                  <Text style={styles.dateText}>Iniciada: {inspection.startDate}</Text>
-                </View>
-              </View>
-
-                             <View style={styles.statusContainer}>
-                 <View style={[
-                   styles.statusBadge,
-                   { backgroundColor: getStatusColor(inspection.status) + '20' }
-                 ]}>
-                   <Text style={[
-                     styles.statusText,
-                     { color: getStatusColor(inspection.status) }
-                   ]}>
-                     {getStatusText(inspection.status)}
-                   </Text>
-                 </View>
-               </View>
-
-              <View style={styles.cardActions}>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="camera.fill" size={16} color="#10b981" />
-                  <Text style={styles.actionText}>Fotos</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="pencil" size={16} color="#3b82f6" />
-                  <Text style={styles.actionText}>Editar</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.actionButton}>
-                  <IconSymbol name="checkmark.circle.fill" size={16} color="#22c55e" />
-                  <Text style={styles.actionText}>Completar</Text>
-                </TouchableOpacity>
               </View>
             </TouchableOpacity>
           ))}
         </View>
 
-        {/* Bottom spacing */}
+        {/* Espacio adicional para el bottom tab */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+
     </View>
   );
 }
@@ -289,48 +335,60 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    padding: 20,
-    paddingBottom: 0,
-  },
-  statCard: {
+  categoriesContainer: {
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 20,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
   },
-  statNumber: {
-    fontSize: 24,
+  categoriesScrollContent: {
+    paddingHorizontal: 20,
+  },
+  categoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    marginRight: 12,
+  },
+  categoryButtonActive: {
+    backgroundColor: '#6366f1',
+    borderColor: '#6366f1',
+  },
+  categoryText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    marginLeft: 6,
+  },
+  categoryTextActive: {
+    color: '#fff',
+  },
+  formsContainer: {
+    padding: 20,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#1f2937',
-    marginBottom: 4,
   },
-  statLabel: {
-    fontSize: 12,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
-  newInspectionButton: {
-    backgroundColor: '#10b981',
+  addButtonFloating: {
+    backgroundColor: '#3b82f6',
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    borderRadius: 12,
-    margin: 20,
-    marginTop: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 25,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -340,141 +398,81 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  newInspectionText: {
+  addButtonText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
-    marginLeft: 8,
+    marginLeft: 6,
   },
-  inspectionsContainer: {
-    padding: 20,
-    paddingTop: 0,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 16,
-  },
-  inspectionCard: {
+  formCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 16,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  cardHeader: {
+  formCardHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 16,
+    marginBottom: 12,
   },
-  inspectionInfo: {
+  formInfo: {
     flex: 1,
-    marginRight: 16,
+    marginRight: 12,
   },
-  inspectionTitle: {
+  formTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+  },
+  formTitle: {
     fontSize: 16,
     fontWeight: '600',
     color: '#1f2937',
-    marginBottom: 4,
-    lineHeight: 22,
+    flex: 1,
   },
-  inspectionArea: {
-    fontSize: 14,
-    color: '#6b7280',
+  templateBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 12,
+    marginLeft: 8,
   },
-  priorityBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  priorityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 6,
-  },
-  priorityText: {
-    fontSize: 12,
+  templateBadgeText: {
+    fontSize: 10,
     fontWeight: '500',
-    color: '#374151',
+    color: '#3b82f6',
   },
-  cardBody: {
-    marginBottom: 16,
-  },
-  inspectorInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  inspectorText: {
+  formDescription: {
     fontSize: 14,
     color: '#6b7280',
-    marginLeft: 8,
+    lineHeight: 20,
   },
-  dateInfo: {
+  categoryIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  formCardFooter: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  dateText: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginLeft: 8,
-  },
-  statusContainer: {
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    marginBottom: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-  },
-  statusBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-  },
-  statusText: {
+  formMeta: {
     fontSize: 12,
-    fontWeight: '600',
-  },
-  questionsCount: {
-    fontSize: 12,
-    color: '#6b7280',
-  },
-  cardActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    backgroundColor: '#f9fafb',
-  },
-  actionText: {
-    fontSize: 12,
-    color: '#374151',
-    marginLeft: 6,
+    color: '#9ca3af',
   },
   bottomSpacing: {
-    height: 100,
+    height: 120,
   },
+
 });

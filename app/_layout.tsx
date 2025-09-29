@@ -30,7 +30,18 @@ export default function RootLayout() {
           <Stack.Screen name="open-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="closed-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="create-open-inspection" options={{ headerShown: false }} />
-          <Stack.Screen name="employees" options={{ headerShown: false }} />
+        <Stack.Screen name="ccm2l-inspection" options={{ headerShown: false }} />
+        <Stack.Screen name="monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="sonometria-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="material-particulado-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="ergonomia-postural-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="estres-termico-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="polvo-respiratorio-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="gases-toxicos-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="iluminacion-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="vibraciones-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="dosimetria-ruido-monitoring" options={{ headerShown: false }} />
+        <Stack.Screen name="employees" options={{ headerShown: false }} />
           <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style="auto" />

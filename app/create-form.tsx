@@ -2,16 +2,16 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  Alert,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { storage } from '../utils/storage';
 
@@ -208,16 +208,6 @@ export default function CreateFormScreen() {
           <Text style={styles.headerTitle}>Crear Template</Text>
           <Text style={styles.headerSubtitle}>Nuevo template de inspección</Text>
         </View>
-        <TouchableOpacity 
-          style={[
-            styles.saveButton,
-            (!formData.title || !formData.category || formData.items.length === 0) && styles.saveButtonDisabled
-          ]} 
-          onPress={handleSaveForm}
-          disabled={!formData.title || !formData.category || formData.items.length === 0}
-        >
-          <Ionicons name="checkmark" size={20} color="#fff" />
-        </TouchableOpacity>
       </View>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -231,7 +221,7 @@ export default function CreateFormScreen() {
               style={styles.textInput}
               value={formData.title}
               onChangeText={(text) => setFormData(prev => ({ ...prev, title: text }))}
-              placeholder="Ej: Template de Inspección de Área de Trabajo"
+              placeholder="Productos químicos"
             />
           </View>
 
@@ -492,16 +482,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#dbeafe',
     marginTop: 2,
-  },
-  saveButton: {
-    backgroundColor: '#22c55e',
-    padding: 10,
-    borderRadius: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  saveButtonDisabled: {
-    backgroundColor: '#9ca3af',
   },
   content: {
     flex: 1,

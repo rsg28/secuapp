@@ -37,8 +37,7 @@ export default function ServiciosScreen() {
   };
 
   const handleMonitoreo = () => {
-    // TODO: Implementar pantalla de monitoreo
-    console.log('Navegar a monitoreo');
+    router.push('/monitoring');
   };
 
   return (
