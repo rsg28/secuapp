@@ -74,7 +74,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password.trim()) {
-      Alert.alert('Error', 'Por favor ingresa email y contraseña');
+      Alert.alert('Campos Requeridos', 'Por favor ingresa tu email y contraseña para continuar');
       return;
     }
 
@@ -92,10 +92,49 @@ export default function LoginScreen() {
           router.replace('/(tabs)');
         }
       } else {
-        Alert.alert('Error', 'Credenciales inválidas');
+        Alert.alert(
+          'Credenciales Incorrectas', 
+          'El email o contraseña que ingresaste no son correctos. Por favor verifica tus datos e intenta de nuevo.',
+          [
+            { text: 'Intentar de Nuevo', style: 'default' }
+          ]
+        );
       }
-    } catch (error) {
-      Alert.alert('Error', 'Error durante el inicio de sesión');
+    } catch (error: any) {
+      // Manejar diferentes tipos de errores
+      if (error.message?.includes('401') || error.message?.includes('Unauthorized')) {
+        Alert.alert(
+          'Acceso Denegado', 
+          'Las credenciales proporcionadas no son válidas. Verifica tu email y contraseña.',
+          [
+            { text: 'Intentar de Nuevo', style: 'default' }
+          ]
+        );
+      } else if (error.message?.includes('Network') || error.message?.includes('fetch')) {
+        Alert.alert(
+          'Error de Conexión', 
+          'No se pudo conectar al servidor. Verifica tu conexión a internet e intenta de nuevo.',
+          [
+            { text: 'Reintentar', style: 'default' }
+          ]
+        );
+      } else if (error.message?.includes('500')) {
+        Alert.alert(
+          'Error del Servidor', 
+          'El servidor está experimentando problemas. Por favor intenta más tarde.',
+          [
+            { text: 'Entendido', style: 'default' }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Error de Inicio de Sesión', 
+          'Ocurrió un problema inesperado. Por favor intenta de nuevo.',
+          [
+            { text: 'Intentar de Nuevo', style: 'default' }
+          ]
+        );
+      }
     } finally {
       setIsLoading(false);
     }

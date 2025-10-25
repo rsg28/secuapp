@@ -2,6 +2,7 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 import { AuthContextType, User } from '../types/auth';
 import { initializeCompanies } from '../utils/initialData';
 import { storage } from '../utils/storage';
+import { useAuth as useAuthHook } from '../hooks/useAuth';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -22,6 +23,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [userCompanies, setUserCompanies] = useState<any[]>([]);
   const [currentCompany, setCurrentCompany] = useState<any | null>(null);
+  
+  // Usar el hook de autenticación que conecta con el backend
+  const authHook = useAuthHook();
 
   useEffect(() => {
     loadUserSession();
@@ -43,40 +47,44 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const login = async (email: string, password: string): Promise<boolean> => {
     try {
-      // Verificar credenciales del manager
-      if (email === 'raul.gomero.c@gmail.com' && password === 'StrongPassword123') {
-        const managerUser: User = {
-          id: 'manager-001',
-          email: email,
-          fullName: 'Raul Gomero',
-          role: 'manager',
-          company: 'SecuApp'
-        };
+      setIsLoading(true);
+      
+      // Usar el hook de autenticación que conecta con el backend
+      const result = await authHook.login(email, password);
+      
+      if (result) {
+        // Obtener el perfil del usuario desde el backend
+        const userProfile = await authHook.getProfile();
         
-        await storage.saveUserSession(managerUser);
-        setUser(managerUser);
-        return true;
+        if (userProfile) {
+          const backendUser: User = {
+            id: userProfile.id,
+            email: userProfile.email,
+            fullName: `${userProfile.first_name} ${userProfile.last_name}`,
+            role: userProfile.role,
+            company: 'SecuApp' // Por ahora fijo, después se puede obtener de la empresa
+          };
+          
+          await storage.saveUserSession(backendUser);
+          setUser(backendUser);
+          return true;
+        }
       }
       
-      // Para otros usuarios, crear cuenta de empleado
-      const employeeUser: User = {
-        id: `emp-${Date.now()}`,
-        email: email,
-        fullName: email.split('@')[0], // Usar parte del email como nombre
-        role: 'employee'
-      };
-      
-      await storage.saveUserSession(employeeUser);
-      setUser(employeeUser);
-      return true;
+      return false;
     } catch (error) {
       console.error('Error during login:', error);
       return false;
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const logout = async () => {
     try {
+      // Usar el hook de autenticación para cerrar sesión en el backend
+      await authHook.logout();
+      
       await storage.clearUserSession();
       setUser(null);
       setUserCompanies([]);
