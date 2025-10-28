@@ -59,6 +59,7 @@ export const TABLE_COLUMNS = {
     'id',
     'title',
     'description',
+    'temp_category',
     'created_by',
     'created_at',
     'updated_at'
@@ -68,7 +69,7 @@ export const TABLE_COLUMNS = {
   closed_template_items: [
     'id',
     'template_id',
-    'item_id',
+    'category',
     'question_index',
     'text',
     'sort_order',
@@ -89,7 +90,7 @@ export const TABLE_COLUMNS = {
   open_template_items: [
     'id',
     'template_id',
-    'item_id',
+    'category',
     'question_index',
     'text',
     'sort_order',

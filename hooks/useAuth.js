@@ -18,29 +18,9 @@
  * @returns {object} Objeto con funciones de autenticación y estados del usuario
  */
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
-
-// Simulación temporal de AsyncStorage hasta que se instale la dependencia
-const mockStorage = {
-  token: null,
-  async setItem(key, value) {
-    if (key === 'authToken') {
-      this.token = value;
-    }
-  },
-  async getItem(key) {
-    if (key === 'authToken') {
-      return this.token;
-    }
-    return null;
-  },
-  async removeItem(key) {
-    if (key === 'authToken') {
-      this.token = null;
-    }
-  }
-};
 
 // Hook para manejar autenticación
 export const useAuth = () => {
@@ -254,15 +234,15 @@ export const useAuth = () => {
   };
 };
 
-// Funciones auxiliares para manejar el token
+// Funciones auxiliares para manejar el token con AsyncStorage
 const saveToken = async (token) => {
-  await mockStorage.setItem('authToken', token);
+  await AsyncStorage.setItem('authToken', token);
 };
 
 const getToken = async () => {
-  return await mockStorage.getItem('authToken');
+  return await AsyncStorage.getItem('authToken');
 };
 
 const removeToken = async () => {
-  await mockStorage.removeItem('authToken');
+  await AsyncStorage.removeItem('authToken');
 };

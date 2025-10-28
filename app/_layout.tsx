@@ -6,7 +6,6 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider } from '../contexts/AuthContext';
-import DatabaseConnectionDebug from '../components/DatabaseConnectionDebug';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -46,7 +45,6 @@ export default function RootLayout() {
           <Stack.Screen name="+not-found" />
         </Stack>
         <StatusBar style="auto" />
-        <DatabaseConnectionDebug />
       </ThemeProvider>
     </AuthProvider>
   );

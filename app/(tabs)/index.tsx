@@ -2,7 +2,7 @@ import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Alert,
     Dimensions,
@@ -19,6 +19,8 @@ import {
     View,
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClosedInspectionTemplates } from '../../hooks/useClosedInspectionTemplates';
+import { useOpenInspectionTemplates } from '../../hooks/useOpenInspectionTemplates';
 
 const { width } = Dimensions.get('window');
 
@@ -29,6 +31,14 @@ export default function DashboardScreen() {
   const [photoText, setPhotoText] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [showCompanySelector, setShowCompanySelector] = useState(false);
+  
+  // Hooks para templates
+  const { getAllTemplates: getAllClosedTemplates } = useClosedInspectionTemplates();
+  const { getAllTemplates: getAllOpenTemplates } = useOpenInspectionTemplates();
+  
+  // State para el total de templates
+  const [totalTemplates, setTotalTemplates] = useState<number>(0);
+  const [loadingTemplates, setLoadingTemplates] = useState<boolean>(true);
 
   const handleTakePhoto = async () => {
     try {
@@ -111,6 +121,34 @@ export default function DashboardScreen() {
     setShowCompanySelector(false);
   };
 
+  // useEffect para obtener el total de templates
+  useEffect(() => {
+    const fetchTemplatesCount = async () => {
+      try {
+        setLoadingTemplates(true);
+        
+        // Obtener templates cerrados
+        const closedData = await getAllClosedTemplates(1, 100);
+        const closedCount = closedData?.data?.pagination?.total || 0;
+        
+        // Obtener templates abiertos
+        const openData = await getAllOpenTemplates(1, 100);
+        const openCount = openData?.data?.pagination?.total || 0;
+        
+        // Sumar totales
+        const total = closedCount + openCount;
+        setTotalTemplates(total);
+      } catch (error) {
+        // Silently fail - no mostrar error al usuario
+        setTotalTemplates(0);
+      } finally {
+        setLoadingTemplates(false);
+      }
+    };
+
+    fetchTemplatesCount();
+  }, []);
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       {/* Header */}
@@ -161,9 +199,11 @@ export default function DashboardScreen() {
             onPress={() => router.push('/(tabs)/explore')}
           >
             <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>8</Text>
+            <Text style={styles.statNumber}>
+              {loadingTemplates ? '...' : totalTemplates}
+            </Text>
             <Text style={styles.statLabel}>Inspecciones</Text>
-            <Text style={styles.statSubtext}>Activas</Text>
+            <Text style={styles.statSubtext}>Templates</Text>
           </TouchableOpacity>
           <View style={[styles.statCard, styles.greenCard]}>
             <IconSymbol name="eye.fill" size={24} color="#22c55e" />

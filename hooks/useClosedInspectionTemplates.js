@@ -17,6 +17,7 @@
  * @returns {object} Objeto con funciones y estados para gestión de templates cerrados
  */
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -33,6 +34,11 @@ export const useClosedInspectionTemplates = () => {
       setError(null);
       
       const token = await getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
       const response = await fetch(`${API_BASE_URL}/closed-inspection-templates?page=${page}&limit=${limit}`, {
         method: 'GET',
         headers: {
@@ -41,16 +47,18 @@ export const useClosedInspectionTemplates = () => {
         }
       });
 
+      const responseData = await response.json();
+
       if (!response.ok) {
-        throw new Error('Error al obtener templates cerrados');
+        throw new Error(responseData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      setTemplates(data.data.templates);
-      return data;
+      setTemplates(responseData.data.templates);
+      return responseData;
     } catch (err) {
-      setError(err.message);
-      throw err;
+      const errorMessage = err.message || 'Unknown error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -187,5 +195,5 @@ export const useClosedInspectionTemplates = () => {
 
 // Función auxiliar para obtener el token de autenticación
 const getAuthToken = async () => {
-  return 'your-jwt-token-here';
+  return await AsyncStorage.getItem('authToken');
 };

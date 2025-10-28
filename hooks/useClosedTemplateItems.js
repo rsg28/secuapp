@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -200,5 +201,10 @@ export const useClosedTemplateItems = () => {
 
 // Función auxiliar para obtener el token de autenticación
 const getAuthToken = async () => {
-  return 'your-jwt-token-here';
+  try {
+    const token = await AsyncStorage.getItem('authToken');
+    return token || '';
+  } catch (error) {
+    return '';
+  }
 };

@@ -64,16 +64,8 @@ export default function ServiciosScreen() {
               <Text style={styles.cardDescription}>
                 Inspecciones de seguridad en áreas de trabajo
               </Text>
-              <Text style={styles.cardCount}>8 inspecciones activas</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-          <View style={styles.cardFooter}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.openStatus]} />
-              <Text style={styles.statusText}>Disponible</Text>
-            </View>
-            <Text style={styles.lastUpdate}>Última actualización: hace 2 horas</Text>
           </View>
         </TouchableOpacity>
 
@@ -88,16 +80,8 @@ export default function ServiciosScreen() {
               <Text style={styles.cardDescription}>
                 Observaciones de comportamiento seguro en el trabajo
               </Text>
-              <Text style={styles.cardCount}>12 observaciones este mes</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-          <View style={styles.cardFooter}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.observationsStatus]} />
-              <Text style={styles.statusText}>Disponible</Text>
-            </View>
-            <Text style={styles.lastUpdate}>Última actualización: hace 1 día</Text>
           </View>
         </TouchableOpacity>
 
@@ -112,16 +96,8 @@ export default function ServiciosScreen() {
               <Text style={styles.cardDescription}>
                 Auditorías de cumplimiento de seguridad
               </Text>
-              <Text style={styles.cardCount}>3 auditorías programadas</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-          <View style={styles.cardFooter}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.auditStatus]} />
-              <Text style={styles.statusText}>Disponible</Text>
-            </View>
-            <Text style={styles.lastUpdate}>Última actualización: hace 3 días</Text>
           </View>
         </TouchableOpacity>
 
@@ -136,16 +112,8 @@ export default function ServiciosScreen() {
               <Text style={styles.cardDescription}>
                 Establecimiento de estándares de seguridad
               </Text>
-              <Text style={styles.cardCount}>5 líneas de base activas</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-          <View style={styles.cardFooter}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.baselineStatus]} />
-              <Text style={styles.statusText}>Disponible</Text>
-            </View>
-            <Text style={styles.lastUpdate}>Última actualización: hace 1 semana</Text>
           </View>
         </TouchableOpacity>
 
@@ -160,16 +128,8 @@ export default function ServiciosScreen() {
               <Text style={styles.cardDescription}>
                 Monitoreo continuo de indicadores de seguridad
               </Text>
-              <Text style={styles.cardCount}>15 indicadores activos</Text>
             </View>
             <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-          <View style={styles.cardFooter}>
-            <View style={styles.statusIndicator}>
-              <View style={[styles.statusDot, styles.monitoringStatus]} />
-              <Text style={styles.statusText}>Disponible</Text>
-            </View>
-            <Text style={styles.lastUpdate}>Última actualización: hace 2 horas</Text>
           </View>
         </TouchableOpacity>
 
@@ -213,12 +173,14 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+    paddingBottom: 20,
   },
   inspectionCard: {
     backgroundColor: '#fff',
     borderRadius: 16,
     padding: 20,
-    marginBottom: 16,
+    marginHorizontal: 20,
+    marginTop: 20,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -231,7 +193,6 @@ const styles = StyleSheet.create({
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 16,
   },
   cardIconContainer: {
     width: 60,
@@ -256,53 +217,6 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 8,
     lineHeight: 20,
-  },
-  cardCount: {
-    fontSize: 12,
-    color: '#3b82f6',
-    fontWeight: '600',
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: '#f3f4f6',
-  },
-  statusIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginRight: 8,
-  },
-  openStatus: {
-    backgroundColor: '#3b82f6',
-  },
-  observationsStatus: {
-    backgroundColor: '#10b981',
-  },
-  auditStatus: {
-    backgroundColor: '#8b5cf6',
-  },
-  baselineStatus: {
-    backgroundColor: '#f59e0b',
-  },
-  monitoringStatus: {
-    backgroundColor: '#ef4444',
-  },
-  statusText: {
-    fontSize: 12,
-    color: '#6b7280',
-    fontWeight: '500',
-  },
-  lastUpdate: {
-    fontSize: 11,
-    color: '#9ca3af',
   },
   bottomSpacing: {
     height: 100,

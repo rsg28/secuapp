@@ -13,6 +13,8 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { storage } from '../utils/storage';
+import { useClosedInspectionTemplates } from '../hooks/useClosedInspectionTemplates';
+import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 
 interface FormTemplate {
   id: string;
@@ -34,13 +36,73 @@ interface Category {
 
 export default function ClosedInspectionsScreen() {
   const { user, hasMultipleCompanies, getCurrentCompany } = useAuth();
+  const { getAllTemplates, templates, loading: templatesLoading, createTemplate } = useClosedInspectionTemplates();
+  const { getItemsByTemplateId, items: templateItems, createItem } = useClosedTemplateItems();
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
+  const [dynamicCategories, setDynamicCategories] = useState<Category[]>([]);
   const [showMenuDropdown, setShowMenuDropdown] = useState(false);
   const [selectedForm, setSelectedForm] = useState<FormTemplate | null>(null);
   const [showRenameModal, setShowRenameModal] = useState(false);
   const [newFormName, setNewFormName] = useState('');
+  
+  // States for creating new template
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newTemplateTitle, setNewTemplateTitle] = useState('');
+  const [newTemplateDescription, setNewTemplateDescription] = useState('');
+  const [newTemplateCategory, setNewTemplateCategory] = useState('');
+  const [newTemplateItems, setNewTemplateItems] = useState<Array<{text: string, category: string}>>([{text: '', category: ''}]);
 
+  // Cargar templates de la base de datos
+  useEffect(() => {
+    const loadDatabaseTemplates = async () => {
+      try {
+        await getAllTemplates(1, 100);
+      } catch (error) {
+        // Silently fail
+      }
+    };
+
+    loadDatabaseTemplates();
+  }, []);
+
+  // Convertir templates de DB a formato FormTemplate cuando cambien
+  useEffect(() => {
+    if (templates && templates.length > 0) {
+      const dbTemplates: FormTemplate[] = templates.map((template: any) => ({
+        id: template.id,
+        title: template.title,
+        description: template.description || '',
+        category: template.temp_category || 'productos-quimicos',
+        isTemplate: true,
+        createdDate: template.created_at ? new Date(template.created_at).toISOString().split('T')[0] : '2024-01-01',
+        lastModified: template.updated_at ? new Date(template.updated_at).toISOString().split('T')[0] : '2024-01-01',
+        itemCount: 0,
+      }));
+
+      setFormTemplates(dbTemplates);
+    }
+  }, [templates]);
+
+  // Detectar categorías únicas de los templates y actualizar dynamicCategories
+  useEffect(() => {
+    if (formTemplates && formTemplates.length > 0) {
+      // Obtener todas las categorías únicas de los templates
+      const uniqueCategories = [...new Set(formTemplates.map(template => template.category))];
+      
+      // Crear categorías dinámicas con color uniforme
+      const detectedCategories: Category[] = uniqueCategories.map(category => {
+        return {
+          id: category,
+          name: category,
+          icon: '',
+          color: '#6366f1',
+        };
+      }).sort((a, b) => a.name.localeCompare(b.name)); // Ordenar alfabéticamente
+      
+      setDynamicCategories(detectedCategories);
+    }
+  }, [formTemplates]);
 
   // Cargar formularios guardados al iniciar
   useEffect(() => {
@@ -241,9 +303,9 @@ export default function ClosedInspectionsScreen() {
   };
 
   const categories: Category[] = [
-    { id: 'todos', name: 'Todos', icon: 'apps', color: '#6366f1' },
-    { id: 'higiene-industrial', name: 'Higiene Industrial', icon: 'medical', color: '#8b5cf6' },
-    { id: 'productos-quimicos', name: 'Productos Químicos', icon: 'flask', color: '#ef4444' },
+    { id: 'todos', name: 'Todos', icon: '', color: '#6366f1' },
+    { id: 'higiene-industrial', name: 'Higiene Industrial', icon: '', color: '#6366f1' },
+    { id: 'productos-quimicos', name: 'Productos Químicos', icon: '', color: '#6366f1' },
   ];
 
   const getFilteredForms = () => {
@@ -257,23 +319,122 @@ export default function ClosedInspectionsScreen() {
     // Siempre mostrar "Todos"
     const availableCategories = [categories[0]]; // "Todos" es el primero
     
-    // Agregar solo categorías que tengan formularios
-    categories.slice(1).forEach(category => {
-      const hasTemplates = formTemplates.some(form => form.category === category.id);
-      if (hasTemplates) {
-        availableCategories.push(category);
-      }
-    });
+    // Usar las categorías dinámicas detectadas de la base de datos
+    if (dynamicCategories && dynamicCategories.length > 0) {
+      availableCategories.push(...dynamicCategories);
+    } else {
+      // Fallback: agregar solo categorías que tengan formularios (comportamiento anterior)
+      categories.slice(1).forEach(category => {
+        const hasTemplates = formTemplates.some(form => form.category === category.id);
+        if (hasTemplates) {
+          availableCategories.push(category);
+        }
+      });
+    }
     
     return availableCategories;
   };
 
   const handleAddForm = () => {
-    Alert.alert(
-      'Estamos trabajando en ello',
-      'Esta funcionalidad estará disponible próximamente',
-      [{ text: 'Entendido', style: 'default' }]
+    setNewTemplateTitle('');
+    setNewTemplateDescription('');
+    setNewTemplateCategory('');
+    setNewTemplateItems([{text: '', category: ''}]);
+    setShowCreateModal(true);
+  };
+  
+  const handleCreateTemplate = async () => {
+    // Validate inputs
+    if (!newTemplateTitle.trim()) {
+      Alert.alert('Error', 'El título es requerido');
+      return;
+    }
+    if (!newTemplateCategory.trim()) {
+      Alert.alert('Error', 'La categoría es requerida');
+      return;
+    }
+    if (!newTemplateDescription.trim()) {
+      Alert.alert('Error', 'La descripción es requerida');
+      return;
+    }
+    
+    // Check if a template with the same title + category already exists
+    const existingTemplate = templates.find(
+      (t: any) => t.title.toLowerCase() === newTemplateTitle.trim().toLowerCase() && 
+                  t.temp_category?.toLowerCase() === newTemplateCategory.trim().toLowerCase()
     );
+    
+    if (existingTemplate) {
+      Alert.alert('Error', 'Ya existe un template con este título y categoría');
+      return;
+    }
+    
+    try {
+      // Get user info for created_by
+      const userId = user?.id;
+      if (!userId) {
+        Alert.alert('Error', 'No se pudo identificar al usuario');
+        return;
+      }
+      
+      // Create template
+      const templateData = {
+        title: newTemplateTitle.trim(),
+        description: newTemplateDescription.trim(),
+        temp_category: newTemplateCategory.trim(),
+        created_by: userId
+      };
+      
+      const newTemplate = await createTemplate(templateData);
+      
+      // Filter valid items (with both text and category)
+      const validItems = newTemplateItems.filter(item => item.text.trim() && item.category.trim());
+      
+      // Create items for the template if there are any
+      if (validItems.length > 0) {
+        for (let i = 0; i < validItems.length; i++) {
+          const item = validItems[i];
+          await createItem({
+            template_id: newTemplate.id,
+            category: item.category.trim(),
+            question_index: i + 1,
+            text: item.text.trim(),
+            sort_order: i + 1
+          });
+        }
+      }
+      
+      // Refresh templates list
+      await getAllTemplates(1, 100);
+      
+      // Close modal and reset
+      setShowCreateModal(false);
+      setNewTemplateTitle('');
+      setNewTemplateDescription('');
+      setNewTemplateCategory('');
+      setNewTemplateItems([{text: '', category: ''}]);
+      
+      Alert.alert('Éxito', 'Template creado correctamente');
+    } catch (error: any) {
+      const errorMessage = error?.message || 'No se pudo crear el template';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+  
+  const addNewItem = () => {
+    setNewTemplateItems([...newTemplateItems, {text: '', category: ''}]);
+  };
+  
+  const updateItem = (index: number, field: 'text' | 'category', value: string) => {
+    const updatedItems = [...newTemplateItems];
+    updatedItems[index][field] = value;
+    setNewTemplateItems(updatedItems);
+  };
+  
+  const removeItem = (index: number) => {
+    if (newTemplateItems.length > 1) {
+      setNewTemplateItems(newTemplateItems.filter((_, i) => i !== index));
+    }
   };
 
 
@@ -282,22 +443,41 @@ export default function ClosedInspectionsScreen() {
 
 
 
-  const handleFormPress = (form: FormTemplate) => {
+  const handleFormPress = async (form: FormTemplate) => {
     const company = getCurrentCompany();
     if (company) {
-      // Si es el template CCM2L o Productos Químicos, usar la pantalla especializada
-      if (form.id === 'ccm2l-001' || form.id === 'pq-001') {
-        router.push({
-          pathname: '/ccm2l-inspection',
-          params: {
-            id: form.id,
-            companyId: company.id,
-            companyName: company.name
+      try {
+        // Fetch items for this template
+        const items = await getItemsByTemplateId(form.id);
+        
+        // Sort items by sort_order or question_index
+        const sortedItems = items.sort((a: any, b: any) => {
+          if (a.sort_order && b.sort_order) {
+            return a.sort_order - b.sort_order;
           }
-        } as any);
-      } else {
-        // Para otros templates, usar la pantalla estándar
-      router.push(`/form-detail?id=${form.id}&companyId=${company.id}&companyName=${company.name}`);
+          if (a.question_index && b.question_index) {
+            return a.question_index - b.question_index;
+          }
+          return 0;
+        });
+        
+        // Si es el template CCM2L o Productos Químicos, usar la pantalla especializada
+        if (form.id === 'ccm2l-001' || form.id === 'pq-001') {
+          router.push({
+            pathname: '/ccm2l-inspection',
+            params: {
+              id: form.id,
+              companyId: company.id,
+              companyName: company.name,
+              items: JSON.stringify(sortedItems)
+            }
+          } as any);
+        } else {
+          // Para otros templates, usar la pantalla estándar
+          router.push(`/form-detail?id=${form.id}&companyId=${company.id}&companyName=${company.name}`);
+        }
+      } catch (error) {
+        Alert.alert('Error', 'No se pudieron cargar los items del template');
       }
     } else {
       Alert.alert('Error', 'No hay empresa seleccionada');
@@ -439,11 +619,6 @@ export default function ClosedInspectionsScreen() {
                 ]}
                 onPress={() => setSelectedCategory(category.id)}
               >
-                <Ionicons 
-                  name={category.icon as any} 
-                  size={16} 
-                  color={selectedCategory === category.id ? '#fff' : category.color} 
-                />
                 <Text style={[
                   styles.categoryText,
                   selectedCategory === category.id && styles.categoryTextActive
@@ -486,16 +661,6 @@ export default function ClosedInspectionsScreen() {
                       )}
                     </View>
                     <Text style={styles.formDescription}>{form.description}</Text>
-                  </View>
-                  <View style={[
-                    styles.categoryIcon,
-                    { backgroundColor: categories.find(c => c.id === form.category)?.color + '20' }
-                  ]}>
-                    <Ionicons 
-                      name={categories.find(c => c.id === form.category)?.icon as any || 'document'}
-                      size={20} 
-                      color={categories.find(c => c.id === form.category)?.color || '#6366f1'} 
-                    />
                   </View>
                 </View>
 
@@ -559,6 +724,102 @@ export default function ClosedInspectionsScreen() {
           onPress={handleCloseMenu}
         />
       )}
+
+      {/* Modal de Crear Template */}
+      <Modal
+        visible={showCreateModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowCreateModal(false)}
+      >
+        <View style={styles.renameModalOverlay}>
+          <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
+            <Text style={styles.renameModalTitle}>Crear Nuevo Template</Text>
+            
+            <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
+              <TextInput
+                style={styles.renameInput}
+                value={newTemplateTitle}
+                onChangeText={setNewTemplateTitle}
+                placeholder="Título del template"
+              />
+              
+              <TextInput
+                style={styles.renameInput}
+                value={newTemplateCategory}
+                onChangeText={setNewTemplateCategory}
+                placeholder="Categoría"
+              />
+              
+              <TextInput
+                style={[styles.renameInput, {minHeight: 80}]}
+                value={newTemplateDescription}
+                onChangeText={setNewTemplateDescription}
+                placeholder="Descripción"
+                multiline={true}
+              />
+              
+              <Text style={{fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8}}>Preguntas/Items:</Text>
+              
+              {newTemplateItems.map((item, index) => (
+                <View key={index} style={{marginBottom: 12, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8}}>
+                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Item {index + 1}</Text>
+                  <TextInput
+                    style={[styles.renameInput, {marginBottom: 8}]}
+                    value={item.category}
+                    onChangeText={(value) => updateItem(index, 'category', value)}
+                    placeholder="Categoría del item"
+                  />
+                  <TextInput
+                    style={[styles.renameInput, {minHeight: 60}]}
+                    value={item.text}
+                    onChangeText={(value) => updateItem(index, 'text', value)}
+                    placeholder="Texto de la pregunta"
+                    multiline={true}
+                  />
+                  {newTemplateItems.length > 1 && (
+                    <TouchableOpacity 
+                      style={{alignSelf: 'flex-end', marginTop: 8}}
+                      onPress={() => removeItem(index)}
+                    >
+                      <Text style={{color: '#ef4444', fontSize: 14}}>Eliminar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              
+              <TouchableOpacity 
+                style={{backgroundColor: '#e5e7eb', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 16}}
+                onPress={addNewItem}
+              >
+                <Text style={{color: '#374151', fontWeight: '600'}}>+ Agregar Item</Text>
+              </TouchableOpacity>
+            </ScrollView>
+            
+            <View style={styles.renameModalButtons}>
+              <TouchableOpacity 
+                style={styles.renameCancelButton}
+                onPress={() => {
+                  setShowCreateModal(false);
+                  setNewTemplateTitle('');
+                  setNewTemplateDescription('');
+                  setNewTemplateCategory('');
+                  setNewTemplateItems([{text: '', category: ''}]);
+                }}
+              >
+                <Text style={styles.renameCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.renameConfirmButton}
+                onPress={handleCreateTemplate}
+              >
+                <Text style={styles.renameConfirmText}>Crear</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Cambiar Nombre */}
       <Modal

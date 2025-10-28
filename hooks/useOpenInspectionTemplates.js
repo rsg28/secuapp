@@ -17,6 +17,7 @@
  * @returns {object} Objeto con funciones y estados para gestión de templates abiertos
  */
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -187,5 +188,6 @@ export const useOpenInspectionTemplates = () => {
 
 // Función auxiliar para obtener el token de autenticación
 const getAuthToken = async () => {
-  return 'your-jwt-token-here';
+  const token = await AsyncStorage.getItem('authToken');
+  return token;
 };
