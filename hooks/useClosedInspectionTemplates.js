@@ -109,11 +109,12 @@ export const useClosedInspectionTemplates = () => {
         body: JSON.stringify(templateData)
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Error al crear template cerrado');
+        throw new Error(data.message || 'Error al crear template cerrado');
       }
 
-      const data = await response.json();
       return data.data.template;
     } catch (err) {
       setError(err.message);
@@ -168,14 +169,53 @@ export const useClosedInspectionTemplates = () => {
         }
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Error al eliminar template cerrado');
+        throw new Error(data.message || 'Error al eliminar template cerrado');
       }
 
       return true;
     } catch (err) {
       setError(err.message);
       throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Obtener templates por user_id
+  const getTemplatesByUserId = async (userId, page = 1, limit = 10) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAuthToken();
+      
+      if (!token) {
+        throw new Error('No authentication token found');
+      }
+      
+      const response = await fetch(`${API_BASE_URL}/closed-inspection-templates/user/${userId}?page=${page}&limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      const responseData = await response.json();
+
+      if (!response.ok) {
+        throw new Error(responseData.message || `HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      setTemplates(responseData.data.templates);
+      return responseData;
+    } catch (err) {
+      const errorMessage = err.message || 'Unknown error occurred';
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -189,7 +229,8 @@ export const useClosedInspectionTemplates = () => {
     getTemplateById,
     createTemplate,
     updateTemplate,
-    deleteTemplate
+    deleteTemplate,
+    getTemplatesByUserId
   };
 };
 

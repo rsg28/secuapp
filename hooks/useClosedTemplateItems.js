@@ -84,13 +84,26 @@ export const useClosedTemplateItems = () => {
         body: JSON.stringify(itemData)
       });
 
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error('[createItem] Error parseando respuesta JSON:', parseErr);
+        throw new Error(`Error del servidor (HTTP ${response.status})`);
+      }
+      
       if (!response.ok) {
-        throw new Error('Error al crear item de template cerrado');
+        // Check for validation errors
+        if (data && data.errors && Array.isArray(data.errors)) {
+          const validationMessages = data.errors.map((err) => err.msg || err.message).join(', ');
+          throw new Error(validationMessages || data.message || 'Error de validación');
+        }
+        throw new Error(data.message || data.error || `Error al crear item (HTTP ${response.status})`);
       }
 
-      const data = await response.json();
       return data.data.item;
     } catch (err) {
+      console.error('[createItem] Error:', err);
       setError(err.message);
       throw err;
     } finally {
@@ -143,8 +156,10 @@ export const useClosedTemplateItems = () => {
         }
       });
 
+      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error('Error al eliminar item de template cerrado');
+        throw new Error(data.message || 'Error al eliminar item de template cerrado');
       }
 
       return true;
@@ -163,7 +178,10 @@ export const useClosedTemplateItems = () => {
       setError(null);
       
       const token = await getAuthToken();
-      const response = await fetch(`${API_BASE_URL}/closed-template-items/template/${templateId}`, {
+      const url = `${API_BASE_URL}/closed-template-items/template/${templateId}`;
+      console.log('[getItemsByTemplateId] URL:', url);
+      console.log('[getItemsByTemplateId] templateId:', templateId);
+      const response = await fetch(url, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -171,14 +189,25 @@ export const useClosedTemplateItems = () => {
         }
       });
 
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.log('[getItemsByTemplateId] JSON parse error:', parseErr?.message);
+      }
+      console.log('[getItemsByTemplateId] status:', response.status, response.statusText);
+      console.log('[getItemsByTemplateId] response body:', data);
+      
       if (!response.ok) {
-        throw new Error('Error al obtener items del template');
+        const serverMessage = (data && (data.message || data.error)) ? (data.message || data.error) : 'Error al obtener items del template';
+        throw new Error(`${serverMessage} (HTTP ${response.status})`);
       }
 
-      const data = await response.json();
-      setItems(data.data.items || data.data);
-      return data.data.items || data.data;
+      const items = data?.data?.items || data?.data || [];
+      setItems(items);
+      return items;
     } catch (err) {
+      console.log('[getItemsByTemplateId] ERROR:', err?.message);
       setError(err.message);
       throw err;
     } finally {
@@ -208,3 +237,5 @@ const getAuthToken = async () => {
     return '';
   }
 };
+
+

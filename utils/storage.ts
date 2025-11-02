@@ -5,6 +5,7 @@ const STORAGE_KEYS = {
   CUSTOM_CATEGORIES: 'customCategories',
   USER_SESSION: 'userSession',
   EMPLOYEES: 'employees',
+  TEMPLATE_ID_MAP: 'templateIdMap',
 };
 
 export const storage = {
@@ -139,6 +140,25 @@ export const storage = {
     }
   },
 
+  // Mapa de IDs de templates (clave sugerida: title::temp_category)
+  async saveTemplateIdMap(map: Record<string, string>): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.TEMPLATE_ID_MAP, JSON.stringify(map));
+    } catch (error) {
+      console.error('Error saving template id map:', error);
+    }
+  },
+
+  async loadTemplateIdMap(): Promise<Record<string, string>> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.TEMPLATE_ID_MAP);
+      return raw ? JSON.parse(raw) : {};
+    } catch (error) {
+      console.error('Error loading template id map:', error);
+      return {};
+    }
+  },
+
   async addEmployee(employee: any): Promise<void> {
     try {
       const employees = await this.loadEmployees();
@@ -187,6 +207,25 @@ export const storage = {
       return companies ? JSON.parse(companies) : [];
     } catch (error) {
       console.error('Error loading companies:', error);
+      return [];
+    }
+  },
+
+  // Gestión de user templates
+  async saveUserTemplates(templates: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem('userTemplates', JSON.stringify(templates));
+    } catch (error) {
+      console.error('Error saving user templates:', error);
+    }
+  },
+
+  async loadUserTemplates(): Promise<any[]> {
+    try {
+      const templates = await AsyncStorage.getItem('userTemplates');
+      return templates ? JSON.parse(templates) : [];
+    } catch (error) {
+      console.error('Error loading user templates:', error);
       return [];
     }
   },

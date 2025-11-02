@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,20 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useClosedInspectionTemplates } from '../../hooks/useClosedInspectionTemplates';
+import { useClosedTemplateItems } from '../../hooks/useClosedTemplateItems';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function DevScreen() {
-  const { templates, loading, error, getAllTemplates } = useClosedInspectionTemplates();
+  const { templates, loading, error, getAllTemplates, deleteTemplate } = useClosedInspectionTemplates();
+  const { getItemsByTemplateId, deleteItem } = useClosedTemplateItems();
   const [testResults, setTestResults] = useState<any>(null);
   const [showResults, setShowResults] = useState(false);
   const [tokenDebug, setTokenDebug] = useState<string | null>(null);
+
+  // Fetch templates on component mount
+  useEffect(() => {
+    handleTestGetAllTemplates();
+  }, []);
 
   const handleTestGetAllTemplates = async () => {
     try {
@@ -49,6 +56,48 @@ export default function DevScreen() {
     } catch (err: any) {
       Alert.alert('Error', `Failed to get token: ${err.message}`);
     }
+  };
+
+  const handleDeleteTemplate = async (templateId: string, templateTitle: string) => {
+    Alert.alert(
+      'Confirmar Eliminación',
+      `¿Estás seguro de que deseas eliminar "${templateTitle}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // First, try to get all items for this template
+              try {
+                const items = await getItemsByTemplateId(templateId);
+                
+                // Delete all items
+                if (items && items.length > 0) {
+                  for (const item of items) {
+                    await deleteItem(item.id);
+                  }
+                }
+              } catch (itemsError: any) {
+                // If there are no items or error getting items, continue anyway
+                console.log('No items found or error getting items:', itemsError.message);
+              }
+              
+              // Then delete the template
+              await deleteTemplate(templateId);
+              
+              // Refresh the templates list
+              await handleTestGetAllTemplates();
+              
+              Alert.alert('Éxito', 'Template eliminado correctamente');
+            } catch (err: any) {
+              Alert.alert('Error', `No se pudo eliminar el template: ${err.message}`);
+            }
+          }
+        }
+      ]
+    );
   };
 
   const clearResults = () => {
@@ -130,12 +179,21 @@ export default function DevScreen() {
 
             {templates.length > 0 && (
               <View style={styles.templatesContainer}>
-                <Text style={styles.resultsTitle}>Templates State ({templates.length} items):</Text>
+                <Text style={styles.resultsTitle}>Templates ({templates.length} items):</Text>
                 {templates.map((template: any, index: number) => (
                   <View key={template.id || index} style={styles.templateItem}>
-                    <Text style={styles.templateTitle}>{template.title}</Text>
-                    <Text style={styles.templateDescription}>{template.description}</Text>
-                    <Text style={styles.templateId}>ID: {template.id}</Text>
+                    <View style={{flex: 1}}>
+                      <Text style={styles.templateTitle}>{template.title}</Text>
+                      <Text style={styles.templateDescription}>{template.description}</Text>
+                      <Text style={styles.templateCategory}>Categoría: {template.temp_category || 'N/A'}</Text>
+                      <Text style={styles.templateId}>ID: {template.id}</Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteTemplate(template.id, template.title)}
+                    >
+                      <Ionicons name="trash" size={20} color="#dc2626" />
+                    </TouchableOpacity>
                   </View>
                 ))}
               </View>
@@ -310,6 +368,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#1e40af',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   templateTitle: {
     fontSize: 16,
@@ -322,10 +382,20 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 4,
   },
+  templateCategory: {
+    fontSize: 13,
+    color: '#8b5cf6',
+    fontWeight: '500',
+    marginBottom: 4,
+  },
   templateId: {
     fontSize: 12,
     color: '#9ca3af',
     fontFamily: 'monospace',
+  },
+  deleteButton: {
+    padding: 8,
+    marginLeft: 12,
   },
   infoContainer: {
     backgroundColor: '#f0f9ff',

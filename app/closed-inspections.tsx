@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -35,16 +35,12 @@ interface Category {
 }
 
 export default function ClosedInspectionsScreen() {
-  const { user, hasMultipleCompanies, getCurrentCompany } = useAuth();
-  const { getAllTemplates, templates, loading: templatesLoading, createTemplate } = useClosedInspectionTemplates();
-  const { getItemsByTemplateId, items: templateItems, createItem } = useClosedTemplateItems();
+  const { user } = useAuth();
+  const { templates, createTemplate, deleteTemplate, getTemplatesByUserId } = useClosedInspectionTemplates();
+  const { getItemsByTemplateId, createItem, deleteItem } = useClosedTemplateItems();
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<Category[]>([]);
-  const [showMenuDropdown, setShowMenuDropdown] = useState(false);
-  const [selectedForm, setSelectedForm] = useState<FormTemplate | null>(null);
-  const [showRenameModal, setShowRenameModal] = useState(false);
-  const [newFormName, setNewFormName] = useState('');
   
   // States for creating new template
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -52,19 +48,31 @@ export default function ClosedInspectionsScreen() {
   const [newTemplateDescription, setNewTemplateDescription] = useState('');
   const [newTemplateCategory, setNewTemplateCategory] = useState('');
   const [newTemplateItems, setNewTemplateItems] = useState<Array<{text: string, category: string}>>([{text: '', category: ''}]);
+  
+  // States for viewing items
+  const [showItemsModal, setShowItemsModal] = useState(false);
+  const [selectedTemplateItems, setSelectedTemplateItems] = useState<Array<{category: string, items: any[]}>>([]);
 
-  // Cargar templates de la base de datos
+  // Cargar templates de la base de datos para el usuario actual
   useEffect(() => {
     const loadDatabaseTemplates = async () => {
       try {
-        await getAllTemplates(1, 100);
+        if (user?.id) {
+          // Get templates for this user (includes 'ALL' templates too via backend filtering)
+          const response = await getTemplatesByUserId(user.id, 1, 100);
+          
+          if (response?.data?.templates) {
+            const allTemplates = response.data.templates.filter((t: any) => t.user_id === 'ALL');
+            const userTemplates = response.data.templates.filter((t: any) => t.user_id === user.id);
+          }
+        }
       } catch (error) {
-        // Silently fail
+        // Error loading templates
       }
     };
 
     loadDatabaseTemplates();
-  }, []);
+  }, [user?.id]);
 
   // Convertir templates de DB a formato FormTemplate cuando cambien
   useEffect(() => {
@@ -81,6 +89,9 @@ export default function ClosedInspectionsScreen() {
       }));
 
       setFormTemplates(dbTemplates);
+      
+      // Save templates to AsyncStorage when they change
+      storage.saveUserTemplates(templates);
     }
   }, [templates]);
 
@@ -137,7 +148,6 @@ export default function ClosedInspectionsScreen() {
       // Solo mostrar los formularios guardados (sin duplicar)
       setFormTemplates(userForms);
     } catch (error) {
-      console.error('Error loading forms:', error);
       setFormTemplates([]);
     }
   };
@@ -382,7 +392,8 @@ export default function ClosedInspectionsScreen() {
         title: newTemplateTitle.trim(),
         description: newTemplateDescription.trim(),
         temp_category: newTemplateCategory.trim(),
-        created_by: userId
+        created_by: userId,
+        user_id: userId // Templates created by users are only visible to that user by default
       };
       
       const newTemplate = await createTemplate(templateData);
@@ -404,8 +415,10 @@ export default function ClosedInspectionsScreen() {
         }
       }
       
-      // Refresh templates list
-      await getAllTemplates(1, 100);
+      // Refresh templates list from database
+      if (user?.id) {
+        await getTemplatesByUserId(user.id, 1, 100);
+      }
       
       // Close modal and reset
       setShowCreateModal(false);
@@ -444,111 +457,41 @@ export default function ClosedInspectionsScreen() {
 
 
   const handleFormPress = async (form: FormTemplate) => {
-    const company = getCurrentCompany();
-    if (company) {
-      try {
-        // Fetch items for this template
-        const items = await getItemsByTemplateId(form.id);
-        
-        // Sort items by sort_order or question_index
-        const sortedItems = items.sort((a: any, b: any) => {
-          if (a.sort_order && b.sort_order) {
-            return a.sort_order - b.sort_order;
-          }
-          if (a.question_index && b.question_index) {
-            return a.question_index - b.question_index;
-          }
-          return 0;
-        });
-        
-        // Si es el template CCM2L o Productos Químicos, usar la pantalla especializada
-        if (form.id === 'ccm2l-001' || form.id === 'pq-001') {
-          router.push({
-            pathname: '/ccm2l-inspection',
-            params: {
-              id: form.id,
-              companyId: company.id,
-              companyName: company.name,
-              items: JSON.stringify(sortedItems)
-            }
-          } as any);
-        } else {
-          // Para otros templates, usar la pantalla estándar
-          router.push(`/form-detail?id=${form.id}&companyId=${company.id}&companyName=${company.name}`);
-        }
-      } catch (error) {
-        Alert.alert('Error', 'No se pudieron cargar los items del template');
-      }
-    } else {
-      Alert.alert('Error', 'No hay empresa seleccionada');
-    }
-  };
-
-  const handleMenuPress = (form: FormTemplate) => {
-    setSelectedForm(form);
-    setShowMenuDropdown(true);
-  };
-
-  const handleCloseMenu = () => {
-    setShowMenuDropdown(false);
-    setSelectedForm(null);
-  };
-
-  const handleEditForm = () => {
-    if (selectedForm) {
-      handleCloseMenu();
-      // Navegar a la pantalla de edición
-      router.push(`/create-form?editId=${selectedForm.id}`);
-    }
-  };
-
-  const handleRenameForm = () => {
-    if (selectedForm) {
-      setNewFormName(selectedForm.title);
-      handleCloseMenu();
-      setShowRenameModal(true);
-    }
-  };
-
-  const handleConfirmRename = async () => {
-    if (!selectedForm || !newFormName.trim()) {
-      Alert.alert('Error', 'Por favor ingresa un nombre válido');
-      return;
-    }
-
     try {
-      // Actualizar el formulario en AsyncStorage
-      const savedForms = await storage.loadForms();
-      const formToUpdate = savedForms.find((form: any) => form.id === selectedForm.id);
+      // Fetch items for this template
+      const items = await getItemsByTemplateId(form.id);
       
-      if (formToUpdate) {
-        formToUpdate.title = newFormName.trim();
-        formToUpdate.lastModified = new Date().toISOString().split('T')[0];
-        await storage.updateForm(formToUpdate);
-        
-        // Actualizar el estado local
-        setFormTemplates(prev => prev.map(form => 
-          form.id === selectedForm.id 
-            ? { ...form, title: newFormName.trim(), lastModified: new Date().toISOString().split('T')[0] }
-            : form
-        ));
+      // Group items by category
+      const groupedByCategory: { [key: string]: any[] } = {};
+      if (items && items.length > 0) {
+        items.forEach((item: any) => {
+          const category = item.category || 'Sin categoría';
+          if (!groupedByCategory[category]) {
+            groupedByCategory[category] = [];
+          }
+          groupedByCategory[category].push(item);
+        });
       }
       
-      setShowRenameModal(false);
-      setSelectedForm(null);
-      setNewFormName('');
-    } catch (error) {
-      console.error('Error renaming form:', error);
-      Alert.alert('Error', 'No se pudo cambiar el nombre del template');
+      // Convert to array format
+      const groupedArray = Object.keys(groupedByCategory).map(category => ({
+        category,
+        items: groupedByCategory[category]
+      }));
+      
+      setSelectedTemplateItems(groupedArray);
+      setShowItemsModal(true);
+    } catch (error: any) {
+      Alert.alert('Error', `No se pudieron cargar los items del template: ${error.message}`);
     }
   };
 
-  const handleDeleteForm = () => {
-    if (!selectedForm) return;
+  const handleDeleteForm = (form: FormTemplate) => {
+    if (!form) return;
     
     Alert.alert(
       'Eliminar Template',
-      `¿Estás seguro de que deseas eliminar "${selectedForm.title}"?`,
+      `¿Estás seguro de que deseas eliminar "${form.title}"?`,
       [
         {
           text: 'Cancelar',
@@ -558,27 +501,38 @@ export default function ClosedInspectionsScreen() {
           text: 'Eliminar',
           style: 'destructive',
           onPress: async () => {
-            setFormTemplates(prev => prev.filter(f => f.id !== selectedForm.id));
-            
-            // Si la categoría actual ya no tiene formularios, cambiar a "todos"
-            const remainingInCategory = formTemplates.filter(
-              f => f.id !== selectedForm.id && f.category === selectedCategory
-            );
-            
-            if (remainingInCategory.length === 0 && selectedCategory !== 'todos') {
-              setSelectedCategory('todos');
-            }
-
-            // Si es un template personalizado, eliminarlo de AsyncStorage
-            if (!selectedForm.isTemplate) {
+            try {
+              // Guardar el ID antes de cerrar el menú
+              const templateIdToDelete = form.id;
+              
+              // First, try to get all items for this template
               try {
-                await storage.deleteForm(selectedForm.id);
-              } catch (error) {
-                console.error('Error deleting template from AsyncStorage:', error);
+                const items = await getItemsByTemplateId(templateIdToDelete);
+                
+                // Delete all items
+                if (items && items.length > 0) {
+                  for (const item of items) {
+                    await deleteItem(item.id);
+                  }
+                }
+              } catch (itemsError: any) {
+                // If there are no items or error getting items, continue anyway
+                // Continue with template deletion even if items deletion fails
               }
+              
+              // Then delete the template
+              await deleteTemplate(templateIdToDelete);
+              
+              // Refresh templates list from database
+              if (user?.id) {
+                await getTemplatesByUserId(user.id, 1, 100);
+              }
+              
+              Alert.alert('Éxito', 'Template eliminado correctamente');
+            } catch (err: any) {
+              const errorMessage = err.message || 'Error desconocido';
+              Alert.alert('Error', `No se pudo eliminar el template: ${errorMessage}`);
             }
-            
-            handleCloseMenu();
           },
         },
       ],
@@ -671,42 +625,13 @@ export default function ClosedInspectionsScreen() {
                 </View>
               </TouchableOpacity>
               
-              {/* Botón de menú en esquina inferior derecha */}
+              {/* Botón de eliminar en esquina inferior derecha */}
               <TouchableOpacity 
-                style={styles.menuButton}
-                onPress={() => handleMenuPress(form)}
+                style={styles.deleteButton}
+                onPress={() => handleDeleteForm(form)}
               >
-                <Ionicons name="ellipsis-vertical" size={16} color="#6b7280" />
+                <Ionicons name="trash" size={20} color="#fff" />
               </TouchableOpacity>
-              
-              {/* Dropdown menu */}
-              {showMenuDropdown && selectedForm?.id === form.id && (
-                <View style={styles.dropdownMenu}>
-                  <TouchableOpacity 
-                    style={styles.dropdownOption}
-                    onPress={handleEditForm}
-                  >
-                    <Ionicons name="create-outline" size={16} color="#3b82f6" />
-                    <Text style={styles.dropdownOptionText}>Editar</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.dropdownOption}
-                    onPress={handleRenameForm}
-                  >
-                    <Ionicons name="text-outline" size={16} color="#f59e0b" />
-                    <Text style={styles.dropdownOptionText}>Cambiar nombre</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={styles.dropdownOption}
-                    onPress={handleDeleteForm}
-                  >
-                    <Ionicons name="trash-outline" size={16} color="#ef4444" />
-                    <Text style={[styles.dropdownOptionText, { color: '#ef4444' }]}>Eliminar</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
             </View>
           ))}
         </View>
@@ -715,15 +640,6 @@ export default function ClosedInspectionsScreen() {
         <View style={styles.bottomSpacing} />
         </ScrollView>
       </View>
-
-      {/* Overlay para cerrar el menú cuando se toque fuera */}
-      {showMenuDropdown && (
-        <TouchableOpacity 
-          style={styles.menuOverlay}
-          activeOpacity={1}
-          onPress={handleCloseMenu}
-        />
-      )}
 
       {/* Modal de Crear Template */}
       <Modal
@@ -821,42 +737,59 @@ export default function ClosedInspectionsScreen() {
         </View>
       </Modal>
 
-      {/* Modal de Cambiar Nombre */}
+      {/* Modal de Items del Template */}
       <Modal
-        visible={showRenameModal}
+        visible={showItemsModal}
         transparent={true}
         animationType="slide"
-        onRequestClose={() => setShowRenameModal(false)}
+        onRequestClose={() => setShowItemsModal(false)}
       >
         <View style={styles.renameModalOverlay}>
-          <View style={styles.renameModalContent}>
-            <Text style={styles.renameModalTitle}>Cambiar nombre</Text>
+          <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
+              <Text style={styles.renameModalTitle}>Items del Template</Text>
+              <TouchableOpacity 
+                onPress={() => setShowItemsModal(false)}
+                style={{padding: 8}}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
             
-            <TextInput
-              style={styles.renameInput}
-              value={newFormName}
-              onChangeText={setNewFormName}
-              placeholder="Nombre del template"
-              autoFocus={true}
-            />
+            <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
+              {selectedTemplateItems.length > 0 ? (
+                selectedTemplateItems.map((categoryGroup, idx) => (
+                  <View key={idx} style={{marginBottom: 24}}>
+                    <View style={{backgroundColor: '#6366f1', padding: 12, borderRadius: 8, marginBottom: 12}}>
+                      <Text style={{fontSize: 18, fontWeight: 'bold', color: '#fff', textAlign: 'center'}}>
+                        {categoryGroup.category}
+                      </Text>
+                    </View>
+                    {categoryGroup.items.map((item: any, itemIdx: number) => (
+                      <View key={itemIdx} style={{flexDirection: 'row', marginLeft: 12, marginBottom: 8}}>
+                        <Text style={{color: '#6366f1', marginRight: 8, fontSize: 16}}>•</Text>
+                        <Text style={{flex: 1, fontSize: 14, color: '#374151', lineHeight: 20}}>
+                          {item.text}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                ))
+              ) : (
+                <View style={{padding: 20, alignItems: 'center'}}>
+                  <Text style={{fontSize: 16, color: '#6b7280', textAlign: 'center'}}>
+                    Este template no tiene items asignados aún.
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
             
             <View style={styles.renameModalButtons}>
               <TouchableOpacity 
-                style={styles.renameCancelButton}
-                onPress={() => {
-                  setShowRenameModal(false);
-                  setNewFormName('');
-                  setSelectedForm(null);
-                }}
-              >
-                <Text style={styles.renameCancelText}>Cancelar</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
                 style={styles.renameConfirmButton}
-                onPress={handleConfirmRename}
+                onPress={() => setShowItemsModal(false)}
               >
-                <Text style={styles.renameConfirmText}>Guardar</Text>
+                <Text style={styles.renameConfirmText}>Cerrar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -1043,68 +976,26 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 120,
   },
-  // Estilos para el botón de menú
-  menuButton: {
+  // Estilos para el botón de eliminar
+  deleteButton: {
     position: 'absolute',
     bottom: 12,
     right: 12,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#f3f4f6',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#ef4444',
     alignItems: 'center',
     justifyContent: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-    zIndex: 10,
-  },
-  // Estilos para el dropdown menu
-  dropdownMenu: {
-    position: 'absolute',
-    bottom: 45,
-    right: 12,
-    backgroundColor: '#fff',
-    borderRadius: 8,
-    paddingVertical: 4,
-    minWidth: 160,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
+      height: 2,
     },
     shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 8,
-    zIndex: 20,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  dropdownOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-  },
-  dropdownOptionText: {
-    fontSize: 14,
-    color: '#374151',
-    marginLeft: 8,
-    fontWeight: '500',
-  },
-  // Overlay para cerrar el menú
-  menuOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 5,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 10,
   },
   // Estilos para el modal de cambiar nombre
   renameModalOverlay: {
@@ -1176,5 +1067,6 @@ const styles = StyleSheet.create({
   },
 
 });
+
 
 
