@@ -81,6 +81,7 @@ export const TABLE_COLUMNS = {
     'id',
     'title',
     'description',
+    'temp_category',
     'created_by',
     'created_at',
     'updated_at'
@@ -159,7 +160,8 @@ export const validateColumns = (tableName, data) => {
   const filteredData = {};
   Object.keys(data).forEach(key => {
     if (allowedColumns.includes(key)) {
-      filteredData[key] = data[key];
+      // Convert undefined to null to avoid SQL binding errors
+      filteredData[key] = data[key] === undefined ? null : data[key];
     }
   });
 

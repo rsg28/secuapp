@@ -102,13 +102,26 @@ export const useOpenInspectionTemplates = () => {
         body: JSON.stringify(templateData)
       });
 
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error('[createTemplate] Error parseando respuesta JSON:', parseErr);
+        throw new Error(`Error del servidor (HTTP ${response.status})`);
+      }
+      
       if (!response.ok) {
-        throw new Error('Error al crear template abierto');
+        // Check for validation errors
+        if (data && data.errors && Array.isArray(data.errors)) {
+          const validationMessages = data.errors.map((err) => err.msg || err.message).join(', ');
+          throw new Error(validationMessages || data.message || 'Error de validación');
+        }
+        throw new Error(data.message || data.error || `Error al crear template (HTTP ${response.status})`);
       }
 
-      const data = await response.json();
       return data.data.template;
     } catch (err) {
+      console.error('[createTemplate] Error:', err);
       setError(err.message);
       throw err;
     } finally {

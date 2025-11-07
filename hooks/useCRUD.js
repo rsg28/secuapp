@@ -16,6 +16,7 @@
  * @returns {object} Objeto con funciones CRUD y estados
  */
 import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -27,8 +28,13 @@ export const useCRUD = (endpoint) => {
 
   // Función auxiliar para obtener el token de autenticación
   const getAuthToken = async () => {
-    // Aquí deberías obtener el token desde AsyncStorage o tu sistema de autenticación
-    return 'your-jwt-token-here';
+    try {
+      const token = await AsyncStorage.getItem('authToken');
+      return token || '';
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+      return '';
+    }
   };
 
   // Función auxiliar para hacer requests
@@ -41,6 +47,10 @@ export const useCRUD = (endpoint) => {
       }
     };
     
+    console.log(`[makeRequest] ${endpoint} - URL:`, url);
+    console.log(`[makeRequest] ${endpoint} - Token exists:`, !!token);
+    console.log(`[makeRequest] ${endpoint} - Token length:`, token?.length || 0);
+    
     return fetch(url, { ...defaultOptions, ...options });
   };
 
@@ -50,18 +60,62 @@ export const useCRUD = (endpoint) => {
       setLoading(true);
       setError(null);
       
+      const token = await getAuthToken();
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación');
+      }
+      
       const response = await makeRequest(`${API_BASE_URL}/${endpoint}?page=${page}&limit=${limit}`);
       
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseErr) {
+        console.error(`[getAll] Error parseando respuesta JSON:`, parseErr);
+        throw new Error(`Error del servidor (HTTP ${response.status})`);
+      }
+      
       if (!response.ok) {
-        throw new Error(`Error al obtener ${endpoint}`);
+        // Parse error messages properly
+        let errorMessage = `Error al obtener ${endpoint}`;
+        
+        if (data) {
+          if (data.errors) {
+            // Handle express-validator errors format
+            if (Array.isArray(data.errors)) {
+              errorMessage = data.errors.map(err => err.message || err.msg || String(err)).join(', ');
+            } else {
+              const errorArray = Object.values(data.errors).flat();
+              errorMessage = errorArray.map(err => {
+                if (typeof err === 'string') return err;
+                if (err.msg) return err.msg;
+                if (err.message) return err.message;
+                return String(err);
+              }).join(', ');
+            }
+          } else if (data.message) {
+            errorMessage = data.message;
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        }
+        
+        // Check for authentication errors
+        if (response.status === 401 || response.status === 403) {
+          errorMessage = 'Error de autenticación. Por favor inicia sesión nuevamente.';
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      const result = await response.json();
-      setData(result.data[endpoint] || result.data.items || result.data);
-      return result;
+      setData(data.data[endpoint] || data.data.items || data.data);
+      return data;
     } catch (err) {
-      setError(err.message);
-      throw err;
+      const errorMessage = typeof err.message === 'string' 
+        ? err.message 
+        : (typeof err === 'string' ? err : `Error al obtener ${endpoint}`);
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -95,9 +149,19 @@ export const useCRUD = (endpoint) => {
       setLoading(true);
       setError(null);
       
+      // Clean undefined values before stringify
+      const cleanData = Object.keys(itemData).reduce((acc, key) => {
+        acc[key] = itemData[key] === undefined ? null : itemData[key];
+        return acc;
+      }, {});
+      
+      console.log(`[useCRUD.create] ${endpoint} - Original:`, itemData);
+      console.log(`[useCRUD.create] ${endpoint} - Cleaned:`, cleanData);
+      console.log(`[useCRUD.create] ${endpoint} - JSON string:`, JSON.stringify(cleanData));
+      
       const response = await makeRequest(`${API_BASE_URL}/${endpoint}`, {
         method: 'POST',
-        body: JSON.stringify(itemData)
+        body: JSON.stringify(cleanData)
       });
 
       if (!response.ok) {

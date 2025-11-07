@@ -30,6 +30,8 @@ export default function RootLayout() {
           <Stack.Screen name="open-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="closed-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="create-open-inspection" options={{ headerShown: false }} />
+          <Stack.Screen name="edit-response" options={{ headerShown: false }} />
+          <Stack.Screen name="edit-existing-response" options={{ headerShown: false }} />
         <Stack.Screen name="ccm2l-inspection" options={{ headerShown: false }} />
         <Stack.Screen name="monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="sonometria-monitoring" options={{ headerShown: false }} />

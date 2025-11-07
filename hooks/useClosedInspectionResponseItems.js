@@ -73,6 +73,16 @@ export const useClosedInspectionResponseItems = () => {
       setLoading(true);
       setError(null);
       
+      // Clean undefined values before stringify
+      const cleanData = Object.keys(itemData).reduce((acc, key) => {
+        acc[key] = itemData[key] === undefined ? null : itemData[key];
+        return acc;
+      }, {});
+      
+      console.log('[useClosedInspectionResponseItems.createItem] Original:', itemData);
+      console.log('[useClosedInspectionResponseItems.createItem] Cleaned:', cleanData);
+      console.log('[useClosedInspectionResponseItems.createItem] JSON string:', JSON.stringify(cleanData));
+      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items`, {
         method: 'POST',
@@ -80,7 +90,7 @@ export const useClosedInspectionResponseItems = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(itemData)
+        body: JSON.stringify(cleanData)
       });
 
       if (!response.ok) {
@@ -103,6 +113,16 @@ export const useClosedInspectionResponseItems = () => {
       setLoading(true);
       setError(null);
       
+      // Clean undefined values before stringify
+      const cleanData = Object.keys(itemData).reduce((acc, key) => {
+        acc[key] = itemData[key] === undefined ? null : itemData[key];
+        return acc;
+      }, {});
+      
+      console.log('[useClosedInspectionResponseItems.updateItem] Original:', itemData);
+      console.log('[useClosedInspectionResponseItems.updateItem] Cleaned:', cleanData);
+      console.log('[useClosedInspectionResponseItems.updateItem] JSON string:', JSON.stringify(cleanData));
+      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items/${id}`, {
         method: 'PUT',
@@ -110,11 +130,30 @@ export const useClosedInspectionResponseItems = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(itemData)
+        body: JSON.stringify(cleanData)
       });
 
       if (!response.ok) {
-        throw new Error('Error al actualizar item de respuesta cerrada');
+        // Try to parse error message from response
+        let errorMessage = 'Error al actualizar item de respuesta cerrada';
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch (e) {
+          // If response is not JSON, use default message
+          if (response.status === 404) {
+            errorMessage = 'Item no encontrado';
+          } else if (response.status === 400) {
+            errorMessage = 'Datos inválidos';
+          } else if (response.status === 401 || response.status === 403) {
+            errorMessage = 'Error de autenticación';
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -155,6 +194,36 @@ export const useClosedInspectionResponseItems = () => {
     }
   };
 
+  // Obtener items por response_id
+  const getItemsByResponseId = async (responseId) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items/response/${responseId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al obtener items de respuesta');
+      }
+
+      const data = await response.json();
+      setItems(data.data.items);
+      return data.data.items;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     items,
     loading,
@@ -163,11 +232,14 @@ export const useClosedInspectionResponseItems = () => {
     getItemById,
     createItem,
     updateItem,
-    deleteItem
+    deleteItem,
+    getItemsByResponseId
   };
 };
 
 // Función auxiliar para obtener el token de autenticación
 const getAuthToken = async () => {
-  return 'your-jwt-token-here';
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+  const token = await AsyncStorage.getItem('authToken');
+  return token || '';
 };

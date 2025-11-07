@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   Alert,
@@ -36,8 +36,8 @@ interface Category {
 
 export default function ClosedInspectionsScreen() {
   const { user } = useAuth();
-  const { templates, createTemplate, deleteTemplate, getTemplatesByUserId } = useClosedInspectionTemplates();
-  const { getItemsByTemplateId, createItem, deleteItem } = useClosedTemplateItems();
+  const { templates, createTemplate, deleteTemplate, getTemplatesByUserId, updateTemplate } = useClosedInspectionTemplates();
+  const { getItemsByTemplateId, createItem, deleteItem, updateItem } = useClosedTemplateItems();
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<Category[]>([]);
@@ -52,6 +52,14 @@ export default function ClosedInspectionsScreen() {
   // States for viewing items
   const [showItemsModal, setShowItemsModal] = useState(false);
   const [selectedTemplateItems, setSelectedTemplateItems] = useState<Array<{category: string, items: any[]}>>([]);
+  
+  // States for editing template
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState<FormTemplate | null>(null);
+  const [editTemplateTitle, setEditTemplateTitle] = useState('');
+  const [editTemplateDescription, setEditTemplateDescription] = useState('');
+  const [editTemplateCategory, setEditTemplateCategory] = useState('');
+  const [editTemplateItems, setEditTemplateItems] = useState<Array<{id?: string, text: string, category: string}>>([]);
 
   // Cargar templates de la base de datos para el usuario actual
   useEffect(() => {
@@ -438,15 +446,31 @@ export default function ClosedInspectionsScreen() {
     setNewTemplateItems([...newTemplateItems, {text: '', category: ''}]);
   };
   
-  const updateItem = (index: number, field: 'text' | 'category', value: string) => {
+  const updateNewItem = (index: number, field: 'text' | 'category', value: string) => {
     const updatedItems = [...newTemplateItems];
     updatedItems[index][field] = value;
     setNewTemplateItems(updatedItems);
   };
   
-  const removeItem = (index: number) => {
+  const removeNewItem = (index: number) => {
     if (newTemplateItems.length > 1) {
       setNewTemplateItems(newTemplateItems.filter((_, i) => i !== index));
+    }
+  };
+  
+  const addEditItem = () => {
+    setEditTemplateItems([...editTemplateItems, {text: '', category: ''}]);
+  };
+  
+  const updateEditItem = (index: number, field: 'text' | 'category', value: string) => {
+    const updatedItems = [...editTemplateItems];
+    updatedItems[index][field] = value;
+    setEditTemplateItems(updatedItems);
+  };
+  
+  const removeEditItem = (index: number) => {
+    if (editTemplateItems.length > 1) {
+      setEditTemplateItems(editTemplateItems.filter((_, i) => i !== index));
     }
   };
 
@@ -484,6 +508,134 @@ export default function ClosedInspectionsScreen() {
     } catch (error: any) {
       Alert.alert('Error', `No se pudieron cargar los items del template: ${error.message}`);
     }
+  };
+
+  const handleEditForm = async (form: FormTemplate) => {
+    try {
+      setEditingTemplate(form);
+      setEditTemplateTitle(form.title);
+      setEditTemplateDescription(form.description);
+      setEditTemplateCategory(form.category);
+      
+      // Fetch current items
+      const items = await getItemsByTemplateId(form.id);
+      
+      // Convert items to edit format
+      const itemsForEdit = items.map((item: any) => ({
+        id: item.id,
+        text: item.text,
+        category: item.category
+      }));
+      
+      setEditTemplateItems(itemsForEdit.length > 0 ? itemsForEdit : [{text: '', category: ''}]);
+      setShowEditModal(true);
+    } catch (error: any) {
+      Alert.alert('Error', `No se pudieron cargar los items del template: ${error.message}`);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingTemplate) return;
+    
+    // Validate inputs
+    if (!editTemplateTitle.trim()) {
+      Alert.alert('Error', 'El título es requerido');
+      return;
+    }
+    if (!editTemplateCategory.trim()) {
+      Alert.alert('Error', 'La categoría es requerida');
+      return;
+    }
+    if (!editTemplateDescription.trim()) {
+      Alert.alert('Error', 'La descripción es requerida');
+      return;
+    }
+    
+    try {
+      // Update template
+      await updateTemplate(editingTemplate.id, {
+        title: editTemplateTitle.trim(),
+        description: editTemplateDescription.trim(),
+        temp_category: editTemplateCategory.trim()
+      });
+      
+      // Filter valid items
+      const validItems = editTemplateItems.filter(item => item.text.trim() && item.category.trim());
+      
+      // Get current items from database
+      const currentItems = await getItemsByTemplateId(editingTemplate.id);
+      const currentItemIds = Array.isArray(currentItems) ? currentItems.map((item: any) => item.id) : [];
+      const editItemIds = validItems.filter(item => item.id).map(item => item.id!);
+      
+      // Determine which items to delete, create, or update
+      const itemsToDelete = currentItemIds.filter((id: string) => !editItemIds.includes(id));
+      const itemsToCreate = validItems.filter(item => !item.id);
+      const itemsToUpdate = validItems.filter(item => item.id);
+      
+      // Delete items
+      for (const itemId of itemsToDelete) {
+        try {
+          await deleteItem(itemId);
+        } catch (error) {
+          console.log('Error deleting item:', error);
+        }
+      }
+      
+      // Create new items
+      const existingCount = itemsToUpdate.length;
+      for (let i = 0; i < itemsToCreate.length; i++) {
+        const item = itemsToCreate[i];
+        await createItem({
+          template_id: editingTemplate.id,
+          category: item.category.trim(),
+          question_index: existingCount + i + 1,
+          text: item.text.trim(),
+          sort_order: existingCount + i + 1
+        });
+      }
+      
+      // Update existing items
+      for (let i = 0; i < itemsToUpdate.length; i++) {
+        const item = itemsToUpdate[i];
+        if (item.id) {
+          await updateItem(item.id, {
+            category: item.category.trim(),
+            text: item.text.trim(),
+            question_index: i + 1,
+            sort_order: i + 1
+          });
+        }
+      }
+      
+      // Refresh templates list from database
+      if (user?.id) {
+        await getTemplatesByUserId(user.id, 1, 100);
+      }
+      
+      // Close modal and reset
+      setShowEditModal(false);
+      setEditingTemplate(null);
+      setEditTemplateTitle('');
+      setEditTemplateDescription('');
+      setEditTemplateCategory('');
+      setEditTemplateItems([]);
+      
+      Alert.alert('Éxito', 'Template actualizado correctamente');
+    } catch (error: any) {
+      const errorMessage = error?.message || 'No se pudo actualizar el template';
+      Alert.alert('Error', errorMessage);
+    }
+  };
+
+  const handleResponseForm = (form: FormTemplate) => {
+    router.push({
+      pathname: '/edit-response',
+      params: {
+        templateId: form.id,
+        type: 'closed',
+        templateTitle: form.title
+      }
+    } as any);
   };
 
   const handleDeleteForm = (form: FormTemplate) => {
@@ -625,7 +777,19 @@ export default function ClosedInspectionsScreen() {
                 </View>
               </TouchableOpacity>
               
-              {/* Botón de eliminar en esquina inferior derecha */}
+              {/* Botones de acción en esquina inferior derecha */}
+              <TouchableOpacity 
+                style={styles.responseButton}
+                onPress={() => handleResponseForm(form)}
+              >
+                <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.editButton}
+                onPress={() => handleEditForm(form)}
+              >
+                <Ionicons name="create" size={20} color="#fff" />
+              </TouchableOpacity>
               <TouchableOpacity 
                 style={styles.deleteButton}
                 onPress={() => handleDeleteForm(form)}
@@ -683,20 +847,20 @@ export default function ClosedInspectionsScreen() {
                   <TextInput
                     style={[styles.renameInput, {marginBottom: 8}]}
                     value={item.category}
-                    onChangeText={(value) => updateItem(index, 'category', value)}
+                    onChangeText={(value) => updateNewItem(index, 'category', value)}
                     placeholder="Categoría del item"
                   />
                   <TextInput
                     style={[styles.renameInput, {minHeight: 60}]}
                     value={item.text}
-                    onChangeText={(value) => updateItem(index, 'text', value)}
+                    onChangeText={(value) => updateNewItem(index, 'text', value)}
                     placeholder="Texto de la pregunta"
                     multiline={true}
                   />
                   {newTemplateItems.length > 1 && (
                     <TouchableOpacity 
                       style={{alignSelf: 'flex-end', marginTop: 8}}
-                      onPress={() => removeItem(index)}
+                      onPress={() => removeNewItem(index)}
                     >
                       <Text style={{color: '#ef4444', fontSize: 14}}>Eliminar</Text>
                     </TouchableOpacity>
@@ -744,31 +908,34 @@ export default function ClosedInspectionsScreen() {
         animationType="slide"
         onRequestClose={() => setShowItemsModal(false)}
       >
-        <View style={styles.renameModalOverlay}>
-          <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
-            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20}}>
-              <Text style={styles.renameModalTitle}>Items del Template</Text>
-              <TouchableOpacity 
-                onPress={() => setShowItemsModal(false)}
-                style={{padding: 8}}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
+        <TouchableOpacity 
+          style={styles.renameModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowItemsModal(false)}
+        >
+          <View 
+            style={[styles.renameModalContent, {maxHeight: '90%', width: '95%', paddingTop: 20, paddingBottom: 20}]}
+            onStartShouldSetResponder={() => true}
+          >
+            <TouchableOpacity 
+              style={{position: 'absolute', top: -6, right: -8, zIndex: 10, padding: 10}}
+              onPress={() => setShowItemsModal(false)}
+            >
+              <Ionicons name="close" size={28} color="#6366f1" />
+            </TouchableOpacity>
+            <ScrollView showsVerticalScrollIndicator={true}>
               {selectedTemplateItems.length > 0 ? (
                 selectedTemplateItems.map((categoryGroup, idx) => (
-                  <View key={idx} style={{marginBottom: 24}}>
-                    <View style={{backgroundColor: '#6366f1', padding: 12, borderRadius: 8, marginBottom: 12}}>
-                      <Text style={{fontSize: 18, fontWeight: 'bold', color: '#fff', textAlign: 'center'}}>
+                  <View key={idx} style={{marginBottom: 32}}>
+                    <View style={{backgroundColor: '#6366f1', padding: 16, borderRadius: 12, marginBottom: 16}}>
+                      <Text style={{fontSize: 20, fontWeight: 'bold', color: '#fff', textAlign: 'center'}}>
                         {categoryGroup.category}
                       </Text>
                     </View>
                     {categoryGroup.items.map((item: any, itemIdx: number) => (
-                      <View key={itemIdx} style={{flexDirection: 'row', marginLeft: 12, marginBottom: 8}}>
-                        <Text style={{color: '#6366f1', marginRight: 8, fontSize: 16}}>•</Text>
-                        <Text style={{flex: 1, fontSize: 14, color: '#374151', lineHeight: 20}}>
+                      <View key={itemIdx} style={{flexDirection: 'row', marginLeft: 8, marginBottom: 12}}>
+                        <Text style={{color: '#6366f1', marginRight: 12, fontSize: 18, fontWeight: '600'}}>•</Text>
+                        <Text style={{flex: 1, fontSize: 15, color: '#374151', lineHeight: 24}}>
                           {item.text}
                         </Text>
                       </View>
@@ -776,20 +943,108 @@ export default function ClosedInspectionsScreen() {
                   </View>
                 ))
               ) : (
-                <View style={{padding: 20, alignItems: 'center'}}>
+                <View style={{padding: 40, alignItems: 'center'}}>
                   <Text style={{fontSize: 16, color: '#6b7280', textAlign: 'center'}}>
                     Este template no tiene items asignados aún.
                   </Text>
                 </View>
               )}
             </ScrollView>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      {/* Modal de Editar Template */}
+      <Modal
+        visible={showEditModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <View style={styles.renameModalOverlay}>
+          <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
+            <Text style={styles.renameModalTitle}>Editar Template</Text>
+            
+            <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
+              <TextInput
+                style={styles.renameInput}
+                value={editTemplateTitle}
+                onChangeText={setEditTemplateTitle}
+                placeholder="Título del template"
+              />
+              
+              <TextInput
+                style={styles.renameInput}
+                value={editTemplateCategory}
+                onChangeText={setEditTemplateCategory}
+                placeholder="Categoría"
+              />
+              
+              <TextInput
+                style={[styles.renameInput, {minHeight: 80}]}
+                value={editTemplateDescription}
+                onChangeText={setEditTemplateDescription}
+                placeholder="Descripción"
+                multiline={true}
+              />
+              
+              <Text style={{fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8}}>Preguntas/Items:</Text>
+              
+              {editTemplateItems.map((item, index) => (
+                <View key={index} style={{marginBottom: 12, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8}}>
+                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Item {index + 1}</Text>
+                  <TextInput
+                    style={[styles.renameInput, {marginBottom: 8}]}
+                    value={item.category}
+                    onChangeText={(value) => updateEditItem(index, 'category', value)}
+                    placeholder="Categoría del item"
+                  />
+                  <TextInput
+                    style={[styles.renameInput, {minHeight: 60}]}
+                    value={item.text}
+                    onChangeText={(value) => updateEditItem(index, 'text', value)}
+                    placeholder="Texto de la pregunta"
+                    multiline={true}
+                  />
+                  {editTemplateItems.length > 1 && (
+                    <TouchableOpacity 
+                      style={{alignSelf: 'flex-end', marginTop: 8}}
+                      onPress={() => removeEditItem(index)}
+                    >
+                      <Text style={{color: '#ef4444', fontSize: 14}}>Eliminar</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+              
+              <TouchableOpacity 
+                style={{backgroundColor: '#e5e7eb', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 16}}
+                onPress={addEditItem}
+              >
+                <Text style={{color: '#374151', fontWeight: '600'}}>+ Agregar Item</Text>
+              </TouchableOpacity>
+            </ScrollView>
             
             <View style={styles.renameModalButtons}>
               <TouchableOpacity 
-                style={styles.renameConfirmButton}
-                onPress={() => setShowItemsModal(false)}
+                style={styles.renameCancelButton}
+                onPress={() => {
+                  setShowEditModal(false);
+                  setEditingTemplate(null);
+                  setEditTemplateTitle('');
+                  setEditTemplateDescription('');
+                  setEditTemplateCategory('');
+                  setEditTemplateItems([]);
+                }}
               >
-                <Text style={styles.renameConfirmText}>Cerrar</Text>
+                <Text style={styles.renameCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity 
+                style={styles.renameConfirmButton}
+                onPress={handleSaveEdit}
+              >
+                <Text style={styles.renameConfirmText}>Guardar Cambios</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -975,6 +1230,48 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 120,
+  },
+  // Estilos para el botón de responder
+  responseButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 96,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 10,
+  },
+  // Estilos para el botón de editar
+  editButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 54,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#3b82f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 10,
   },
   // Estilos para el botón de eliminar
   deleteButton: {

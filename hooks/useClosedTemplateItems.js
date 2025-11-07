@@ -177,10 +177,21 @@ export const useClosedTemplateItems = () => {
       setLoading(true);
       setError(null);
       
+      if (!templateId) {
+        throw new Error('El ID del template es requerido');
+      }
+      
       const token = await getAuthToken();
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación');
+      }
+      
       const url = `${API_BASE_URL}/closed-template-items/template/${templateId}`;
       console.log('[getItemsByTemplateId] URL:', url);
       console.log('[getItemsByTemplateId] templateId:', templateId);
+      console.log('[getItemsByTemplateId] Token exists:', !!token);
+      console.log('[getItemsByTemplateId] Token length:', token?.length || 0);
+      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -193,23 +204,58 @@ export const useClosedTemplateItems = () => {
       try {
         data = await response.json();
       } catch (parseErr) {
-        console.log('[getItemsByTemplateId] JSON parse error:', parseErr?.message);
+        console.error('[getItemsByTemplateId] JSON parse error:', parseErr?.message);
+        throw new Error(`Error al parsear respuesta del servidor (HTTP ${response.status})`);
       }
+      
       console.log('[getItemsByTemplateId] status:', response.status, response.statusText);
       console.log('[getItemsByTemplateId] response body:', data);
       
+      // Check for authentication errors first
+      if (response.status === 401 || response.status === 403) {
+        throw new Error('Error de autenticación. Por favor inicia sesión nuevamente.');
+      }
+      
       if (!response.ok) {
-        const serverMessage = (data && (data.message || data.error)) ? (data.message || data.error) : 'Error al obtener items del template';
-        throw new Error(`${serverMessage} (HTTP ${response.status})`);
+        // Parse error message properly
+        let errorMessage = 'Error al obtener items del template';
+        
+        if (data) {
+          if (data.errors) {
+            // Handle express-validator errors format - can be array or object
+            if (Array.isArray(data.errors)) {
+              // Format: [{ field: 'templateId', message: 'ID inválido', value: '...' }]
+              errorMessage = data.errors.map(err => err.message || err.msg || String(err)).join(', ');
+            } else {
+              // Format: { field: ['error1', 'error2'] }
+              const errorArray = Object.values(data.errors).flat();
+              errorMessage = errorArray.map(err => {
+                if (typeof err === 'string') return err;
+                if (err.msg) return err.msg;
+                if (err.message) return err.message;
+                return String(err);
+              }).join(', ');
+            }
+          } else if (data.message) {
+            errorMessage = data.message;
+          } else if (data.error) {
+            errorMessage = data.error;
+          }
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const items = data?.data?.items || data?.data || [];
       setItems(items);
       return items;
     } catch (err) {
-      console.log('[getItemsByTemplateId] ERROR:', err?.message);
-      setError(err.message);
-      throw err;
+      console.error('[getItemsByTemplateId] ERROR:', err?.message);
+      const errorMessage = typeof err.message === 'string' 
+        ? err.message 
+        : (typeof err === 'string' ? err : 'Error al obtener items del template');
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }

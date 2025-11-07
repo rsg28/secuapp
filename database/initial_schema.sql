@@ -1,220 +1,311 @@
--- =====================================================
--- SECUAPP - Base de Datos Inicial
--- AWS RDS MySQL/PostgreSQL Schema
--- =====================================================
+-- MySQL Workbench Forward Engineering
 
--- Crear base de datos
-CREATE DATABASE IF NOT EXISTS secuapp_db;
-USE secuapp_db;
+SET @OLD_UNIQUE_CHECKS=@@UNIQUE_CHECKS, UNIQUE_CHECKS=0;
+SET @OLD_FOREIGN_KEY_CHECKS=@@FOREIGN_KEY_CHECKS, FOREIGN_KEY_CHECKS=0;
+SET @OLD_SQL_MODE=@@SQL_MODE, SQL_MODE='ONLY_FULL_GROUP_BY,STRICT_TRANS_TABLES,NO_ZERO_IN_DATE,NO_ZERO_DATE,ERROR_FOR_DIVISION_BY_ZERO,NO_ENGINE_SUBSTITUTION';
 
--- =====================================================
--- TABLA DE USUARIOS
--- =====================================================
-CREATE TABLE users (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    first_name VARCHAR(100) NOT NULL,
-    last_name VARCHAR(100) NOT NULL,
-    role ENUM('manager', 'employee') NOT NULL DEFAULT 'employee',
-    phone VARCHAR(20),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    INDEX idx_email (email),
-    INDEX idx_role (role),
-    INDEX idx_active (is_active)
-);
+-- -----------------------------------------------------
+-- Schema mydb
+-- -----------------------------------------------------
+-- -----------------------------------------------------
+-- Schema aws-secu
+-- -----------------------------------------------------
 
--- =====================================================
--- TABLA DE EMPRESAS
--- =====================================================
-CREATE TABLE companies (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    name VARCHAR(255) NOT NULL,
-    industry VARCHAR(100),
-    address TEXT,
-    contact_person VARCHAR(255),
-    contact_email VARCHAR(255),
-    contact_phone VARCHAR(20),
-    created_by VARCHAR(36),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_name (name),
-    INDEX idx_industry (industry)
-);
+-- -----------------------------------------------------
+-- Schema aws-secu
+-- -----------------------------------------------------
+CREATE SCHEMA IF NOT EXISTS `aws-secu` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci ;
+USE `aws-secu` ;
 
--- =====================================================
--- TABLA DE SERVICIOS
--- =====================================================
-CREATE TABLE services (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    icon VARCHAR(50),
-    color VARCHAR(7),
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    INDEX idx_name (name),
-    INDEX idx_active (is_active)
-);
+-- -----------------------------------------------------
+-- Table `aws-secu`.`users`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`users` (
+  `id` VARCHAR(36) NOT NULL,
+  `email` VARCHAR(255) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `first_name` VARCHAR(100) NOT NULL,
+  `last_name` VARCHAR(100) NOT NULL,
+  `role` ENUM('manager', 'employee') NOT NULL DEFAULT 'employee',
+  `phone` VARCHAR(20) NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NULL DEFAULT '1',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `email` (`email` ASC) VISIBLE,
+  INDEX `idx_email` (`email` ASC) VISIBLE,
+  INDEX `idx_role` (`role` ASC) VISIBLE,
+  INDEX `idx_active` (`is_active` ASC) VISIBLE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
 
--- =====================================================
--- TABLA DE TEMPLATES DE INSPECCIONES CERRADAS
--- =====================================================
-CREATE TABLE closed_inspection_templates (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    created_by VARCHAR(36),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_title (title)
-);
 
--- =====================================================
--- TABLA DE ELEMENTOS DE TEMPLATES CERRADOS
--- =====================================================
-CREATE TABLE closed_template_items (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    template_id VARCHAR(36) NOT NULL,
-    item_id VARCHAR(50) NOT NULL, -- ID randomizado
-    question_index VARCHAR(20) NOT NULL, -- 1, 2a, 3b, A1, B2, etc.
-    text TEXT NOT NULL,
-    sort_order INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (template_id) REFERENCES closed_inspection_templates(id) ON DELETE CASCADE,
-    INDEX idx_template (template_id),
-    INDEX idx_item_id (item_id),
-    INDEX idx_question_index (question_index),
-    INDEX idx_sort (sort_order)
-);
+-- -----------------------------------------------------
+-- Table `aws-secu`.`closed_inspection_templates`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_templates` (
+  `id` VARCHAR(36) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `temp_category` VARCHAR(255) NULL DEFAULT NULL,
+  `created_by` VARCHAR(36) NULL DEFAULT NULL,
+  `user_id` VARCHAR(36) NULL DEFAULT 'ALL',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `created_by` (`created_by` ASC) VISIBLE,
+  INDEX `idx_title` (`title` ASC) VISIBLE,
+  CONSTRAINT `closed_inspection_templates_ibfk_1`
+    FOREIGN KEY (`created_by`)
+    REFERENCES `aws-secu`.`users` (`id`)
+    ON DELETE SET NULL)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
 
--- =====================================================
--- TABLA DE TEMPLATES DE INSPECCIONES ABIERTAS
--- =====================================================
-CREATE TABLE open_inspection_templates (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    title VARCHAR(255) NOT NULL,
-    description TEXT,
-    created_by VARCHAR(36),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
-    INDEX idx_title (title)
-);
 
--- =====================================================
--- TABLA DE ELEMENTOS DE TEMPLATES ABIERTOS
--- =====================================================
-CREATE TABLE open_template_items (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    template_id VARCHAR(36) NOT NULL,
-    item_id VARCHAR(50) NOT NULL, -- ID randomizado
-    question_index VARCHAR(20) NOT NULL, -- 1, 2a, 3b, A1, B2, etc.
-    text TEXT NOT NULL,
-    sort_order INT DEFAULT 0,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (template_id) REFERENCES open_inspection_templates(id) ON DELETE CASCADE,
-    INDEX idx_template (template_id),
-    INDEX idx_item_id (item_id),
-    INDEX idx_question_index (question_index),
-    INDEX idx_sort (sort_order)
-);
+-- -----------------------------------------------------
+-- Table `aws-secu`.`companies`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`companies` (
+  `id` VARCHAR(36) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `industry` VARCHAR(100) NULL DEFAULT NULL,
+  `address` TEXT NULL DEFAULT NULL,
+  `contact_person` VARCHAR(255) NULL DEFAULT NULL,
+  `contact_email` VARCHAR(255) NULL DEFAULT NULL,
+  `contact_phone` VARCHAR(20) NULL DEFAULT NULL,
+  `created_by` VARCHAR(36) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `created_by` (`created_by` ASC) VISIBLE,
+  INDEX `idx_name` (`name` ASC) VISIBLE,
+  INDEX `idx_industry` (`industry` ASC) VISIBLE,
+  CONSTRAINT `companies_ibfk_1`
+    FOREIGN KEY (`created_by`)
+    REFERENCES `aws-secu`.`users` (`id`)
+    ON DELETE SET NULL)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
 
--- =====================================================
--- TABLA DE RESPUESTAS DE INSPECCIONES CERRADAS (FORMULARIOS COMPLETADOS)
--- =====================================================
-CREATE TABLE closed_inspection_responses (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    template_id VARCHAR(36) NOT NULL,
-    company_id VARCHAR(36) NOT NULL,
-    inspector_id VARCHAR(36) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    inspection_date DATE,
-    completion_date TIMESTAMP NULL,
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (template_id) REFERENCES closed_inspection_templates(id) ON DELETE CASCADE,
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
-    FOREIGN KEY (inspector_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_template (template_id),
-    INDEX idx_company (company_id),
-    INDEX idx_inspector (inspector_id),
-    INDEX idx_date (inspection_date)
-);
 
--- =====================================================
--- TABLA DE RESPUESTAS DE INSPECCIONES ABIERTAS (FORMULARIOS COMPLETADOS)
--- =====================================================
-CREATE TABLE open_inspection_responses (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    template_id VARCHAR(36) NOT NULL,
-    company_id VARCHAR(36) NOT NULL,
-    inspector_id VARCHAR(36) NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    inspection_date DATE,
-    completion_date TIMESTAMP NULL,
-    notes TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (template_id) REFERENCES open_inspection_templates(id) ON DELETE CASCADE,
-    FOREIGN KEY (company_id) REFERENCES companies(id) ON DELETE CASCADE,
-    FOREIGN KEY (inspector_id) REFERENCES users(id) ON DELETE CASCADE,
-    INDEX idx_template (template_id),
-    INDEX idx_company (company_id),
-    INDEX idx_inspector (inspector_id),
-    INDEX idx_date (inspection_date)
-);
+-- -----------------------------------------------------
+-- Table `aws-secu`.`closed_inspection_responses`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_responses` (
+  `id` VARCHAR(36) NOT NULL,
+  `template_id` VARCHAR(36) NOT NULL,
+  `company_id` VARCHAR(36) NOT NULL,
+  `inspector_id` VARCHAR(36) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `inspection_date` DATE NULL DEFAULT NULL,
+  `completion_date` TIMESTAMP NULL DEFAULT NULL,
+  `notes` TEXT NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_template` (`template_id` ASC) VISIBLE,
+  INDEX `idx_company` (`company_id` ASC) VISIBLE,
+  INDEX `idx_inspector` (`inspector_id` ASC) VISIBLE,
+  INDEX `idx_date` (`inspection_date` ASC) VISIBLE,
+  CONSTRAINT `closed_inspection_responses_ibfk_1`
+    FOREIGN KEY (`template_id`)
+    REFERENCES `aws-secu`.`closed_inspection_templates` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `closed_inspection_responses_ibfk_2`
+    FOREIGN KEY (`company_id`)
+    REFERENCES `aws-secu`.`companies` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `closed_inspection_responses_ibfk_3`
+    FOREIGN KEY (`inspector_id`)
+    REFERENCES `aws-secu`.`users` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
 
--- =====================================================
--- TABLA DE ITEMS DE RESPUESTAS DE INSPECCIONES CERRADAS (RESPUESTAS INDIVIDUALES)
--- =====================================================
-CREATE TABLE closed_inspection_response_items (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    response_id VARCHAR(36) NOT NULL,
-    item_id VARCHAR(50) NOT NULL,
-    question_index VARCHAR(20) NOT NULL,
-    response ENUM('C', 'CP', 'NC', 'NA') NOT NULL,
-    explanation TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (response_id) REFERENCES closed_inspection_responses(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_response_item (response_id, item_id),
-    INDEX idx_response (response_id),
-    INDEX idx_item_id (item_id),
-    INDEX idx_question_index (question_index),
-    INDEX idx_response_type (response)
-);
 
--- =====================================================
--- TABLA DE ITEMS DE RESPUESTAS DE INSPECCIONES ABIERTAS (RESPUESTAS INDIVIDUALES)
--- =====================================================
-CREATE TABLE open_inspection_response_items (
-    id VARCHAR(36) PRIMARY KEY DEFAULT (UUID()),
-    response_id VARCHAR(36) NOT NULL,
-    item_id VARCHAR(50) NOT NULL,
-    question_index VARCHAR(20) NOT NULL,
-    response TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    
-    FOREIGN KEY (response_id) REFERENCES open_inspection_responses(id) ON DELETE CASCADE,
-    UNIQUE KEY unique_response_item (response_id, item_id),
-    INDEX idx_response (response_id),
-    INDEX idx_item_id (item_id),
-    INDEX idx_question_index (question_index)
-);
+-- -----------------------------------------------------
+-- Table `aws-secu`.`closed_inspection_response_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_response_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `response_id` VARCHAR(36) NOT NULL,
+  `item_id` VARCHAR(50) NOT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `response` ENUM('C', 'CP', 'NC', 'NA') NOT NULL,
+  `explanation` TEXT NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `unique_response_item` (`response_id` ASC, `item_id` ASC) VISIBLE,
+  INDEX `idx_response` (`response_id` ASC) VISIBLE,
+  INDEX `idx_item_id` (`item_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_response_type` (`response` ASC) VISIBLE,
+  CONSTRAINT `closed_inspection_response_items_ibfk_1`
+    FOREIGN KEY (`response_id`)
+    REFERENCES `aws-secu`.`closed_inspection_responses` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`closed_template_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_template_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `template_id` VARCHAR(36) NOT NULL,
+  `category` VARCHAR(255) NULL DEFAULT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `text` TEXT NOT NULL,
+  `sort_order` INT NULL DEFAULT '0',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_template` (`template_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_sort` (`sort_order` ASC) VISIBLE,
+  CONSTRAINT `closed_template_items_ibfk_1`
+    FOREIGN KEY (`template_id`)
+    REFERENCES `aws-secu`.`closed_inspection_templates` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`open_inspection_templates`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_templates` (
+  `id` VARCHAR(36) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `temp_category` VARCHAR(255) NULL DEFAULT NULL,
+  `created_by` VARCHAR(36) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `created_by` (`created_by` ASC) VISIBLE,
+  INDEX `idx_title` (`title` ASC) VISIBLE,
+  CONSTRAINT `open_inspection_templates_ibfk_1`
+    FOREIGN KEY (`created_by`)
+    REFERENCES `aws-secu`.`users` (`id`)
+    ON DELETE SET NULL)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`open_inspection_responses`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_responses` (
+  `id` VARCHAR(36) NOT NULL,
+  `template_id` VARCHAR(36) NOT NULL,
+  `company_id` VARCHAR(36) NOT NULL,
+  `inspector_id` VARCHAR(36) NOT NULL,
+  `title` VARCHAR(255) NOT NULL,
+  `inspection_date` DATE NULL DEFAULT NULL,
+  `completion_date` TIMESTAMP NULL DEFAULT NULL,
+  `notes` TEXT NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_template` (`template_id` ASC) VISIBLE,
+  INDEX `idx_company` (`company_id` ASC) VISIBLE,
+  INDEX `idx_inspector` (`inspector_id` ASC) VISIBLE,
+  INDEX `idx_date` (`inspection_date` ASC) VISIBLE,
+  CONSTRAINT `open_inspection_responses_ibfk_1`
+    FOREIGN KEY (`template_id`)
+    REFERENCES `aws-secu`.`open_inspection_templates` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `open_inspection_responses_ibfk_2`
+    FOREIGN KEY (`company_id`)
+    REFERENCES `aws-secu`.`companies` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `open_inspection_responses_ibfk_3`
+    FOREIGN KEY (`inspector_id`)
+    REFERENCES `aws-secu`.`users` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`open_inspection_response_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_response_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `response_id` VARCHAR(36) NOT NULL,
+  `item_id` VARCHAR(50) NOT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `response` TEXT NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `unique_response_item` (`response_id` ASC, `item_id` ASC) VISIBLE,
+  INDEX `idx_response` (`response_id` ASC) VISIBLE,
+  INDEX `idx_item_id` (`item_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  CONSTRAINT `open_inspection_response_items_ibfk_1`
+    FOREIGN KEY (`response_id`)
+    REFERENCES `aws-secu`.`open_inspection_responses` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`open_template_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`open_template_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `template_id` VARCHAR(36) NOT NULL,
+  `category` VARCHAR(255) NULL DEFAULT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `text` TEXT NOT NULL,
+  `sort_order` INT NULL DEFAULT '0',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_template` (`template_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_sort` (`sort_order` ASC) VISIBLE,
+  CONSTRAINT `open_template_items_ibfk_1`
+    FOREIGN KEY (`template_id`)
+    REFERENCES `aws-secu`.`open_inspection_templates` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`services`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`services` (
+  `id` VARCHAR(36) NOT NULL,
+  `name` VARCHAR(255) NOT NULL,
+  `description` TEXT NULL DEFAULT NULL,
+  `icon` VARCHAR(50) NULL DEFAULT NULL,
+  `color` VARCHAR(7) NULL DEFAULT NULL,
+  `is_active` TINYINT(1) NULL DEFAULT '1',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_name` (`name` ASC) VISIBLE,
+  INDEX `idx_active` (`is_active` ASC) VISIBLE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+SET SQL_MODE=@OLD_SQL_MODE;
+SET FOREIGN_KEY_CHECKS=@OLD_FOREIGN_KEY_CHECKS;
+SET UNIQUE_CHECKS=@OLD_UNIQUE_CHECKS;

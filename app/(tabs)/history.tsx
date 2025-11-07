@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Modal,
     ScrollView,
@@ -7,7 +7,14 @@ import {
     Text,
     TouchableOpacity,
     View,
+    ActivityIndicator,
+    Alert,
 } from 'react-native';
+import { useAuth } from '../../contexts/AuthContext';
+import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
+import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
+import { useFocusEffect } from '@react-navigation/native';
+import { router } from 'expo-router';
 
 interface HistoryItem {
   id: string;
@@ -18,6 +25,9 @@ interface HistoryItem {
   status: 'completed' | 'pending' | 'failed';
   details: string;
   category: 'abierto' | 'cerrado' | 'general';
+  template_id?: string;
+  company_id?: string;
+  title?: string;
 }
 
 interface Service {
@@ -28,6 +38,18 @@ interface Service {
 }
 
 export default function HistoryScreen() {
+  const { user } = useAuth();
+  const { 
+    getResponsesByInspectorId: getClosedResponses,
+    deleteResponse: deleteClosedResponse,
+    loading: closedLoading 
+  } = useClosedInspectionResponses();
+  const { 
+    getResponsesByInspectorId: getOpenResponses,
+    deleteResponse: deleteOpenResponse,
+    loading: openLoading 
+  } = useOpenInspectionResponses();
+  
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
   const [selectedService, setSelectedService] = useState<Service | null>({
     id: 'inspecciones',
@@ -37,6 +59,8 @@ export default function HistoryScreen() {
   });
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showWorkingModal, setShowWorkingModal] = useState(false);
+  const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
+  const [loading, setLoading] = useState(false);
 
   const services: Service[] = [
     { id: 'inspecciones', name: 'Inspecciones', icon: 'clipboard', color: '#3b82f6' },
@@ -46,9 +70,104 @@ export default function HistoryScreen() {
     { id: 'monitoreo', name: 'Monitoreo', icon: 'trending-up', color: '#ef4444' },
   ];
 
-  const historyData: HistoryItem[] = [
-    // Historial limpio - sin actividades
-  ];
+  // Load inspections when component mounts or when service changes to "inspecciones"
+  useFocusEffect(
+    React.useCallback(() => {
+      if (selectedService?.id === 'inspecciones' && user?.id) {
+        loadInspections();
+      }
+    }, [selectedService?.id, user?.id])
+  );
+
+  const loadInspections = async () => {
+    if (!user?.id) return;
+    
+    try {
+      setLoading(true);
+      const [closedData, openData] = await Promise.all([
+        getClosedResponses(user.id, 1, 100),
+        getOpenResponses(user.id, 1, 100)
+      ]);
+
+      const closedItems: HistoryItem[] = (closedData?.data?.responses || []).map((response: any) => ({
+        id: response.id,
+        service: 'Inspección Cerrada',
+        serviceType: 'inspecciones',
+        action: 'Inspección completada',
+        timestamp: formatDate(response.created_at),
+        status: 'completed' as const,
+        details: response.title || 'Sin título',
+        category: 'cerrado' as const,
+        template_id: response.template_id,
+        company_id: response.company_id,
+        title: response.title
+      }));
+
+      const openItems: HistoryItem[] = (openData?.data?.responses || []).map((response: any) => ({
+        id: response.id,
+        service: 'Inspección Abierta',
+        serviceType: 'inspecciones',
+        action: 'Inspección completada',
+        timestamp: formatDate(response.created_at),
+        status: 'completed' as const,
+        details: response.title || 'Sin título',
+        category: 'abierto' as const,
+        template_id: response.template_id,
+        company_id: response.company_id,
+        title: response.title
+      }));
+
+      // Store original responses for sorting
+      const allResponses = [
+        ...(closedData?.data?.responses || []).map((r: any) => ({ ...r, category: 'cerrado' })),
+        ...(openData?.data?.responses || []).map((r: any) => ({ ...r, category: 'abierto' }))
+      ];
+
+      // Combine items
+      const allItems = [...closedItems, ...openItems];
+      
+      // Sort by created_at date (newest first)
+      allItems.sort((a, b) => {
+        const aResponse = allResponses.find((r: any) => r.id === a.id);
+        const bResponse = allResponses.find((r: any) => r.id === b.id);
+        
+        if (!aResponse?.created_at || !bResponse?.created_at) return 0;
+        return new Date(bResponse.created_at).getTime() - new Date(aResponse.created_at).getTime();
+      });
+
+      setHistoryData(allItems);
+    } catch (error: any) {
+      console.error('Error loading inspections:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'Fecha desconocida';
+    try {
+      const date = new Date(dateString);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - date.getTime());
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+
+      if (diffDays === 0) {
+        return 'Hoy';
+      } else if (diffDays === 1) {
+        return 'Ayer';
+      } else if (diffDays < 7) {
+        return `Hace ${diffDays} días`;
+      } else {
+        return date.toLocaleDateString('es-ES', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric'
+        });
+      }
+    } catch {
+      return 'Fecha desconocida';
+    }
+  };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -109,6 +228,38 @@ export default function HistoryScreen() {
 
   // Solo mostrar filtros de categorías específicas para inspecciones
   const shouldShowCategoryFilters = !selectedService || selectedService.id === 'inspecciones';
+
+  const handleDeleteResponse = (item: HistoryItem) => {
+    const isClosed = item.category === 'cerrado';
+
+    Alert.alert(
+      'Eliminar respuesta',
+      '¿Deseas eliminar esta respuesta y todos sus items asociados?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setLoading(true);
+              if (isClosed) {
+                await deleteClosedResponse(item.id);
+              } else {
+                await deleteOpenResponse(item.id);
+              }
+              await loadInspections();
+            } catch (error: any) {
+              console.error('Error deleting response:', error);
+              Alert.alert('Error', error?.message || 'No se pudo eliminar la respuesta');
+            } finally {
+              setLoading(false);
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const handleServiceSelect = (service: Service) => {
     setSelectedService(service);
@@ -235,24 +386,63 @@ export default function HistoryScreen() {
             {selectedService ? `${selectedService.name} - ` : ''}Actividades Recientes ({filteredHistory.length})
           </Text>
           
-          {filteredHistory.map((item) => {
+          {loading && (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator size="large" color="#8b5cf6" />
+              <Text style={styles.loadingText}>Cargando inspecciones...</Text>
+            </View>
+          )}
+          
+          {!loading && filteredHistory.length === 0 && (
+            <View style={styles.emptyContainer}>
+              <Ionicons name="document-outline" size={64} color="#d1d5db" />
+              <Text style={styles.emptyText}>No hay inspecciones registradas</Text>
+              <Text style={styles.emptySubtext}>
+                {selectedFilter === 'all' 
+                  ? 'Comienza a crear inspecciones para verlas aquí'
+                  : `No hay inspecciones de tipo "${selectedFilter === 'abierto' ? 'Abierto' : 'Cerrado'}"`}
+              </Text>
+            </View>
+          )}
+          
+          {!loading && filteredHistory.map((item) => {
             const categoryInfo = getCategoryInfo(item.category);
             return (
-              <View key={item.id} style={styles.historyCard}>
+              <TouchableOpacity 
+                key={item.id} 
+                style={styles.historyCard}
+                onPress={() => {
+                  // Navigate to edit existing response screen
+                  router.push({
+                    pathname: '/edit-existing-response',
+                    params: {
+                      responseId: item.id,
+                      type: item.category === 'cerrado' ? 'closed' : 'open',
+                      templateId: item.template_id || '',
+                      templateTitle: item.details || 'Template'
+                    }
+                  });
+                }}
+              >
                 <View style={styles.historyCardHeader}>
                   <View style={styles.historyInfo}>
                     <Text style={styles.serviceName}>{item.service}</Text>
                     <Text style={styles.actionText}>{item.action}</Text>
                   </View>
-                  <View style={[
-                    styles.categoryBadge,
-                    { backgroundColor: categoryInfo.color + '20' }
-                  ]}>
-                    <Ionicons 
-                      name={categoryInfo.icon as any} 
-                      size={16} 
-                      color={categoryInfo.color} 
-                    />
+                  <View style={styles.historyActions}>
+                    <TouchableOpacity
+                      style={styles.deleteButton}
+                      onPress={() => handleDeleteResponse(item)}
+                    >
+                      <Ionicons name="trash" size={18} color="#ef4444" />
+                    </TouchableOpacity>
+                    <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
+                      <Ionicons 
+                        name={categoryInfo.icon as any} 
+                        size={16} 
+                        color={categoryInfo.color} 
+                      />
+                    </View>
                   </View>
                 </View>
 
@@ -276,7 +466,7 @@ export default function HistoryScreen() {
                     </View>
                   </View>
                 </View>
-              </View>
+              </TouchableOpacity>
             );
           })}
         </View>
@@ -494,6 +684,19 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     marginBottom: 12,
   },
+  historyActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#fee2e2',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
   historyInfo: {
     flex: 1,
     marginRight: 12,
@@ -514,6 +717,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 8,
   },
   historyCardBody: {
     marginTop: 8,
@@ -674,6 +878,33 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '600',
+    textAlign: 'center',
+  },
+  loadingContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 14,
+    color: '#6b7280',
+  },
+  emptyContainer: {
+    padding: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#6b7280',
     textAlign: 'center',
   },
 });

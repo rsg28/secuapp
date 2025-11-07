@@ -73,6 +73,16 @@ export const useOpenInspectionResponses = () => {
       setLoading(true);
       setError(null);
       
+      // Clean undefined values before stringify
+      const cleanData = Object.keys(responseData).reduce((acc, key) => {
+        acc[key] = responseData[key] === undefined ? null : responseData[key];
+        return acc;
+      }, {});
+      
+      console.log('[useOpenInspectionResponses.createResponse] Original:', responseData);
+      console.log('[useOpenInspectionResponses.createResponse] Cleaned:', cleanData);
+      console.log('[useOpenInspectionResponses.createResponse] JSON string:', JSON.stringify(cleanData));
+      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/open-inspection-responses`, {
         method: 'POST',
@@ -80,18 +90,38 @@ export const useOpenInspectionResponses = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(responseData)
+        body: JSON.stringify(cleanData)
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        throw new Error('Error al crear respuesta abierta');
+        // Parse error messages from validation
+        let errorMessage = 'Error al crear respuesta abierta';
+        
+        if (data.errors) {
+          // Handle express-validator errors format
+          const errorArray = Object.values(data.errors).flat();
+          errorMessage = errorArray.map(err => {
+            if (typeof err === 'string') return err;
+            if (err.msg) return err.msg;
+            return JSON.stringify(err);
+          }).join(', ');
+        } else if (data.message) {
+          errorMessage = data.message;
+        }
+        
+        throw new Error(errorMessage);
       }
 
-      const data = await response.json();
       return data.data.response;
     } catch (err) {
-      setError(err.message);
-      throw err;
+      // Ensure we always have a string error message
+      const errorMessage = typeof err.message === 'string' 
+        ? err.message 
+        : (typeof err === 'string' ? err : 'Error al crear respuesta abierta');
+      setError(errorMessage);
+      throw new Error(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -155,6 +185,36 @@ export const useOpenInspectionResponses = () => {
     }
   };
 
+  // Obtener respuestas por inspector_id
+  const getResponsesByInspectorId = async (userId, page = 1, limit = 100) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/open-inspection-responses/user/${userId}?page=${page}&limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al obtener respuestas del inspector');
+      }
+
+      const data = await response.json();
+      setResponses(data.data.responses);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     responses,
     loading,
@@ -163,11 +223,14 @@ export const useOpenInspectionResponses = () => {
     getResponseById,
     createResponse,
     updateResponse,
-    deleteResponse
+    deleteResponse,
+    getResponsesByInspectorId
   };
 };
 
 // Función auxiliar para obtener el token de autenticación
 const getAuthToken = async () => {
-  return 'your-jwt-token-here';
+  const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+  const token = await AsyncStorage.getItem('authToken');
+  return token || '';
 };
