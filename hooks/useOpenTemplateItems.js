@@ -185,11 +185,6 @@ export const useOpenTemplateItems = () => {
       }
       
       const url = `${API_BASE_URL}/open-template-items/template/${templateId}`;
-      console.log('[getItemsByTemplateId] URL:', url);
-      console.log('[getItemsByTemplateId] templateId:', templateId);
-      console.log('[getItemsByTemplateId] Token exists:', !!token);
-      console.log('[getItemsByTemplateId] Token length:', token?.length || 0);
-      
       const response = await fetch(url, {
         method: 'GET',
         headers: {
@@ -205,9 +200,6 @@ export const useOpenTemplateItems = () => {
         console.error('[getItemsByTemplateId] JSON parse error:', parseErr?.message);
         throw new Error(`Error al parsear respuesta del servidor (HTTP ${response.status})`);
       }
-      
-      console.log('[getItemsByTemplateId] status:', response.status, response.statusText);
-      console.log('[getItemsByTemplateId] response body:', data);
       
       // Check for authentication errors first
       if (response.status === 401 || response.status === 403) {
@@ -268,7 +260,11 @@ export const useOpenTemplateItems = () => {
     createItem,
     updateItem,
     deleteItem,
-    getItemsByTemplateId
+    getItemsByTemplateId,
+    countItemsByTemplateId: async (templateId) => {
+      const templateItems = await getItemsByTemplateId(templateId);
+      return templateItems.length;
+    }
   };
 };
 

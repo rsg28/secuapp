@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     Alert,
+    ActivityIndicator,
     ScrollView,
     StyleSheet,
     Text,
@@ -10,6 +11,8 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCompanies } from '../../hooks/useCompanies';
 
 interface Company {
   id: string;
@@ -22,81 +25,148 @@ interface Company {
   status: 'active' | 'inactive';
   formCount: number;
   lastActivity: string;
+  industryKey: string;
 }
+
+interface IndustryOption {
+  id: string;
+  name: string;
+  color: string;
+}
+
+const INDUSTRY_COLORS: Record<string, string> = {
+  manufactura: '#3b82f6',
+  mineria: '#ef4444',
+  construccion: '#8b5cf6',
+  quimicos: '#f59e0b',
+  energia: '#10b981',
+  logistica: '#06b6d4',
+  servicios: '#f97316',
+  alimentaria: '#22d3ee',
+  retail: '#fca5a5',
+  agricultura: '#4ade80',
+  salud: '#a855f7',
+  tecnologia: '#6366f1',
+  sinIndustria: '#6b7280'
+};
+
+const sanitizeIndustryKey = (value: string) => {
+  if (!value) return 'sinIndustria';
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '') || 'sinIndustria';
+};
+
+const formatDate = (value?: string) => {
+  if (!value) return 'Sin actividad';
+  try {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Sin actividad';
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
+  } catch {
+    return 'Sin actividad';
+  }
+};
 
 export default function ProceduresScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('todos');
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [industryOptions, setIndustryOptions] = useState<IndustryOption[]>([
+    { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' }
+  ]);
+  const [loadingCompanies, setLoadingCompanies] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const companies: Company[] = [
-    {
-      id: '1',
-      name: 'Industrias del Norte S.A.',
-      industry: 'Manufactura',
-      contactPerson: 'Juan Pérez',
-      email: 'juan.perez@industriasnorte.com',
-      phone: '+56 9 1234 5678',
-      address: 'Av. Industrial 1234, Santiago',
-      status: 'active',
-      formCount: 5,
-      lastActivity: '2024-01-15',
-    },
-    {
-      id: '2',
-      name: 'Minería del Sur Ltda.',
-      industry: 'Minería',
-      contactPerson: 'María González',
-      email: 'maria.gonzalez@mineriasur.cl',
-      phone: '+56 9 8765 4321',
-      address: 'Camino Minero 567, Antofagasta',
-      status: 'active',
-      formCount: 3,
-      lastActivity: '2024-01-14',
-    },
-    {
-      id: '3',
-      name: 'Construcciones Central',
-      industry: 'Construcción',
-      contactPerson: 'Carlos Rodríguez',
-      email: 'carlos.rodriguez@construcciones.cl',
-      phone: '+56 9 5555 6666',
-      address: 'Calle Obrera 890, Valparaíso',
-      status: 'active',
-      formCount: 7,
-      lastActivity: '2024-01-13',
-    },
-  ];
+  const { getAllCompanies } = useCompanies();
 
-  const industries = [
-    { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
-    { id: 'manufactura', name: 'Manufactura', color: '#3b82f6' },
-    { id: 'mineria', name: 'Minería', color: '#ef4444' },
-    { id: 'construccion', name: 'Construcción', color: '#8b5cf6' },
-    { id: 'quimicos', name: 'Químicos', color: '#f59e0b' },
-    { id: 'energia', name: 'Energía', color: '#10b981' },
-    { id: 'logistica', name: 'Logística', color: '#06b6d4' },
-    { id: 'servicios', name: 'Servicios', color: '#f97316' },
-  ];
+  useEffect(() => {
+    loadCompanies();
+  }, []);
 
-  const getFilteredCompanies = () => {
-    let filtered = companies;
-    
-    // Filtrar por industria
-    if (selectedCategory !== 'todos') {
-      filtered = filtered.filter(company => company.industry.toLowerCase() === selectedCategory);
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCompanies();
+    }, [])
+  );
+
+  const loadCompanies = async () => {
+    try {
+      setLoadingCompanies(true);
+      setErrorMessage(null);
+
+      const response = await getAllCompanies(1, 100);
+      const rawCompanies = response?.data?.companies || response?.data || [];
+
+      const adaptedCompanies: Company[] = rawCompanies.map((company: any) => {
+        const industryName = company.industry || 'Sin Industria';
+        const industryKey = sanitizeIndustryKey(industryName);
+        return {
+          id: company.id,
+          name: company.name || 'Sin nombre',
+          industry: industryName,
+          industryKey,
+          contactPerson: company.contact_person || 'Sin contacto',
+          email: company.contact_email || 'Sin email',
+          phone: company.contact_phone || 'Sin teléfono',
+          address: company.address || 'Sin dirección',
+          status: company.status === 'inactive' ? 'inactive' : 'active',
+          formCount: company.form_count ?? 0,
+          lastActivity: formatDate(company.updated_at || company.created_at) 
+        };
+      });
+
+      const uniqueIndustries = new Map<string, IndustryOption>();
+      adaptedCompanies.forEach(company => {
+        if (company.industryKey && company.industryKey !== 'sinIndustria') {
+          if (!uniqueIndustries.has(company.industryKey)) {
+            uniqueIndustries.set(company.industryKey, {
+              id: company.industryKey,
+              name: company.industry,
+              color: INDUSTRY_COLORS[company.industryKey] || '#3b82f6'
+            });
+          }
+        }
+      });
+
+      setIndustryOptions([
+        { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+        ...Array.from(uniqueIndustries.values())
+      ]);
+      setCompanies(adaptedCompanies);
+    } catch (error: any) {
+      console.error('Error loading companies:', error?.message);
+      setErrorMessage(error?.message || 'No se pudieron cargar las empresas');
+    } finally {
+      setLoadingCompanies(false);
     }
-    
-    // Filtrar por búsqueda
+  };
+
+  const filteredCompanies = useMemo(() => {
+    let filtered = companies;
+
+    if (selectedCategory !== 'todos') {
+      filtered = filtered.filter(company => company.industryKey === selectedCategory);
+    }
+
     if (searchQuery.trim()) {
-      filtered = filtered.filter(company => 
-        company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        company.contactPerson.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        company.industry.toLowerCase().includes(searchQuery.toLowerCase())
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(company =>
+        company.name.toLowerCase().includes(query) ||
+        company.contactPerson.toLowerCase().includes(query) ||
+        company.industry.toLowerCase().includes(query)
       );
     }
-    
+
     return filtered;
-  };
+  }, [companies, selectedCategory, searchQuery]);
 
   const handleCompanyPress = (company: Company) => {
     // Aquí se navegaría a una pantalla que muestre todos los formularios de la empresa
@@ -105,8 +175,8 @@ export default function ProceduresScreen() {
       company.name,
       `📋 Industria: ${company.industry}\n👤 Contacto: ${company.contactPerson}\n📧 Email: ${company.email}\n📱 Teléfono: ${company.phone}\n📄 Formularios: ${company.formCount}\n🕒 Última actividad: ${company.lastActivity}`,
       [
-        { text: 'Ver Formularios', onPress: () => console.log('Ver formularios de:', company.id) },
-        { text: 'Editar Empresa', onPress: () => console.log('Editar empresa:', company.id) },
+        { text: 'Ver Formularios', onPress: () => {} },
+        { text: 'Editar Empresa', onPress: () => {} },
         { text: 'Cancelar', style: 'cancel' },
       ]
     );
@@ -115,8 +185,6 @@ export default function ProceduresScreen() {
   const handleAddCompany = () => {
     router.push('/create-company');
   };
-
-  const filteredCompanies = getFilteredCompanies();
 
   return (
     <View style={styles.container}>
@@ -157,7 +225,7 @@ export default function ProceduresScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.categoriesScrollContent}
           >
-            {industries.map((industry) => (
+            {industryOptions.map((industry) => (
               <TouchableOpacity
                 key={industry.id}
                 style={[
@@ -183,7 +251,7 @@ export default function ProceduresScreen() {
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
               {selectedCategory === 'todos' ? 'Todas las Empresas' : 
-               industries.find(i => i.id === selectedCategory)?.name || 'Empresas'}
+               industryOptions.find(i => i.id === selectedCategory)?.name || 'Empresas'}
               {' '}({filteredCompanies.length})
             </Text>
             <TouchableOpacity style={styles.addButton} onPress={handleAddCompany}>
@@ -191,6 +259,20 @@ export default function ProceduresScreen() {
               <Text style={styles.addButtonText}>Nueva</Text>
             </TouchableOpacity>
           </View>
+
+          {loadingCompanies && (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <ActivityIndicator size="large" color="#3b82f6" />
+              <Text style={{ marginTop: 12, color: '#6b7280' }}>Cargando empresas...</Text>
+            </View>
+          )}
+
+          {!loadingCompanies && errorMessage && (
+            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+              <Ionicons name="alert-circle" size={48} color="#ef4444" />
+              <Text style={{ marginTop: 12, color: '#ef4444', textAlign: 'center' }}>{errorMessage}</Text>
+            </View>
+          )}
 
           {filteredCompanies.map((company) => (
             <TouchableOpacity 
@@ -203,7 +285,7 @@ export default function ProceduresScreen() {
                   <Ionicons 
                     name="business" 
                     size={24} 
-                    color={industries.find(i => i.id === company.industry.toLowerCase())?.color || '#6366f1'} 
+                    color={industryOptions.find(i => i.id === company.industryKey)?.color || '#6366f1'} 
                   />
                 </View>
                 <View style={styles.fileInfo}>

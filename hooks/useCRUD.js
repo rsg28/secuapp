@@ -47,10 +47,6 @@ export const useCRUD = (endpoint) => {
       }
     };
     
-    console.log(`[makeRequest] ${endpoint} - URL:`, url);
-    console.log(`[makeRequest] ${endpoint} - Token exists:`, !!token);
-    console.log(`[makeRequest] ${endpoint} - Token length:`, token?.length || 0);
-    
     return fetch(url, { ...defaultOptions, ...options });
   };
 
@@ -154,10 +150,6 @@ export const useCRUD = (endpoint) => {
         acc[key] = itemData[key] === undefined ? null : itemData[key];
         return acc;
       }, {});
-      
-      console.log(`[useCRUD.create] ${endpoint} - Original:`, itemData);
-      console.log(`[useCRUD.create] ${endpoint} - Cleaned:`, cleanData);
-      console.log(`[useCRUD.create] ${endpoint} - JSON string:`, JSON.stringify(cleanData));
       
       const response = await makeRequest(`${API_BASE_URL}/${endpoint}`, {
         method: 'POST',

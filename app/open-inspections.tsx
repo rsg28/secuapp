@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   Alert,
   Modal,
@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { storage } from '../utils/storage';
 import { useOpenInspectionTemplates } from '../hooks/useOpenInspectionTemplates';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
 
@@ -36,7 +35,7 @@ interface Category {
 
 export default function OpenInspectionsScreen() {
   const { user } = useAuth();
-  const { templates, createTemplate, deleteTemplate, getAllTemplates, updateTemplate } = useOpenInspectionTemplates();
+  const { templates, createTemplate, deleteTemplate, getTemplatesByUserId, getAllTemplates, updateTemplate } = useOpenInspectionTemplates();
   const { getItemsByTemplateId, createItem, deleteItem, updateItem } = useOpenTemplateItems();
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
@@ -61,18 +60,30 @@ export default function OpenInspectionsScreen() {
   const [editTemplateCategory, setEditTemplateCategory] = useState('');
   const [editTemplateItems, setEditTemplateItems] = useState<Array<{id?: string, text: string, category: string}>>([]);
 
-  // Cargar templates de la base de datos
-  useEffect(() => {
-    const loadDatabaseTemplates = async () => {
-      try {
-        await getAllTemplates(1, 100);
-      } catch (error) {
-        // Error loading templates
-      }
-    };
+  const isRefreshing = useRef(false);
+  const isScreenActive = useRef(false);
 
-    loadDatabaseTemplates();
-  }, []);
+  const refreshTemplates = React.useCallback(async () => {
+    if (!isScreenActive.current) {
+      return;
+    }
+    if (isRefreshing.current) {
+      return;
+    }
+    if (!user?.id) {
+      setFormTemplates([]);
+      return;
+    }
+    isRefreshing.current = true;
+    try {
+      await getTemplatesByUserId(user.id, 1, 100);
+    } catch (error) {
+      console.error('Error refreshing open templates:', error);
+      throw error;
+    } finally {
+      isRefreshing.current = false;
+    }
+  }, [user?.id, getTemplatesByUserId]);
 
   // Convertir templates de DB a formato FormTemplate cuando cambien
   useEffect(() => {
@@ -89,9 +100,8 @@ export default function OpenInspectionsScreen() {
       }));
 
       setFormTemplates(dbTemplates);
-      
-      // Save templates to AsyncStorage when they change
-      storage.saveUserTemplates(templates);
+    } else {
+      setFormTemplates([]);
     }
   }, [templates]);
 
@@ -139,32 +149,25 @@ export default function OpenInspectionsScreen() {
     loadSavedForms();
   }, []);
 
-  // Recargar formularios cuando la pantalla vuelva a tener foco
   useFocusEffect(
     React.useCallback(() => {
+      isScreenActive.current = true;
       loadSavedForms();
-      getAllTemplates(1, 100);
-    }, [])
+      refreshTemplates().catch(() => {});
+      return () => {
+        isScreenActive.current = false;
+      };
+    }, [refreshTemplates])
   );
 
   const loadSavedForms = async () => {
     try {
-      const savedForms = await storage.loadForms();
-      
-      // Convertir formularios guardados al formato FormTemplate
-      const userForms = savedForms.map((form: any) => ({
-        id: form.id,
-        title: form.title,
-        description: form.description,
-        category: form.category,
-        isTemplate: form.isTemplate || false,
-        createdDate: form.createdDate || '2024-01-15',
-        lastModified: form.lastModified || '2024-01-15',
-        itemCount: form.items ? form.items.length : 0,
-      }));
-
-      // Solo mostrar los formularios guardados (sin duplicar)
-      setFormTemplates(userForms);
+      // Para inspecciones abiertas preferimos reflejar exactamente
+      // lo que viene desde la base de datos. Si no hay templates
+      // guardados en el backend, mostramos la lista vacía.
+      if (!templates || templates.length === 0) {
+        setFormTemplates([]);
+      }
     } catch (error) {
       setFormTemplates([]);
     }
@@ -172,8 +175,6 @@ export default function OpenInspectionsScreen() {
 
   const categories: Category[] = [
     { id: 'todos', name: 'Todos', icon: '', color: '#6366f1' },
-    { id: 'higiene-industrial', name: 'Higiene Industrial', icon: '', color: '#6366f1' },
-    { id: 'productos-quimicos', name: 'Productos Químicos', icon: '', color: '#6366f1' },
   ];
 
   const getFilteredForms = () => {
@@ -195,14 +196,6 @@ export default function OpenInspectionsScreen() {
     // Usar las categorías dinámicas detectadas de la base de datos
     if (dynamicCategories && dynamicCategories.length > 0) {
       availableCategories.push(...dynamicCategories);
-    } else {
-      // Fallback: agregar solo categorías que tengan formularios (comportamiento anterior)
-      categories.slice(1).forEach(category => {
-        const hasTemplates = formTemplates.some(form => form.category === category.id);
-        if (hasTemplates) {
-          availableCategories.push(category);
-        }
-      });
     }
     
     return availableCategories;
@@ -257,7 +250,8 @@ export default function OpenInspectionsScreen() {
         title: newTemplateTitle.trim(),
         description: newTemplateDescription.trim(),
         temp_category: newTemplateCategory.trim(),
-        created_by: userId
+        created_by: userId,
+        user_id: userId
       };
       
       createdTemplate = await createTemplate(templateData);
@@ -293,7 +287,6 @@ export default function OpenInspectionsScreen() {
           if (createdTemplate?.id) {
             try {
               await deleteTemplate(createdTemplate.id);
-              console.log('Template eliminado debido a error en items');
             } catch (deleteError) {
               console.error('Error al eliminar template después de fallo en items:', deleteError);
             }
@@ -306,7 +299,7 @@ export default function OpenInspectionsScreen() {
       }
       
       // Refresh templates list from database
-      await getAllTemplates(1, 100);
+      await refreshTemplates();
       
       // Close modal and reset
       setShowCreateModal(false);
@@ -461,7 +454,7 @@ export default function OpenInspectionsScreen() {
         try {
           await deleteItem(itemId);
         } catch (error) {
-          console.log('Error deleting item:', error);
+          console.error('Error deleting item:', error);
         }
       }
       
@@ -492,7 +485,7 @@ export default function OpenInspectionsScreen() {
       }
       
       // Refresh templates list from database
-      await getAllTemplates(1, 100);
+      await refreshTemplates();
       
       // Close modal and reset
       setShowEditModal(false);
@@ -558,7 +551,7 @@ export default function OpenInspectionsScreen() {
               await deleteTemplate(templateIdToDelete);
               
               // Refresh templates list from database
-              await getAllTemplates(1, 100);
+              await refreshTemplates();
               
               Alert.alert('Éxito', 'Template eliminado correctamente');
             } catch (err: any) {
@@ -587,7 +580,7 @@ export default function OpenInspectionsScreen() {
       </View>
 
       <View style={styles.contentOverlay}>
-        <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Categorías */}
         <View style={styles.categoriesContainer}>
           <ScrollView 
@@ -632,30 +625,30 @@ export default function OpenInspectionsScreen() {
 
           {filteredForms.map((form) => (
             <View key={form.id} style={styles.formCard}>
-              <TouchableOpacity 
+            <TouchableOpacity 
                 style={styles.formCardContent}
-                onPress={() => handleFormPress(form)}
-              >
-                <View style={styles.formCardHeader}>
-                  <View style={styles.formInfo}>
-                    <View style={styles.formTitleRow}>
-                      <Text style={styles.formTitle}>{form.title}</Text>
-                      {form.isTemplate && (
-                        <View style={styles.templateBadge}>
-                          <Text style={styles.templateBadgeText}>Template</Text>
-                        </View>
-                      )}
-                    </View>
-                    <Text style={styles.formDescription}>{form.description}</Text>
+              onPress={() => handleFormPress(form)}
+            >
+              <View style={styles.formCardHeader}>
+                <View style={styles.formInfo}>
+                  <View style={styles.formTitleRow}>
+                    <Text style={styles.formTitle}>{form.title}</Text>
+                    {form.isTemplate && (
+                      <View style={styles.templateBadge}>
+                        <Text style={styles.templateBadgeText}>Template</Text>
+                      </View>
+                    )}
                   </View>
+                  <Text style={styles.formDescription}>{form.description}</Text>
                 </View>
+              </View>
 
-                <View style={styles.formCardFooter}>
-                  <Text style={styles.formMeta}>
-                    {form.itemCount} elementos
+              <View style={styles.formCardFooter}>
+                <Text style={styles.formMeta}>
+                  {form.itemCount} elementos
                   </Text>
-                </View>
-              </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
               
               {/* Botones de acción en esquina inferior derecha */}
               <TouchableOpacity 
@@ -682,7 +675,7 @@ export default function OpenInspectionsScreen() {
 
         {/* Espacio adicional para el bottom tab */}
         <View style={styles.bottomSpacing} />
-        </ScrollView>
+      </ScrollView>
       </View>
 
       {/* Modal de Crear Template */}

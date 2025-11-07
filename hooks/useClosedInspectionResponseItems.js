@@ -79,10 +79,6 @@ export const useClosedInspectionResponseItems = () => {
         return acc;
       }, {});
       
-      console.log('[useClosedInspectionResponseItems.createItem] Original:', itemData);
-      console.log('[useClosedInspectionResponseItems.createItem] Cleaned:', cleanData);
-      console.log('[useClosedInspectionResponseItems.createItem] JSON string:', JSON.stringify(cleanData));
-      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items`, {
         method: 'POST',
@@ -118,10 +114,6 @@ export const useClosedInspectionResponseItems = () => {
         acc[key] = itemData[key] === undefined ? null : itemData[key];
         return acc;
       }, {});
-      
-      console.log('[useClosedInspectionResponseItems.updateItem] Original:', itemData);
-      console.log('[useClosedInspectionResponseItems.updateItem] Cleaned:', cleanData);
-      console.log('[useClosedInspectionResponseItems.updateItem] JSON string:', JSON.stringify(cleanData));
       
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items/${id}`, {
@@ -224,6 +216,11 @@ export const useClosedInspectionResponseItems = () => {
     }
   };
 
+  const countItemsByResponseId = async (responseId) => {
+    const responseItems = await getItemsByResponseId(responseId);
+    return responseItems.length;
+  };
+
   return {
     items,
     loading,
@@ -233,7 +230,8 @@ export const useClosedInspectionResponseItems = () => {
     createItem,
     updateItem,
     deleteItem,
-    getItemsByResponseId
+    getItemsByResponseId,
+    countItemsByResponseId
   };
 };
 

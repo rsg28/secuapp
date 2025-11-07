@@ -60,7 +60,6 @@ export default function EditExistingResponseScreen() {
   const type = params.type as 'closed' | 'open';
   const templateTitle = params.templateTitle as string || 'Template';
 
-  console.log('[EditExistingResponseScreen] Params received:', { responseId, templateId, type, templateTitle });
 
   const { getCurrentCompany } = useAuth();
   const { getItemsByTemplateId } = type === 'closed' ? useClosedTemplateItems() : useOpenTemplateItems();
@@ -170,7 +169,6 @@ export default function EditExistingResponseScreen() {
     const templateItemsList = loadedTemplateItems ?? templateItems;
 
     if (!responseId || !templateItemsList || templateItemsList.length === 0) {
-      console.log('[loadResponseItems] Missing requirements:', { responseId, templateItemsLength: templateItemsList?.length ?? 0 });
       return;
     }
     
@@ -181,11 +179,6 @@ export default function EditExistingResponseScreen() {
       } else {
         responseItems = await getOpenResponseItems(responseId);
       }
-
-      console.log('====== Items encontrados =======');
-      responseItems.forEach((item: any, index: number) => {
-        console.log(`${index + 1}.`, JSON.stringify(item, null, 2));
-      });
 
       // Create a map of response items by item_id (which references template item's id)
       // item_id in response_items stores the UUID (id) of the template item
@@ -421,12 +414,6 @@ export default function EditExistingResponseScreen() {
                 }
               });
               
-              console.log('[handleSave] Updating closed response item:', {
-                id: existingResponseItemId,
-                updateData,
-                originalItem
-              });
-              
               await updateClosedResponseItem(existingResponseItemId, updateData);
               updatedCount++;
 
@@ -562,12 +549,6 @@ export default function EditExistingResponseScreen() {
                 if (updateData[key] === undefined) {
                   updateData[key] = null;
                 }
-              });
-              
-              console.log('[handleSave] Updating open response item:', {
-                id: existingResponseItemId,
-                updateData,
-                originalItem
               });
               
               await updateOpenResponseItem(existingResponseItemId, updateData);

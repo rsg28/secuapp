@@ -1,6 +1,6 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { router } from 'expo-router';
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     Alert,
     ScrollView,
@@ -10,9 +10,31 @@ import {
     View
 } from 'react-native';
 import { useAuth } from '../../contexts/AuthContext';
+import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
+import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
 
 export default function ProfileScreen() {
   const { user, logout } = useAuth();
+  const { countResponsesByInspectorId: countClosedResponses } = useClosedInspectionResponses();
+  const { countResponsesByInspectorId: countOpenResponses } = useOpenInspectionResponses();
+  const [formCount, setFormCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const loadFormCounts = async () => {
+      if (!user?.id) return;
+      try {
+        const [closedCount, openCount] = await Promise.all([
+          countClosedResponses(user.id),
+          countOpenResponses(user.id)
+        ]);
+        setFormCount(closedCount + openCount);
+      } catch (error) {
+        setFormCount(0);
+      }
+    };
+
+    loadFormCounts();
+  }, [user?.id]);
 
   const handleLogout = async () => {
     Alert.alert(
@@ -86,16 +108,6 @@ export default function ProfileScreen() {
         <View style={styles.infoCard}>
           <View style={styles.infoItem}>
             <View style={styles.infoIcon}>
-              <IconSymbol name="person.badge.key.fill" size={20} color="#3b82f6" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>ID de Usuario</Text>
-              <Text style={styles.infoValue}>{user.id}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.infoItem}>
-            <View style={styles.infoIcon}>
               <IconSymbol name="envelope.fill" size={20} color="#10b981" />
             </View>
             <View style={styles.infoContent}>
@@ -110,17 +122,7 @@ export default function ProfileScreen() {
             </View>
             <View style={styles.infoContent}>
               <Text style={styles.infoLabel}>Teléfono</Text>
-              <Text style={styles.infoValue}>{user.phone}</Text>
-            </View>
-          </View>
-          
-          <View style={styles.infoItem}>
-            <View style={styles.infoIcon}>
-              <IconSymbol name="calendar" size={20} color="#8b5cf6" />
-            </View>
-            <View style={styles.infoContent}>
-              <Text style={styles.infoLabel}>Fecha de Ingreso</Text>
-              <Text style={styles.infoValue}>{user.joinDate}</Text>
+              <Text style={styles.infoValue}>{user.phone || 'No registrado'}</Text>
             </View>
           </View>
         </View>
@@ -132,18 +134,18 @@ export default function ProfileScreen() {
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <IconSymbol name="checkmark.circle.fill" size={24} color="#22c55e" />
-            <Text style={styles.statNumber}>47</Text>
-            <Text style={styles.statLabel}>Formularios Completados</Text>
+            <Text style={styles.statNumber}>{formCount === null ? '...' : formCount}</Text>
+            <Text style={styles.statLabel}>Formularios en Proceso</Text>
           </View>
           <View style={styles.statItem}>
             <IconSymbol name="camera.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>23</Text>
-            <Text style={styles.statLabel}>Fotos Tomadas</Text>
+            <Text style={styles.statNumber}>Pronto</Text>
+            <Text style={styles.statLabel}>Fotos Tomadas (Trabajando en ello)</Text>
           </View>
           <View style={styles.statItem}>
             <IconSymbol name="exclamationmark.triangle.fill" size={24} color="#f59e0b" />
-            <Text style={styles.statNumber}>3</Text>
-            <Text style={styles.statLabel}>Incidentes Reportados</Text>
+            <Text style={styles.statNumber}>Pronto</Text>
+            <Text style={styles.statLabel}>Incidentes Reportados (Trabajando en ello)</Text>
           </View>
         </View>
       </View>

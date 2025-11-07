@@ -140,12 +140,22 @@ export const useClosedInspectionTemplates = () => {
         body: JSON.stringify(templateData)
       });
 
-      if (!response.ok) {
-        throw new Error('Error al actualizar template cerrado');
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        if (!response.ok) {
+          throw new Error(`Error al actualizar template cerrado (HTTP ${response.status})`);
+        }
+        return null;
       }
 
-      const data = await response.json();
-      return data.data.template;
+      if (!response.ok) {
+        const serverMessage = data?.message || data?.error || data?.errors?.[0]?.msg;
+        throw new Error(serverMessage || 'Error al actualizar template cerrado');
+      }
+
+      return data?.data?.template;
     } catch (err) {
       setError(err.message);
       throw err;

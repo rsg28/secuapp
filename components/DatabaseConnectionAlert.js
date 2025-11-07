@@ -30,7 +30,6 @@ const DatabaseConnectionNotification = () => {
               text: 'Reintentar',
               onPress: () => {
                 // Aquí podrías llamar a checkConnection() si lo expones
-                console.log('Reintentando conexión...');
               }
             },
             {

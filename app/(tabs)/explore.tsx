@@ -17,29 +17,6 @@ export default function ServiciosScreen() {
     router.push('/inspection-types');
   };
 
-  const handleClosedInspections = () => {
-    router.push('/closed-inspections');
-  };
-
-  const handleObservaciones = () => {
-    // TODO: Implementar pantalla de observaciones
-    console.log('Navegar a observaciones');
-  };
-
-  const handleAuditoria = () => {
-    // TODO: Implementar pantalla de auditoría
-    console.log('Navegar a auditoría');
-  };
-
-  const handleLineaBase = () => {
-    // TODO: Implementar pantalla de línea de base
-    console.log('Navegar a línea de base');
-  };
-
-  const handleMonitoreo = () => {
-    router.push('/monitoring');
-  };
-
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -70,68 +47,72 @@ export default function ServiciosScreen() {
         </TouchableOpacity>
 
         {/* Observaciones Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleObservaciones}>
+        <View style={[styles.inspectionCard, styles.disabledCard]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <IconSymbol name="eye.fill" size={32} color="#10b981" />
+              <IconSymbol name="eye.fill" size={32} color="#9ca3af" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Observaciones</Text>
               <Text style={styles.cardDescription}>
                 Observaciones de comportamiento seguro en el trabajo
               </Text>
+              <Text style={styles.cardWorking}>Trabajando en ello</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+            <Ionicons name="construct" size={24} color="#9ca3af" />
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Auditoría Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleAuditoria}>
+        <View style={[styles.inspectionCard, styles.disabledCard]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <Ionicons name="document-text" size={32} color="#8b5cf6" />
+              <Ionicons name="document-text" size={32} color="#9ca3af" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Auditoría</Text>
               <Text style={styles.cardDescription}>
                 Auditorías de cumplimiento de seguridad
               </Text>
+              <Text style={styles.cardWorking}>Trabajando en ello</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+            <Ionicons name="construct" size={24} color="#9ca3af" />
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Línea de Base Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleLineaBase}>
+        <View style={[styles.inspectionCard, styles.disabledCard]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <IconSymbol name="chart.bar.fill" size={32} color="#f59e0b" />
+              <IconSymbol name="chart.bar.fill" size={32} color="#9ca3af" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Línea de Base</Text>
               <Text style={styles.cardDescription}>
                 Establecimiento de estándares de seguridad
               </Text>
+              <Text style={styles.cardWorking}>Trabajando en ello</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+            <Ionicons name="construct" size={24} color="#9ca3af" />
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Monitoreo Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleMonitoreo}>
+        <View style={[styles.inspectionCard, styles.disabledCard]}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <Ionicons name="trending-up" size={32} color="#ef4444" />
+              <Ionicons name="trending-up" size={32} color="#9ca3af" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Monitoreo</Text>
               <Text style={styles.cardDescription}>
                 Monitoreo continuo de indicadores de seguridad
               </Text>
+              <Text style={styles.cardWorking}>Trabajando en ello</Text>
             </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+            <Ionicons name="construct" size={24} color="#9ca3af" />
           </View>
-        </TouchableOpacity>
+        </View>
 
         {/* Espacio para el bottom tab */}
         <View style={styles.bottomSpacing} />
@@ -190,6 +171,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
+  disabledCard: {
+    backgroundColor: '#f9fafb',
+  },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -217,6 +201,11 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginBottom: 8,
     lineHeight: 20,
+  },
+  cardWorking: {
+    fontSize: 12,
+    color: '#9ca3af',
+    fontStyle: 'italic',
   },
   bottomSpacing: {
     height: 100,

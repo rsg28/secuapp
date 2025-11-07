@@ -39,6 +39,27 @@ export const useOpenInspectionResponseItems = () => {
     return await crud.update(id, validatedData);
   };
 
+  const fetchItemsByResponseId = async (responseId) => {
+    const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+    const token = await AsyncStorage.getItem('authToken');
+    const API_BASE_URL = 'https://www.securg.xyz/api/v1';
+
+    const response = await fetch(`${API_BASE_URL}/open-inspection-response-items/response/${responseId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Error al obtener items de respuesta');
+    }
+
+    const data = await response.json();
+    return data.data.items;
+  };
+
   return {
     items: crud.data,
     loading: crud.loading,
@@ -48,29 +69,10 @@ export const useOpenInspectionResponseItems = () => {
     createItem,
     updateItem,
     deleteItem: crud.remove,
-    getItemsByResponseId: async (responseId) => {
-      try {
-        const AsyncStorage = require('@react-native-async-storage/async-storage').default;
-        const token = await AsyncStorage.getItem('authToken');
-        const API_BASE_URL = 'https://www.securg.xyz/api/v1';
-        
-        const response = await fetch(`${API_BASE_URL}/open-inspection-response-items/response/${responseId}`, {
-          method: 'GET',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          }
-        });
-
-        if (!response.ok) {
-          throw new Error('Error al obtener items de respuesta');
-        }
-
-        const data = await response.json();
-        return data.data.items;
-      } catch (err) {
-        throw err;
-      }
+    getItemsByResponseId: fetchItemsByResponseId,
+    countItemsByResponseId: async (responseId) => {
+      const items = await fetchItemsByResponseId(responseId);
+      return items.length;
     }
   };
 };

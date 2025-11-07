@@ -57,7 +57,6 @@ export default function EditResponseScreen() {
   const type = params.type as 'closed' | 'open';
   const templateTitle = params.templateTitle as string || 'Template';
 
-  console.log('[EditResponseScreen] Params received:', { templateId, type, templateTitle });
 
   const { getCurrentCompany } = useAuth();
   const { getItemsByTemplateId } = type === 'closed' ? useClosedTemplateItems() : useOpenTemplateItems();
@@ -113,8 +112,6 @@ export default function EditResponseScreen() {
   const loadTemplateItems = async () => {
     try {
       setLoading(true);
-      console.log('[loadTemplateItems] templateId:', templateId);
-      console.log('[loadTemplateItems] type:', type);
       
       if (!templateId) {
         throw new Error('No se proporcionó el ID del template');
@@ -274,13 +271,6 @@ export default function EditResponseScreen() {
           responseItemData.response = closedItem.response || null;
           responseItemData.explanation = closedItem.explanation?.trim() || null;
           
-          console.log('[handleSave] Closed item data:', {
-            original: closedItem,
-            processed: responseItemData,
-            responseId: responseId,
-            hasUndefined: Object.keys(responseItemData).some(k => responseItemData[k] === undefined)
-          });
-          
           // Final validation - ensure no undefined values
           if (Object.values(responseItemData).some(v => v === undefined)) {
             console.error('[handleSave] Found undefined in responseItemData:', responseItemData);
@@ -294,7 +284,6 @@ export default function EditResponseScreen() {
           }
           
           try {
-            console.log('[handleSave] Sending to backend:', JSON.stringify(responseItemData, null, 2));
             const createdItem = await createClosedResponseItem(responseItemData);
             createdItems.push(createdItem);
           } catch (error: any) {
@@ -326,13 +315,6 @@ export default function EditResponseScreen() {
           responseItemData.question_index = openItem.question_index || null;
           responseItemData.response = trimmedResponse || null;
           
-          console.log('[handleSave] Open item data:', {
-            original: openItem,
-            processed: responseItemData,
-            responseId: responseId,
-            hasUndefined: Object.keys(responseItemData).some(k => responseItemData[k] === undefined)
-          });
-          
           // Final validation - ensure no undefined values
           if (Object.values(responseItemData).some(v => v === undefined)) {
             console.error('[handleSave] Found undefined in responseItemData:', responseItemData);
@@ -346,7 +328,6 @@ export default function EditResponseScreen() {
           }
           
           try {
-            console.log('[handleSave] Sending to backend:', JSON.stringify(responseItemData, null, 2));
             const createdItem = await createOpenResponseItem(responseItemData);
             createdItems.push(createdItem);
           } catch (error: any) {

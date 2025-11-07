@@ -79,10 +79,6 @@ export const useClosedInspectionResponses = () => {
         return acc;
       }, {});
       
-      console.log('[useClosedInspectionResponses.createResponse] Original:', responseData);
-      console.log('[useClosedInspectionResponses.createResponse] Cleaned:', cleanData);
-      console.log('[useClosedInspectionResponses.createResponse] JSON string:', JSON.stringify(cleanData));
-      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-responses`, {
         method: 'POST',
@@ -139,9 +135,6 @@ export const useClosedInspectionResponses = () => {
         return acc;
       }, {});
       
-      console.log('[useClosedInspectionResponses.updateResponse] Original:', responseData);
-      console.log('[useClosedInspectionResponses.updateResponse] Cleaned:', cleanData);
-      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-responses/${id}`, {
         method: 'PUT',
@@ -157,12 +150,6 @@ export const useClosedInspectionResponses = () => {
         let errorMessage = 'Error al actualizar respuesta cerrada';
         try {
           const errorData = await response.json();
-          console.log('[useClosedInspectionResponses.updateResponse] Error response:', {
-            status: response.status,
-            statusText: response.statusText,
-            errorData
-          });
-          
           if (errorData.errors && Array.isArray(errorData.errors) && errorData.errors.length > 0) {
             // Format validation errors
             const errorMessages = errorData.errors.map(err => `${err.field}: ${err.message}`).join(', ');
@@ -254,6 +241,15 @@ export const useClosedInspectionResponses = () => {
     }
   };
 
+  const countResponsesByInspectorId = async (userId) => {
+    try {
+      const data = await getResponsesByInspectorId(userId, 1, 100);
+      return data?.data?.responses?.length || 0;
+    } catch {
+      return 0;
+    }
+  };
+
   return {
     responses,
     loading,
@@ -263,7 +259,8 @@ export const useClosedInspectionResponses = () => {
     createResponse,
     updateResponse,
     deleteResponse,
-    getResponsesByInspectorId
+    getResponsesByInspectorId,
+    countResponsesByInspectorId
   };
 };
 

@@ -90,7 +90,7 @@ export default function CCM2LInspectionScreen() {
 
   const handleProceed = () => {
     // Por ahora mostrar mensaje de trabajo en progreso
-    console.log('Procediendo con la inspección...');
+    Alert.alert('Trabajando en ello', 'Esta funcionalidad estará disponible próximamente');
     // TODO: Implementar navegación a formulario de inspección para la empresa seleccionada
   };
 

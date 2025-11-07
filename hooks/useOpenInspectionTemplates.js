@@ -16,7 +16,7 @@
  * 
  * @returns {object} Objeto con funciones y estados para gestión de templates abiertos
  */
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
@@ -27,8 +27,7 @@ export const useOpenInspectionTemplates = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Obtener todos los templates abiertos
-  const getAllTemplates = async (page = 1, limit = 10) => {
+  const getAllTemplates = useCallback(async (page = 1, limit = 10) => {
     try {
       setLoading(true);
       setError(null);
@@ -55,10 +54,9 @@ export const useOpenInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Obtener template por ID
-  const getTemplateById = async (id) => {
+  const getTemplateById = useCallback(async (id) => {
     try {
       setLoading(true);
       setError(null);
@@ -84,10 +82,9 @@ export const useOpenInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Crear template abierto
-  const createTemplate = async (templateData) => {
+  const createTemplate = useCallback(async (templateData) => {
     try {
       setLoading(true);
       setError(null);
@@ -111,7 +108,6 @@ export const useOpenInspectionTemplates = () => {
       }
       
       if (!response.ok) {
-        // Check for validation errors
         if (data && data.errors && Array.isArray(data.errors)) {
           const validationMessages = data.errors.map((err) => err.msg || err.message).join(', ');
           throw new Error(validationMessages || data.message || 'Error de validación');
@@ -127,10 +123,9 @@ export const useOpenInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Actualizar template abierto
-  const updateTemplate = async (id, templateData) => {
+  const updateTemplate = useCallback(async (id, templateData) => {
     try {
       setLoading(true);
       setError(null);
@@ -157,10 +152,9 @@ export const useOpenInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  // Eliminar template abierto
-  const deleteTemplate = async (id) => {
+  const deleteTemplate = useCallback(async (id) => {
     try {
       setLoading(true);
       setError(null);
@@ -185,7 +179,51 @@ export const useOpenInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  const getTemplatesByUserId = useCallback(async (userId, page = 1, limit = 10) => {
+    try {
+      setLoading(true);
+      setError(null);
+
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/open-inspection-templates/user/${userId}?page=${page}&limit=${limit}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      let data = null;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('[getTemplatesByUserId] JSON parse error:', parseError?.message);
+      }
+
+      if (!response.ok) {
+        const serverMessage = data?.message || data?.error || data?.errors?.[0]?.msg;
+        const message = serverMessage
+          ? `${serverMessage} (HTTP ${response.status})`
+          : `Error al obtener templates abiertos por usuario (HTTP ${response.status})`;
+        console.error('[getTemplatesByUserId] Server response:', data);
+        throw new Error(message);
+      }
+
+      if (data && Array.isArray(data?.data?.templates)) {
+        setTemplates(data.data.templates);
+      } else {
+        setTemplates([]);
+      }
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   return {
     templates,
@@ -195,7 +233,8 @@ export const useOpenInspectionTemplates = () => {
     getTemplateById,
     createTemplate,
     updateTemplate,
-    deleteTemplate
+    deleteTemplate,
+    getTemplatesByUserId
   };
 };
 

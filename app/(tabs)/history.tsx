@@ -9,10 +9,18 @@ import {
     View,
     ActivityIndicator,
     Alert,
+    GestureResponderEvent,
+    Platform,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
+import { useClosedTemplateItems } from '../../hooks/useClosedTemplateItems';
+import { useOpenTemplateItems } from '../../hooks/useOpenTemplateItems';
+import { useClosedInspectionResponseItems } from '../../hooks/useClosedInspectionResponseItems';
+import { useOpenInspectionResponseItems } from '../../hooks/useOpenInspectionResponseItems';
 import { useFocusEffect } from '@react-navigation/native';
 import { router } from 'expo-router';
 
@@ -28,6 +36,8 @@ interface HistoryItem {
   template_id?: string;
   company_id?: string;
   title?: string;
+  totalQuestions?: number;
+  answeredQuestions?: number;
 }
 
 interface Service {
@@ -37,18 +47,54 @@ interface Service {
   color: string;
 }
 
+const escapeCsvValue = (value: any) => {
+  if (value === null || value === undefined) return '';
+  const stringValue = String(value);
+  if (/[",\n]/.test(stringValue)) {
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  }
+  return stringValue;
+};
+
+const isRemoteDebugging = Platform.OS !== 'web'
+  && typeof global !== 'undefined'
+  && typeof (global as any).nativeCallSyncHook === 'undefined';
+
+const canUseBrowserDownload = typeof window !== 'undefined'
+  && typeof document !== 'undefined'
+  && typeof URL !== 'undefined'
+  && typeof Blob !== 'undefined';
+
 export default function HistoryScreen() {
   const { user } = useAuth();
   const { 
     getResponsesByInspectorId: getClosedResponses,
+    getResponseById: getClosedResponseById,
     deleteResponse: deleteClosedResponse,
     loading: closedLoading 
   } = useClosedInspectionResponses();
   const { 
     getResponsesByInspectorId: getOpenResponses,
+    getResponseById: getOpenResponseById,
     deleteResponse: deleteOpenResponse,
     loading: openLoading 
   } = useOpenInspectionResponses();
+  const { 
+    countItemsByTemplateId: countClosedTemplateItems,
+    getItemsByTemplateId: getClosedTemplateItems
+  } = useClosedTemplateItems();
+  const { 
+    countItemsByTemplateId: countOpenTemplateItems,
+    getItemsByTemplateId: getOpenTemplateItems
+  } = useOpenTemplateItems();
+  const { 
+    countItemsByResponseId: countClosedResponseItems,
+    getItemsByResponseId: getClosedResponseItems
+  } = useClosedInspectionResponseItems();
+  const { 
+    countItemsByResponseId: countOpenResponseItems,
+    getItemsByResponseId: getOpenResponseItems
+  } = useOpenInspectionResponseItems();
   
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
   const [selectedService, setSelectedService] = useState<Service | null>({
@@ -61,6 +107,7 @@ export default function HistoryScreen() {
   const [showWorkingModal, setShowWorkingModal] = useState(false);
   const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const services: Service[] = [
     { id: 'inspecciones', name: 'Inspecciones', icon: 'clipboard', color: '#3b82f6' },
@@ -89,51 +136,71 @@ export default function HistoryScreen() {
         getOpenResponses(user.id, 1, 100)
       ]);
 
-      const closedItems: HistoryItem[] = (closedData?.data?.responses || []).map((response: any) => ({
-        id: response.id,
-        service: 'Inspección Cerrada',
-        serviceType: 'inspecciones',
-        action: 'Inspección completada',
-        timestamp: formatDate(response.created_at),
-        status: 'completed' as const,
-        details: response.title || 'Sin título',
-        category: 'cerrado' as const,
-        template_id: response.template_id,
-        company_id: response.company_id,
-        title: response.title
-      }));
+      const safeCount = async (fn: () => Promise<number>) => {
+        try {
+          return await fn();
+        } catch (error: any) {
+          console.error('Error counting items:', error?.message);
+          return 0;
+        }
+      };
 
-      const openItems: HistoryItem[] = (openData?.data?.responses || []).map((response: any) => ({
-        id: response.id,
-        service: 'Inspección Abierta',
-        serviceType: 'inspecciones',
-        action: 'Inspección completada',
-        timestamp: formatDate(response.created_at),
-        status: 'completed' as const,
-        details: response.title || 'Sin título',
-        category: 'abierto' as const,
-        template_id: response.template_id,
-        company_id: response.company_id,
-        title: response.title
-      }));
+      const closedItems: HistoryItem[] = await Promise.all(
+        (closedData?.data?.responses || []).map(async (response: any) => {
+          const totalQuestions = response.template_id
+            ? await safeCount(() => countClosedTemplateItems(response.template_id))
+            : 0;
+          const answeredQuestions = await safeCount(() => countClosedResponseItems(response.id));
 
-      // Store original responses for sorting
-      const allResponses = [
-        ...(closedData?.data?.responses || []).map((r: any) => ({ ...r, category: 'cerrado' })),
-        ...(openData?.data?.responses || []).map((r: any) => ({ ...r, category: 'abierto' }))
-      ];
+          return {
+            id: response.id,
+            service: 'Inspección Cerrada',
+            serviceType: 'inspecciones',
+            action: 'Inspección completada',
+            timestamp: formatDate(response.created_at),
+            status: totalQuestions === answeredQuestions ? 'completed' : 'pending',
+            details: response.title || 'Sin título',
+            category: 'cerrado' as const,
+            template_id: response.template_id,
+            company_id: response.company_id,
+            title: response.title,
+            totalQuestions,
+            answeredQuestions,
+            createdAt: response.created_at
+          } as HistoryItem & { createdAt?: string };
+        })
+      );
 
-      // Combine items
-      const allItems = [...closedItems, ...openItems];
-      
-      // Sort by created_at date (newest first)
-      allItems.sort((a, b) => {
-        const aResponse = allResponses.find((r: any) => r.id === a.id);
-        const bResponse = allResponses.find((r: any) => r.id === b.id);
-        
-        if (!aResponse?.created_at || !bResponse?.created_at) return 0;
-        return new Date(bResponse.created_at).getTime() - new Date(aResponse.created_at).getTime();
-      });
+      const openItems: HistoryItem[] = await Promise.all(
+        (openData?.data?.responses || []).map(async (response: any) => {
+          const totalQuestions = response.template_id
+            ? await safeCount(() => countOpenTemplateItems(response.template_id))
+            : 0;
+          const answeredQuestions = await safeCount(() => countOpenResponseItems(response.id));
+
+          return {
+            id: response.id,
+            service: 'Inspección Abierta',
+            serviceType: 'inspecciones',
+            action: 'Inspección completada',
+            timestamp: formatDate(response.created_at),
+            status: totalQuestions === answeredQuestions ? 'completed' : 'pending',
+            details: response.title || 'Sin título',
+            category: 'abierto' as const,
+            template_id: response.template_id,
+            company_id: response.company_id,
+            title: response.title,
+            totalQuestions,
+            answeredQuestions,
+            createdAt: response.created_at
+          } as HistoryItem & { createdAt?: string };
+        })
+      );
+
+      const allItems = [...closedItems, ...openItems]
+        .map(item => ({ ...item, createdAt: (item as any).createdAt || new Date().toISOString() }))
+        .sort((a, b) => new Date((b as any).createdAt).getTime() - new Date((a as any).createdAt).getTime())
+        .map(({ createdAt, ...rest }) => rest);
 
       setHistoryData(allItems);
     } catch (error: any) {
@@ -187,7 +254,7 @@ export default function HistoryScreen() {
       case 'completed':
         return 'Completado';
       case 'pending':
-        return 'En Progreso';
+        return 'Incompleto';
       case 'failed':
         return 'Fallido';
       default:
@@ -259,6 +326,149 @@ export default function HistoryScreen() {
         }
       ]
     );
+  };
+
+  const handleDownloadExcel = async (item: HistoryItem) => {
+    const isClosed = item.category === 'cerrado';
+    const templateId = item.template_id;
+
+    if (!templateId) {
+      Alert.alert('Error', 'No se encontró el template asociado a esta inspección');
+      return;
+    }
+
+    try {
+      setDownloadingId(item.id);
+
+      const [responseData, templateItemsRaw, responseItemsRaw] = await Promise.all([
+        isClosed ? getClosedResponseById(item.id) : getOpenResponseById(item.id),
+        isClosed ? getClosedTemplateItems(templateId) : getOpenTemplateItems(templateId),
+        isClosed ? getClosedResponseItems(item.id) : getOpenResponseItems(item.id)
+      ]);
+
+      const templateItems = Array.isArray(templateItemsRaw) ? templateItemsRaw : [];
+      const responseItems = Array.isArray(responseItemsRaw) ? responseItemsRaw : [];
+
+      const templateMap: Record<string, any> = {};
+      templateItems.forEach((templateItem: any) => {
+        templateMap[templateItem.id] = templateItem;
+      });
+
+      const lines: string[] = [];
+      lines.push(`Título,${escapeCsvValue(responseData?.title || 'Sin título')}`);
+      lines.push(`Tipo,${escapeCsvValue(isClosed ? 'Inspección Cerrada' : 'Inspección Abierta')}`);
+      lines.push(`Fecha de inspección,${escapeCsvValue(responseData?.inspection_date || '')}`);
+      lines.push(`Fecha de finalización,${escapeCsvValue(responseData?.completion_date || '')}`);
+      if (responseData?.company_name) {
+        lines.push(`Empresa,${escapeCsvValue(responseData.company_name)}`);
+      }
+      if (!isClosed && responseData?.notes) {
+        lines.push(`Notas,${escapeCsvValue(responseData.notes)}`);
+      }
+      lines.push('');
+
+      if (isClosed) {
+        lines.push('Pregunta,Respuesta,Explicación');
+        responseItems.forEach((responseItem: any) => {
+          const templateItem = templateMap[responseItem.item_id] || {};
+          lines.push([
+            escapeCsvValue(templateItem.text || `Pregunta ${responseItem.question_index}`),
+            escapeCsvValue(responseItem.response),
+            escapeCsvValue(responseItem.explanation)
+          ].join(','));
+        });
+      } else {
+        lines.push('Pregunta,Respuesta');
+        responseItems.forEach((responseItem: any) => {
+          const templateItem = templateMap[responseItem.item_id] || {};
+          lines.push([
+            escapeCsvValue(templateItem.text || `Pregunta ${responseItem.question_index}`),
+            escapeCsvValue(responseItem.response)
+          ].join(','));
+        });
+      }
+
+      const csv = lines.join('\n');
+      const fileName = `inspeccion-${item.id}.csv`;
+
+      if (Platform.OS === 'web' || isRemoteDebugging) {
+        if (!canUseBrowserDownload) {
+          Alert.alert(
+            'Descarga no soportada',
+            'Este entorno no soporta descargas directas. Desactiva la depuración remota e inténtalo de nuevo.'
+          );
+          return;
+        }
+        try {
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = window.URL.createObjectURL(blob);
+          const link = document.createElement('a');
+          link.href = url;
+          link.download = fileName;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(url);
+          Alert.alert('Descarga lista', 'El archivo CSV se ha descargado.');
+          return;
+        } catch (webError) {
+          console.error('Error al descargar en web:', webError);
+          Alert.alert(
+            'Descarga no soportada',
+            'No se pudo descargar el archivo en este entorno. Desactiva la depuración remota e inténtalo nuevamente.'
+          );
+          return;
+        }
+      }
+
+      const documentDirectory = (FileSystem as any)?.documentDirectory as string | null | undefined;
+      const cacheDirectory = (FileSystem as any)?.cacheDirectory as string | null | undefined;
+      const directory = documentDirectory ?? cacheDirectory;
+      if (!directory) {
+        if (canUseBrowserDownload) {
+          try {
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            Alert.alert('Descarga lista', 'El archivo CSV se ha descargado.');
+            return;
+          } catch (webError) {
+            console.error('Error fall-back descarga web:', webError);
+          }
+        }
+
+        Alert.alert(
+          'No disponible en este entorno',
+          'No se pudo acceder a una carpeta temporal para guardar el archivo. Desactiva la depuración remota o prueba en un dispositivo real.'
+        );
+        return;
+      }
+
+      const fileUri = `${directory}${fileName}`;
+      await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: 'utf8' });
+
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Descarga lista', `Archivo generado en: ${fileUri}`);
+        return;
+      }
+
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'text/csv',
+        dialogTitle: 'Compartir inspección',
+        UTI: 'public.comma-separated-values-text'
+      });
+    } catch (error: any) {
+      console.error('Error generating excel:', error);
+      Alert.alert('Error', error?.message || 'No se pudo generar el archivo');
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
   const handleServiceSelect = (service: Service) => {
@@ -430,19 +640,28 @@ export default function HistoryScreen() {
                     <Text style={styles.actionText}>{item.action}</Text>
                   </View>
                   <View style={styles.historyActions}>
+                    {item.status === 'completed' && (
+                      <TouchableOpacity
+                        style={styles.downloadButton}
+                        onPress={(event: GestureResponderEvent) => {
+                          event.stopPropagation();
+                          handleDownloadExcel(item);
+                        }}
+                        disabled={downloadingId === item.id}
+                      >
+                        {downloadingId === item.id ? (
+                          <ActivityIndicator size="small" color="#2563eb" />
+                        ) : (
+                          <Ionicons name="download" size={18} color="#2563eb" />
+                        )}
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       style={styles.deleteButton}
                       onPress={() => handleDeleteResponse(item)}
                     >
                       <Ionicons name="trash" size={18} color="#ef4444" />
                     </TouchableOpacity>
-                    <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20' }]}>
-                      <Ionicons 
-                        name={categoryInfo.icon as any} 
-                        size={16} 
-                        color={categoryInfo.color} 
-                      />
-                    </View>
                   </View>
                 </View>
 
@@ -697,6 +916,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 8,
   },
+  downloadButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
   historyInfo: {
     flex: 1,
     marginRight: 12,
@@ -710,14 +938,6 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: 14,
     color: '#6b7280',
-  },
-  categoryBadge: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 8,
   },
   historyCardBody: {
     marginTop: 8,

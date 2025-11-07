@@ -31,9 +31,6 @@ export const useDatabaseConnection = () => {
       setLoading(true);
       setError(null);
       
-      console.log('🔍 Verificando conexión a la base de datos...');
-      console.log('🌐 URL:', `${API_BASE_URL}/health`);
-      
       // Hacer una llamada simple al endpoint de health para verificar conexión
       const response = await fetch(`${API_BASE_URL}/health`, {
         method: 'GET',
@@ -44,32 +41,18 @@ export const useDatabaseConnection = () => {
         timeout: 15000, // 15 segundos de timeout
       });
 
-      console.log('📡 Respuesta del servidor:', {
-        status: response.status,
-        statusText: response.statusText,
-        headers: Object.fromEntries(response.headers.entries())
-      });
-
       if (response.ok) {
         const data = await response.json();
-        console.log('✅ Conexión exitosa:', data);
         setIsConnected(true);
         setConnectionMessage('Base de datos conectada correctamente');
         setError(null);
       } else {
-        console.log('❌ Error de respuesta:', response.status);
         const errorText = await response.text();
-        console.log('❌ Error body:', errorText);
         setIsConnected(false);
         setConnectionMessage(`Error ${response.status}: ${response.statusText}`);
         setError(`Error ${response.status}: ${response.statusText}`);
       }
     } catch (err) {
-      console.log('❌ Error de conexión:', {
-        message: err.message,
-        name: err.name,
-        stack: err.stack
-      });
       setIsConnected(false);
       setConnectionMessage(`Error de red: ${err.message}`);
       setError(err.message);

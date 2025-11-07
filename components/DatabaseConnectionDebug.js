@@ -1,21 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { useDatabaseConnection } from '../hooks';
 
 const DatabaseConnectionDebug = () => {
   const { isConnected, loading, error, connectionMessage } = useDatabaseConnection();
-
-  useEffect(() => {
-    console.log('🔍 Estado de conexión:', { isConnected, loading, error, connectionMessage });
-    
-    if (!loading) {
-      if (isConnected) {
-        console.log('✅ CONEXIÓN EXITOSA - Base de datos conectada');
-      } else {
-        console.log('❌ ERROR DE CONEXIÓN:', error);
-      }
-    }
-  }, [isConnected, loading, error, connectionMessage]);
 
   // Mostrar estado en pantalla para debug
   return (

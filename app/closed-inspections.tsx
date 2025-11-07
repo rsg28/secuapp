@@ -179,7 +179,6 @@ export default function ClosedInspectionsScreen() {
       
       if (filteredForms.length !== savedForms.length) {
         await storage.saveForms(filteredForms);
-        console.log(`Templates duplicados y no deseados eliminados. Mantenidos: ${filteredForms.length}`);
       }
     } catch (error) {
       console.error('Error clearing unwanted templates:', error);
@@ -313,7 +312,6 @@ export default function ClosedInspectionsScreen() {
       }
       
       if (templatesToAdd.length > 0) {
-        console.log(`${templatesToAdd.length} templates por defecto inicializados`);
       }
     } catch (error) {
       console.error('Error initializing default templates:', error);
@@ -577,7 +575,7 @@ export default function ClosedInspectionsScreen() {
         try {
           await deleteItem(itemId);
         } catch (error) {
-          console.log('Error deleting item:', error);
+          console.error('Error deleting item:', error);
         }
       }
       

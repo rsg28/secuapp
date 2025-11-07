@@ -79,10 +79,6 @@ export const useOpenInspectionResponses = () => {
         return acc;
       }, {});
       
-      console.log('[useOpenInspectionResponses.createResponse] Original:', responseData);
-      console.log('[useOpenInspectionResponses.createResponse] Cleaned:', cleanData);
-      console.log('[useOpenInspectionResponses.createResponse] JSON string:', JSON.stringify(cleanData));
-      
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/open-inspection-responses`, {
         method: 'POST',
@@ -215,6 +211,15 @@ export const useOpenInspectionResponses = () => {
     }
   };
 
+  const countResponsesByInspectorId = async (userId) => {
+    try {
+      const data = await getResponsesByInspectorId(userId, 1, 100);
+      return data?.data?.responses?.length || 0;
+    } catch {
+      return 0;
+    }
+  };
+
   return {
     responses,
     loading,
@@ -224,7 +229,8 @@ export const useOpenInspectionResponses = () => {
     createResponse,
     updateResponse,
     deleteResponse,
-    getResponsesByInspectorId
+    getResponsesByInspectorId,
+    countResponsesByInspectorId
   };
 };
 
