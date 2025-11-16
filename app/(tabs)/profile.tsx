@@ -406,7 +406,8 @@ const styles = StyleSheet.create({
   },
   footer: {
     alignItems: 'center',
-    paddingBottom: 40,
+    paddingBottom: 180,
+    paddingTop: 16,
   },
   versionText: {
     fontSize: 14,

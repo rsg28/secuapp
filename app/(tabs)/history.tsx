@@ -1,19 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
-    ActivityIndicator,
-    Alert,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  ActivityIndicator,
+  Alert,
     GestureResponderEvent,
-    Platform,
+    useWindowDimensions,
 } from 'react-native';
-import * as FileSystem from 'expo-file-system';
-import * as Sharing from 'expo-sharing';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
@@ -47,53 +46,31 @@ interface Service {
   color: string;
 }
 
-const escapeCsvValue = (value: any) => {
-  if (value === null || value === undefined) return '';
-  const stringValue = String(value);
-  if (/[",\n]/.test(stringValue)) {
-    return `"${stringValue.replace(/"/g, '""')}"`;
-  }
-  return stringValue;
-};
-
-const isRemoteDebugging = Platform.OS !== 'web'
-  && typeof global !== 'undefined'
-  && typeof (global as any).nativeCallSyncHook === 'undefined';
-
-const canUseBrowserDownload = typeof window !== 'undefined'
-  && typeof document !== 'undefined'
-  && typeof URL !== 'undefined'
-  && typeof Blob !== 'undefined';
+const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
 export default function HistoryScreen() {
   const { user } = useAuth();
   const { 
     getResponsesByInspectorId: getClosedResponses,
-    getResponseById: getClosedResponseById,
     deleteResponse: deleteClosedResponse,
     loading: closedLoading 
   } = useClosedInspectionResponses();
   const { 
     getResponsesByInspectorId: getOpenResponses,
-    getResponseById: getOpenResponseById,
     deleteResponse: deleteOpenResponse,
     loading: openLoading 
   } = useOpenInspectionResponses();
   const { 
-    countItemsByTemplateId: countClosedTemplateItems,
-    getItemsByTemplateId: getClosedTemplateItems
+    countItemsByTemplateId: countClosedTemplateItems
   } = useClosedTemplateItems();
   const { 
-    countItemsByTemplateId: countOpenTemplateItems,
-    getItemsByTemplateId: getOpenTemplateItems
+    countItemsByTemplateId: countOpenTemplateItems
   } = useOpenTemplateItems();
   const { 
-    countItemsByResponseId: countClosedResponseItems,
-    getItemsByResponseId: getClosedResponseItems
+    countItemsByResponseId: countClosedResponseItems
   } = useClosedInspectionResponseItems();
   const { 
-    countItemsByResponseId: countOpenResponseItems,
-    getItemsByResponseId: getOpenResponseItems
+    countItemsByResponseId: countOpenResponseItems
   } = useOpenInspectionResponseItems();
   
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
@@ -108,6 +85,47 @@ export default function HistoryScreen() {
   const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+
+  const { width, height } = useWindowDimensions();
+  const responsive = useMemo(() => {
+    const horizontalPadding = Math.max(16, Math.min(28, width * 0.06));
+    const headerPaddingTop = Math.max(48, height * 0.06);
+    const headerTitleSize = Math.max(24, Math.min(30, width * 0.08));
+    const headerSubtitleSize = Math.max(13, Math.min(16, width * 0.045));
+    const baseText = Math.max(13, Math.min(16, width * 0.04));
+    const smallText = Math.max(12, Math.min(14, width * 0.035));
+    const sectionPadding = Math.max(16, height * 0.02);
+    const cardPadding = Math.max(12, Math.min(20, width * 0.045));
+    const cardRadius = Math.max(12, width * 0.03);
+    const actionButtonPadding = Math.max(10, Math.min(14, height * 0.018));
+    const cardSpacing = Math.max(12, height * 0.02);
+    const chipPaddingHorizontal = Math.max(12, width * 0.035);
+    const chipPaddingVertical = Math.max(6, height * 0.012);
+    const scrollBottomPadding = Math.max(32, height * 0.08);
+    const serviceButtonPaddingHorizontal = Math.max(16, width * 0.045);
+    const serviceIconSize = Math.max(18, Math.min(22, width * 0.055));
+    const modalTitleSize = Math.max(18, Math.min(22, width * 0.06));
+
+    return {
+      horizontalPadding,
+      headerPaddingTop,
+      headerTitleSize,
+      headerSubtitleSize,
+      baseText,
+      smallText,
+      sectionPadding,
+      cardPadding,
+      cardRadius,
+      actionButtonPadding,
+      cardSpacing,
+      chipPaddingHorizontal,
+      chipPaddingVertical,
+      scrollBottomPadding,
+      serviceButtonPaddingHorizontal,
+      serviceIconSize,
+      modalTitleSize
+    };
+  }, [width, height]);
 
   const services: Service[] = [
     { id: 'inspecciones', name: 'Inspecciones', icon: 'clipboard', color: '#3b82f6' },
@@ -156,7 +174,6 @@ export default function HistoryScreen() {
             id: response.id,
             service: 'Inspección Cerrada',
             serviceType: 'inspecciones',
-            action: 'Inspección completada',
             timestamp: formatDate(response.created_at),
             status: totalQuestions === answeredQuestions ? 'completed' : 'pending',
             details: response.title || 'Sin título',
@@ -182,7 +199,6 @@ export default function HistoryScreen() {
             id: response.id,
             service: 'Inspección Abierta',
             serviceType: 'inspecciones',
-            action: 'Inspección completada',
             timestamp: formatDate(response.created_at),
             status: totalQuestions === answeredQuestions ? 'completed' : 'pending',
             details: response.title || 'Sin título',
@@ -329,143 +345,43 @@ export default function HistoryScreen() {
   };
 
   const handleDownloadExcel = async (item: HistoryItem) => {
-    const isClosed = item.category === 'cerrado';
-    const templateId = item.template_id;
-
-    if (!templateId) {
-      Alert.alert('Error', 'No se encontró el template asociado a esta inspección');
-      return;
-    }
-
     try {
+      if (!user?.email) {
+        Alert.alert('Error', 'No se pudo determinar tu correo. Inicia sesión nuevamente.');
+        return;
+      }
+
+      const type = item.category === 'cerrado' ? 'closed' : 'open';
       setDownloadingId(item.id);
 
-      const [responseData, templateItemsRaw, responseItemsRaw] = await Promise.all([
-        isClosed ? getClosedResponseById(item.id) : getOpenResponseById(item.id),
-        isClosed ? getClosedTemplateItems(templateId) : getOpenTemplateItems(templateId),
-        isClosed ? getClosedResponseItems(item.id) : getOpenResponseItems(item.id)
-      ]);
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
+      }
 
-      const templateItems = Array.isArray(templateItemsRaw) ? templateItemsRaw : [];
-      const responseItems = Array.isArray(responseItemsRaw) ? responseItemsRaw : [];
-
-      const templateMap: Record<string, any> = {};
-      templateItems.forEach((templateItem: any) => {
-        templateMap[templateItem.id] = templateItem;
+      const response = await fetch(`${API_BASE_URL}/inspection-responses/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          responseId: item.id,
+          type,
+          email: user.email
+        })
       });
 
-      const lines: string[] = [];
-      lines.push(`Título,${escapeCsvValue(responseData?.title || 'Sin título')}`);
-      lines.push(`Tipo,${escapeCsvValue(isClosed ? 'Inspección Cerrada' : 'Inspección Abierta')}`);
-      lines.push(`Fecha de inspección,${escapeCsvValue(responseData?.inspection_date || '')}`);
-      lines.push(`Fecha de finalización,${escapeCsvValue(responseData?.completion_date || '')}`);
-      if (responseData?.company_name) {
-        lines.push(`Empresa,${escapeCsvValue(responseData.company_name)}`);
-      }
-      if (!isClosed && responseData?.notes) {
-        lines.push(`Notas,${escapeCsvValue(responseData.notes)}`);
-      }
-      lines.push('');
+      const data = await response.json();
 
-      if (isClosed) {
-        lines.push('Pregunta,Respuesta,Explicación');
-        responseItems.forEach((responseItem: any) => {
-          const templateItem = templateMap[responseItem.item_id] || {};
-          lines.push([
-            escapeCsvValue(templateItem.text || `Pregunta ${responseItem.question_index}`),
-            escapeCsvValue(responseItem.response),
-            escapeCsvValue(responseItem.explanation)
-          ].join(','));
-        });
-      } else {
-        lines.push('Pregunta,Respuesta');
-        responseItems.forEach((responseItem: any) => {
-          const templateItem = templateMap[responseItem.item_id] || {};
-          lines.push([
-            escapeCsvValue(templateItem.text || `Pregunta ${responseItem.question_index}`),
-            escapeCsvValue(responseItem.response)
-          ].join(','));
-        });
+      if (!response.ok) {
+        throw new Error(data?.message || 'No se pudo procesar la exportación');
       }
 
-      const csv = lines.join('\n');
-      const fileName = `inspeccion-${item.id}.csv`;
-
-      if (Platform.OS === 'web' || isRemoteDebugging) {
-        if (!canUseBrowserDownload) {
-          Alert.alert(
-            'Descarga no soportada',
-            'Este entorno no soporta descargas directas. Desactiva la depuración remota e inténtalo de nuevo.'
-          );
-          return;
-        }
-        try {
-          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-          const url = window.URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.download = fileName;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          window.URL.revokeObjectURL(url);
-          Alert.alert('Descarga lista', 'El archivo CSV se ha descargado.');
-          return;
-        } catch (webError) {
-          console.error('Error al descargar en web:', webError);
-          Alert.alert(
-            'Descarga no soportada',
-            'No se pudo descargar el archivo en este entorno. Desactiva la depuración remota e inténtalo nuevamente.'
-          );
-          return;
-        }
-      }
-
-      const documentDirectory = (FileSystem as any)?.documentDirectory as string | null | undefined;
-      const cacheDirectory = (FileSystem as any)?.cacheDirectory as string | null | undefined;
-      const directory = documentDirectory ?? cacheDirectory;
-      if (!directory) {
-        if (canUseBrowserDownload) {
-          try {
-            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = fileName;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            Alert.alert('Descarga lista', 'El archivo CSV se ha descargado.');
-            return;
-          } catch (webError) {
-            console.error('Error fall-back descarga web:', webError);
-          }
-        }
-
-        Alert.alert(
-          'No disponible en este entorno',
-          'No se pudo acceder a una carpeta temporal para guardar el archivo. Desactiva la depuración remota o prueba en un dispositivo real.'
-        );
-        return;
-      }
-
-      const fileUri = `${directory}${fileName}`;
-      await FileSystem.writeAsStringAsync(fileUri, csv, { encoding: 'utf8' });
-
-      if (!(await Sharing.isAvailableAsync())) {
-        Alert.alert('Descarga lista', `Archivo generado en: ${fileUri}`);
-        return;
-      }
-
-      await Sharing.shareAsync(fileUri, {
-        mimeType: 'text/csv',
-        dialogTitle: 'Compartir inspección',
-        UTI: 'public.comma-separated-values-text'
-      });
+      Alert.alert('Correo enviado', data?.message || `Te enviamos el archivo a ${user.email}`);
     } catch (error: any) {
-      console.error('Error generating excel:', error);
-      Alert.alert('Error', error?.message || 'No se pudo generar el archivo');
+      console.error('Error exporting inspection:', error);
+      Alert.alert('Error', error?.message || 'No se pudo enviar el archivo por correo');
     } finally {
       setDownloadingId(null);
     }
@@ -486,21 +402,25 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingHorizontal: responsive.horizontalPadding, paddingTop: responsive.headerPaddingTop }]}>
         <View>
-          <Text style={styles.headerTitle}>Historial</Text>
-          <Text style={styles.headerSubtitle}>
+          <Text style={[styles.headerTitle, { fontSize: responsive.headerTitleSize }]}>Historial</Text>
+          <Text style={[styles.headerSubtitle, { fontSize: responsive.headerSubtitleSize }]}>
             Registro de actividades de inspección
           </Text>
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: responsive.scrollBottomPadding }}
+      >
         {/* Selector de Servicio */}
-        <View style={styles.serviceSelectorContainer}>
-          <Text style={styles.serviceSelectorLabel}>Servicio:</Text>
+        <View style={[styles.serviceSelectorContainer, { paddingHorizontal: responsive.horizontalPadding, paddingVertical: responsive.sectionPadding }]}>
+          <Text style={[styles.serviceSelectorLabel, { fontSize: responsive.baseText }]}>Servicio:</Text>
           <TouchableOpacity 
-            style={styles.serviceSelectorButton}
+            style={[styles.serviceSelectorButton, { paddingHorizontal: responsive.serviceButtonPaddingHorizontal, paddingVertical: responsive.actionButtonPadding }]}
             onPress={() => setShowServiceModal(true)}
           >
             <View style={styles.serviceSelectorContent}>
@@ -508,39 +428,41 @@ export default function HistoryScreen() {
                 <>
                   <Ionicons 
                     name={selectedService.icon as any} 
-                    size={20} 
+                    size={responsive.serviceIconSize} 
                     color={selectedService.color} 
                   />
-                  <Text style={styles.serviceSelectorText}>{selectedService.name}</Text>
+                  <Text style={[styles.serviceSelectorText, { fontSize: responsive.baseText }]}>{selectedService.name}</Text>
                 </>
               ) : (
                 <>
-                  <Ionicons name="apps" size={20} color="#6b7280" />
-                  <Text style={styles.serviceSelectorTextPlaceholder}>Seleccionar servicio</Text>
+                  <Ionicons name="apps" size={responsive.serviceIconSize} color="#6b7280" />
+                  <Text style={[styles.serviceSelectorTextPlaceholder, { fontSize: responsive.baseText }]}>Seleccionar servicio</Text>
                 </>
               )}
             </View>
-            <Ionicons name="chevron-down" size={20} color="#6b7280" />
+            <Ionicons name="chevron-down" size={responsive.serviceIconSize} color="#6b7280" />
           </TouchableOpacity>
         </View>
 
         {/* Filtros - Solo mostrar para inspecciones */}
         {shouldShowCategoryFilters && (
-          <View style={styles.filtersContainer}>
+          <View style={[styles.filtersContainer, { paddingVertical: responsive.sectionPadding * 0.6 }]}>
             <ScrollView 
               horizontal 
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.filtersScrollContent}
+              contentContainerStyle={[styles.filtersScrollContent, { paddingHorizontal: responsive.horizontalPadding }]}
             >
               <TouchableOpacity
                 style={[
                   styles.filterButton,
+                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
                   selectedFilter === 'all' && styles.filterButtonActive
                 ]}
                 onPress={() => setSelectedFilter('all')}
               >
                 <Text style={[
                   styles.filterText,
+                  { fontSize: responsive.smallText },
                   selectedFilter === 'all' && styles.filterTextActive
                 ]}>
                   Todos
@@ -550,17 +472,19 @@ export default function HistoryScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterButton,
+                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
                   selectedFilter === 'abierto' && styles.filterButtonActive
                 ]}
                 onPress={() => setSelectedFilter('abierto')}
               >
                 <Ionicons 
                   name="time" 
-                  size={16} 
+                  size={Math.max(14, responsive.smallText + 2)} 
                   color={selectedFilter === 'abierto' ? '#fff' : '#f59e0b'} 
                 />
                 <Text style={[
                   styles.filterText,
+                  { fontSize: responsive.smallText },
                   selectedFilter === 'abierto' && styles.filterTextActive
                 ]}>
                   Abierto
@@ -570,17 +494,19 @@ export default function HistoryScreen() {
               <TouchableOpacity
                 style={[
                   styles.filterButton,
+                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
                   selectedFilter === 'cerrado' && styles.filterButtonActive
                 ]}
                 onPress={() => setSelectedFilter('cerrado')}
               >
                 <Ionicons 
                   name="checkmark-circle" 
-                  size={16} 
+                  size={Math.max(14, responsive.smallText + 2)} 
                   color={selectedFilter === 'cerrado' ? '#fff' : '#22c55e'} 
                 />
                 <Text style={[
                   styles.filterText,
+                  { fontSize: responsive.smallText },
                   selectedFilter === 'cerrado' && styles.filterTextActive
                 ]}>
                   Cerrado
@@ -591,23 +517,23 @@ export default function HistoryScreen() {
         )}
 
         {/* Lista de Historial */}
-        <View style={styles.historyContainer}>
-          <Text style={styles.sectionTitle}>
+        <View style={[styles.historyContainer, { paddingHorizontal: responsive.horizontalPadding, paddingTop: responsive.sectionPadding }]}>
+          <Text style={[styles.sectionTitle, { fontSize: Math.max(18, width * 0.05), marginBottom: responsive.sectionPadding * 0.65 }]}>
             {selectedService ? `${selectedService.name} - ` : ''}Actividades Recientes ({filteredHistory.length})
           </Text>
           
           {loading && (
             <View style={styles.loadingContainer}>
               <ActivityIndicator size="large" color="#8b5cf6" />
-              <Text style={styles.loadingText}>Cargando inspecciones...</Text>
+              <Text style={[styles.loadingText, { fontSize: responsive.baseText }]}>Cargando inspecciones...</Text>
             </View>
           )}
           
           {!loading && filteredHistory.length === 0 && (
             <View style={styles.emptyContainer}>
               <Ionicons name="document-outline" size={64} color="#d1d5db" />
-              <Text style={styles.emptyText}>No hay inspecciones registradas</Text>
-              <Text style={styles.emptySubtext}>
+              <Text style={[styles.emptyText, { fontSize: responsive.baseText + 1 }]}>No hay inspecciones registradas</Text>
+              <Text style={[styles.emptySubtext, { fontSize: responsive.smallText }]}>
                 {selectedFilter === 'all' 
                   ? 'Comienza a crear inspecciones para verlas aquí'
                   : `No hay inspecciones de tipo "${selectedFilter === 'abierto' ? 'Abierto' : 'Cerrado'}"`}
@@ -616,11 +542,10 @@ export default function HistoryScreen() {
           )}
           
           {!loading && filteredHistory.map((item) => {
-            const categoryInfo = getCategoryInfo(item.category);
             return (
               <TouchableOpacity 
                 key={item.id} 
-                style={styles.historyCard}
+                style={[styles.historyCard, { padding: responsive.cardPadding, borderRadius: responsive.cardRadius, marginBottom: responsive.cardSpacing }]}
                 onPress={() => {
                   // Navigate to edit existing response screen
                   router.push({
@@ -636,8 +561,8 @@ export default function HistoryScreen() {
               >
                 <View style={styles.historyCardHeader}>
                   <View style={styles.historyInfo}>
-                    <Text style={styles.serviceName}>{item.service}</Text>
-                    <Text style={styles.actionText}>{item.action}</Text>
+                    <Text style={[styles.detailsHeading, { fontSize: Math.max(16, width * 0.048) }]}>{item.details}</Text>
+                    <Text style={[styles.serviceName, { fontSize: responsive.smallText }]}>{item.service}</Text>
                   </View>
                   <View style={styles.historyActions}>
                     {item.status === 'completed' && (
@@ -666,11 +591,10 @@ export default function HistoryScreen() {
                 </View>
 
                 <View style={styles.historyCardBody}>
-                  <Text style={styles.detailsText}>{item.details}</Text>
                   <View style={styles.historyMeta}>
                     <View style={styles.timestampContainer}>
                       <Ionicons name="time" size={14} color="#6b7280" />
-                      <Text style={styles.timestampText}>{item.timestamp}</Text>
+                      <Text style={[styles.timestampText, { fontSize: responsive.smallText }]}>{item.timestamp}</Text>
                     </View>
                     <View style={[
                       styles.statusBadge,
@@ -678,6 +602,7 @@ export default function HistoryScreen() {
                     ]}>
                       <Text style={[
                         styles.statusText,
+                        { fontSize: responsive.smallText },
                         { color: getStatusColor(item.status) }
                       ]}>
                         {getStatusText(item.status)}
@@ -691,7 +616,7 @@ export default function HistoryScreen() {
         </View>
 
         {/* Espacio adicional para el bottom tab */}
-        <View style={styles.bottomSpacing} />
+        <View style={[styles.bottomSpacing, { height: responsive.scrollBottomPadding }]} />
       </ScrollView>
 
       {/* Modal de Selección de Servicios */}
@@ -704,7 +629,7 @@ export default function HistoryScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Seleccionar Servicio</Text>
+              <Text style={[styles.modalTitle, { fontSize: responsive.modalTitleSize }]}>Seleccionar Servicio</Text>
               <TouchableOpacity 
                 style={styles.modalCloseButton}
                 onPress={() => setShowServiceModal(false)}
@@ -727,14 +652,14 @@ export default function HistoryScreen() {
                     ]}>
                       <Ionicons 
                         name={service.icon as any} 
-                        size={24} 
+                        size={responsive.serviceIconSize + 2} 
                         color={service.color} 
                       />
                     </View>
-                    <Text style={styles.serviceOptionText}>{service.name}</Text>
+                    <Text style={[styles.serviceOptionText, { fontSize: responsive.baseText }]}>{service.name}</Text>
                   </View>
                   {selectedService?.id === service.id && (
-                    <Ionicons name="checkmark-circle" size={24} color={service.color} />
+                    <Ionicons name="checkmark-circle" size={responsive.serviceIconSize + 2} color={service.color} />
                   )}
                 </TouchableOpacity>
               ))}
@@ -755,15 +680,15 @@ export default function HistoryScreen() {
             <View style={styles.workingModalIcon}>
               <Ionicons name="construct" size={48} color="#f59e0b" />
             </View>
-            <Text style={styles.workingModalTitle}>Trabajando en ello</Text>
-            <Text style={styles.workingModalSubtitle}>
+            <Text style={[styles.workingModalTitle, { fontSize: responsive.modalTitleSize }]}>Trabajando en ello</Text>
+            <Text style={[styles.workingModalSubtitle, { fontSize: responsive.baseText }]}>
               Esta funcionalidad estará disponible próximamente
             </Text>
             <TouchableOpacity 
               style={styles.workingModalButton}
               onPress={() => setShowWorkingModal(false)}
             >
-              <Text style={styles.workingModalButtonText}>Entendido</Text>
+              <Text style={[styles.workingModalButtonText, { fontSize: responsive.baseText }]}>Entendido</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -930,10 +855,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   serviceName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 4,
+    fontSize: 14,
+    color: '#6b7280',
   },
   actionText: {
     fontSize: 14,
@@ -1127,4 +1050,11 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     textAlign: 'center',
   },
+  detailsHeading: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 4,
+  },
 });
+ 

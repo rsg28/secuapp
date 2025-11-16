@@ -21,6 +21,9 @@ export default function ServiciosScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Servicios</Text>
           <Text style={styles.headerSubtitle}>
@@ -29,7 +32,7 @@ export default function ServiciosScreen() {
         </View>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
         {/* Inspecciones Card */}
         <TouchableOpacity style={styles.inspectionCard} onPress={handleOpenInspections}>
           <View style={styles.cardHeader}>
@@ -115,7 +118,7 @@ export default function ServiciosScreen() {
         </View>
 
         {/* Espacio para el bottom tab */}
-        <View style={styles.bottomSpacing} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -131,7 +134,7 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 60,
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
@@ -141,6 +144,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
   },
   headerTitle: {
     fontSize: 24,

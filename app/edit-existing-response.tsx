@@ -12,7 +12,10 @@ import {
   TouchableOpacity,
   View,
   Modal,
+  Image,
+  ActivityIndicator,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
@@ -21,6 +24,7 @@ import { useOpenInspectionResponses } from '../hooks/useOpenInspectionResponses'
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
 import { useCompanies } from '../hooks/useCompanies';
+import { useImageUpload } from '../hooks/useImageUpload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TemplateItem {
@@ -29,6 +33,8 @@ interface TemplateItem {
   question_index: string;
   text: string;
   category: string;
+  question_type?: 'text' | 'single_choice' | 'multiple_choice';
+  options?: string[];
 }
 
 interface Company {
@@ -41,8 +47,9 @@ interface Company {
 interface ClosedResponseData {
   item_id: string;
   question_index: string;
-  response: 'C' | 'CP' | 'NC' | 'NA' | '';
+  response: string; // Can be any option value, not just C/CP/NC/NA
   explanation?: string;
+  image_url?: string;
   response_item_id?: string; // ID del item de respuesta existente
 }
 
@@ -50,6 +57,7 @@ interface OpenResponseData {
   item_id: string;
   question_index: string;
   response: string;
+  image_url?: string;
   response_item_id?: string; // ID del item de respuesta existente
 }
 
@@ -78,10 +86,12 @@ export default function EditExistingResponseScreen() {
     deleteItem: deleteOpenResponseItem
   } = useOpenInspectionResponseItems();
   const { getAllCompanies } = useCompanies();
+  const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
 
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [localImages, setLocalImages] = useState<Record<string, string>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -191,10 +201,18 @@ export default function EditExistingResponseScreen() {
         itemsMap[item.item_id] = item;
         existingItemsMap[item.item_id] = item.id; // Store the response item ID
         // Store original data for comparison
-        originalItemsMap[item.item_id] = {
-          response: item.response,
-          explanation: item.explanation || null
-        };
+        if (type === 'closed') {
+          originalItemsMap[item.item_id] = {
+            response: item.response,
+            explanation: item.explanation || null,
+            image_url: item.image_url || null
+          };
+        } else {
+          originalItemsMap[item.item_id] = {
+            response: item.response,
+            image_url: item.image_url || null
+          };
+        }
       });
       
       setExistingResponseItems(existingItemsMap);
@@ -208,11 +226,14 @@ export default function EditExistingResponseScreen() {
           const templateItemId = templateItem.id;
           const existingItem = itemsMap[templateItemId];
           
+          const imageUrl = existingItem?.image_url ?? undefined;
+          
           preFilledResponses[templateItem.id] = {
             item_id: templateItemId,
             question_index: templateItem.question_index,
             response: existingItem?.response || '',
             explanation: existingItem?.explanation || '',
+            image_url: imageUrl,
             response_item_id: existingItem?.id
           };
         });
@@ -224,10 +245,13 @@ export default function EditExistingResponseScreen() {
           const templateItemId = templateItem.id;
           const existingItem = itemsMap[templateItemId];
           
+          const imageUrl = existingItem?.image_url ?? null;
+          
           preFilledResponses[templateItem.id] = {
             item_id: templateItemId,
             question_index: templateItem.question_index,
             response: existingItem?.response || '',
+            image_url: imageUrl,
             response_item_id: existingItem?.id
           };
         });
@@ -300,7 +324,7 @@ export default function EditExistingResponseScreen() {
     }
   };
 
-  const handleClosedResponseChange = (itemId: string, response: 'C' | 'CP' | 'NC' | 'NA') => {
+  const handleClosedResponseChange = (itemId: string, response: string) => {
     setClosedResponses(prev => ({
       ...prev,
       [itemId]: {
@@ -328,6 +352,172 @@ export default function EditExistingResponseScreen() {
         response
       }
     }));
+  };
+
+  const handlePickImage = async (itemId: string) => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Se necesitan permisos para acceder a las fotos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+        
+        try {
+          // Get current image URL before replacing
+          const currentImageUrl = type === 'closed' 
+            ? closedResponses[itemId]?.image_url 
+            : openResponses[itemId]?.image_url;
+          
+          // Delete old image from S3 if it exists
+          if (currentImageUrl) {
+            try {
+              await deleteImage(currentImageUrl);
+            } catch (deleteError: any) {
+              console.warn('Error deleting old image (continuing with upload):', deleteError);
+              // Continue with upload even if deletion fails
+            }
+          }
+          
+          const imageUrl = await uploadImage({
+            imageUri,
+            folder: 'inspection-images',
+            subfolder: type,
+            identifier: responseId,
+            itemId: itemId,
+          });
+          
+          if (imageUrl) {
+            if (type === 'closed') {
+              setClosedResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            } else {
+              setOpenResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            }
+            
+            setLocalImages(prev => {
+              const newState = { ...prev };
+              delete newState[itemId];
+              return newState;
+            });
+          }
+        } catch (error: any) {
+          Alert.alert('Error', `Error al subir la imagen: ${error.message}`);
+          setLocalImages(prev => {
+            const newState = { ...prev };
+            delete newState[itemId];
+            return newState;
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
+  const handleTakePhoto = async (itemId: string) => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos requeridos', 'Se necesitan permisos de cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+        
+        try {
+          // Get current image URL before replacing
+          const currentImageUrl = type === 'closed' 
+            ? closedResponses[itemId]?.image_url 
+            : openResponses[itemId]?.image_url;
+          
+          // Delete old image from S3 if it exists
+          if (currentImageUrl) {
+            try {
+              await deleteImage(currentImageUrl);
+            } catch (deleteError: any) {
+              console.warn('Error deleting old image (continuing with upload):', deleteError);
+              // Continue with upload even if deletion fails
+            }
+          }
+          
+          const imageUrl = await uploadImage({
+            imageUri,
+            folder: 'inspection-images',
+            subfolder: type,
+            identifier: responseId,
+            itemId: itemId,
+          });
+          
+          if (imageUrl) {
+            if (type === 'closed') {
+              setClosedResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            } else {
+              setOpenResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            }
+            
+            setLocalImages(prev => {
+              const newState = { ...prev };
+              delete newState[itemId];
+              return newState;
+            });
+          }
+        } catch (error: any) {
+          Alert.alert('Error', `Error al subir la imagen: ${error.message}`);
+          setLocalImages(prev => {
+            const newState = { ...prev };
+            delete newState[itemId];
+            return newState;
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'No se pudo tomar la foto');
+    }
   };
 
   const handleSave = async () => {
@@ -379,11 +569,30 @@ export default function EditExistingResponseScreen() {
           const responseData = closedResponses[templateItem.id];
           if (!responseData) continue;
           
-          const hasValidResponse = responseData.response && 
-                                   ['C', 'CP', 'NC', 'NA'].includes(responseData.response);
+          // Validate response - check if it's not empty
+          const trimmedResponse = responseData.response?.trim();
+          if (!trimmedResponse || trimmedResponse === '') {
+            // Skip items without valid response
+            continue;
+          }
+          
+          // If item has options, validate against them
+          let hasValidResponse = true;
+          if (templateItem.question_type === 'single_choice' || templateItem.question_type === 'multiple_choice') {
+            if (templateItem.options && templateItem.options.length > 0) {
+              // For multiple choice, response might be comma-separated
+              if (templateItem.question_type === 'multiple_choice') {
+                const selectedOptions = trimmedResponse.split(',').map(s => s.trim()).filter(s => s);
+                hasValidResponse = selectedOptions.length > 0 && selectedOptions.every(opt => templateItem.options!.includes(opt));
+              } else {
+                hasValidResponse = templateItem.options.includes(trimmedResponse);
+              }
+            }
+          }
+          // For text type or default, any non-empty response is valid
           
           if (!hasValidResponse) {
-            // Skip items without valid response
+            // Skip items with invalid response
             continue;
           }
           
@@ -397,14 +606,19 @@ export default function EditExistingResponseScreen() {
             const originalExplanation = originalItem?.explanation || null;
             
             // Compare current data with original
-            const responseChanged = originalItem?.response !== responseData.response;
+            const responseChanged = originalItem?.response !== trimmedResponse;
             const explanationChanged = originalExplanation !== currentExplanation;
+            // Get image_url from responseData, ensuring it's not undefined
+            const currentImageUrl = responseData.image_url ?? null;
+            const originalImageUrl = originalItem?.image_url ?? null;
+            const imageUrlChanged = originalImageUrl !== currentImageUrl;
             
-            if (responseChanged || explanationChanged) {
+            if (responseChanged || explanationChanged || imageUrlChanged) {
               // Data changed - update it
               const updateData: any = {
-                response: responseData.response,
-                explanation: currentExplanation
+                response: trimmedResponse,
+                explanation: currentExplanation,
+                image_url: currentImageUrl
               };
               
               // Ensure no undefined values
@@ -422,12 +636,14 @@ export default function EditExistingResponseScreen() {
                 item_id: itemIdKey,
                 response: responseData.response,
                 explanation: currentExplanation,
+                image_url: responseData.image_url,
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
               updatedOriginalResponseItemsState[itemIdKey] = {
                 response: responseData.response,
-                explanation: currentExplanation
+                explanation: currentExplanation,
+                image_url: currentImageUrl
               };
             } else {
               // No changes - skip update
@@ -441,13 +657,16 @@ export default function EditExistingResponseScreen() {
                 ...responseData,
                 explanation: currentExplanation,
                 item_id: itemIdKey,
+                response: trimmedResponse,
+                image_url: responseData.image_url,
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
               if (!updatedOriginalResponseItemsState[itemIdKey]) {
                 updatedOriginalResponseItemsState[itemIdKey] = {
-                  response: responseData.response,
-                  explanation: currentExplanation
+                  response: trimmedResponse,
+                  explanation: currentExplanation,
+                  image_url: responseData.image_url ?? null
                 };
               }
             }
@@ -457,8 +676,9 @@ export default function EditExistingResponseScreen() {
               response_id: responseId,
               item_id: itemIdKey,
               question_index: responseData.question_index,
-              response: responseData.response,
-              explanation: responseData.explanation?.trim() || null
+              response: trimmedResponse,
+              explanation: responseData.explanation?.trim() || null,
+              image_url: responseData.image_url ?? null
             };
             
             // Ensure no undefined values
@@ -475,12 +695,15 @@ export default function EditExistingResponseScreen() {
             updatedClosedResponsesState[templateItem.id] = {
               ...responseData,
               item_id: itemIdKey,
+              response: trimmedResponse,
+              image_url: responseData.image_url,
               response_item_id: created.id
             };
             updatedExistingResponseItemsState[itemIdKey] = created.id;
             updatedOriginalResponseItemsState[itemIdKey] = {
-              response: responseData.response,
-              explanation: responseData.explanation?.trim() || null
+              response: trimmedResponse,
+              explanation: responseData.explanation?.trim() || null,
+              image_url: responseData.image_url ?? null
             };
           }
         }
@@ -537,11 +760,16 @@ export default function EditExistingResponseScreen() {
             // Item exists in DB - check if it changed
             const originalItem = updatedOriginalResponseItemsState[itemIdKey] || originalResponseItems[itemIdKey];
             const responseChanged = originalItem?.response !== trimmedResponse;
+            // Prioritize localImages (recently uploaded) over responseData.image_url
+            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url ?? null);
+            const originalImageUrl = originalItem?.image_url ?? null;
+            const imageUrlChanged = originalImageUrl !== currentImageUrl;
             
-            if (responseChanged) {
+            if (responseChanged || imageUrlChanged) {
               // Data changed - update it
               const updateData: any = {
-                response: trimmedResponse
+                response: trimmedResponse,
+                image_url: currentImageUrl
               };
               
               // Ensure no undefined values
@@ -558,11 +786,13 @@ export default function EditExistingResponseScreen() {
                 ...responseData,
                 response: trimmedResponse,
                 item_id: itemIdKey,
+                image_url: currentImageUrl || undefined,
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
               updatedOriginalResponseItemsState[itemIdKey] = {
-                response: trimmedResponse
+                response: trimmedResponse,
+                image_url: currentImageUrl
               };
             } else {
               // No changes - skip update
@@ -575,23 +805,28 @@ export default function EditExistingResponseScreen() {
                 ...responseData,
                 response: trimmedResponse,
                 item_id: itemIdKey,
+                image_url: currentImageUrl || undefined,
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
               if (!updatedOriginalResponseItemsState[itemIdKey]) {
                 updatedOriginalResponseItemsState[itemIdKey] = {
-                  response: trimmedResponse
+                  response: trimmedResponse,
+                  image_url: currentImageUrl ?? null
                 };
               }
             }
           } else {
             // Item doesn't exist - create it
             const itemIdKey = responseData.item_id ?? templateItem.id;
+            // Prioritize localImages (recently uploaded) over responseData.image_url
+            const imageUrlToSave = localImages[itemIdKey] || (responseData.image_url ?? null);
             const createData: any = {
               response_id: responseId,
               item_id: itemIdKey,
               question_index: responseData.question_index,
-              response: trimmedResponse
+              response: trimmedResponse,
+              image_url: imageUrlToSave
             };
             
             // Ensure no undefined values
@@ -609,11 +844,13 @@ export default function EditExistingResponseScreen() {
               ...responseData,
               response: trimmedResponse,
               item_id: itemIdKey,
+              image_url: imageUrlToSave || undefined,
               response_item_id: created.id
             };
             updatedExistingResponseItemsState[itemIdKey] = created.id;
             updatedOriginalResponseItemsState[itemIdKey] = {
-              response: trimmedResponse
+              response: trimmedResponse,
+              image_url: imageUrlToSave ?? null
             };
           }
         }
@@ -902,44 +1139,94 @@ export default function EditExistingResponseScreen() {
         {/* Questions for Selected Category */}
         {selectedCategory && currentCategoryItems.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.categoryTitle}>{selectedCategory}</Text>
-            
             {currentCategoryItems.map((item, index) => (
               <View key={item.id} style={styles.questionCard}>
-                <View style={styles.questionHeader}>
-                  <Text style={styles.questionIndex}>{item.question_index}</Text>
-                  <Text style={styles.questionText}>{item.text}</Text>
-                </View>
+                {/* Question Text */}
+                <Text style={styles.questionText}>{item.text}</Text>
 
                 {type === 'closed' ? (
                   <View style={styles.closedResponseContainer}>
-                    <View style={styles.responseButtonsContainer}>
-                      {(['C', 'CP', 'NC', 'NA'] as const).map((responseType) => {
-                        const currentResponse = closedResponses[item.id]?.response || '';
-                        const isSelected = currentResponse === responseType;
-                        return (
-                          <TouchableOpacity
-                            key={responseType}
-                            style={[
-                              styles.responseButton,
-                              isSelected && styles.responseButtonSelected,
-                              responseType === 'C' && isSelected && { backgroundColor: '#10b981' },
-                              responseType === 'CP' && isSelected && { backgroundColor: '#f59e0b' },
-                              responseType === 'NC' && isSelected && { backgroundColor: '#ef4444' },
-                              responseType === 'NA' && isSelected && { backgroundColor: '#6b7280' }
-                            ]}
-                            onPress={() => handleClosedResponseChange(item.id, responseType)}
-                          >
-                            <Text style={[
-                              styles.responseButtonText,
-                              isSelected && styles.responseButtonTextSelected
-                            ]}>
-                              {responseType}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                    {/* Response Options/Input - In the middle */}
+                    {item.question_type === 'text' ? (
+                      <TextInput
+                        style={styles.openResponseInput}
+                        placeholder="Escribe tu respuesta aquí..."
+                        value={closedResponses[item.id]?.response || ''}
+                        onChangeText={(text) => handleClosedResponseChange(item.id, text)}
+                        multiline
+                        placeholderTextColor="#9ca3af"
+                      />
+                    ) : item.question_type === 'single_choice' || item.question_type === 'multiple_choice' ? (
+                      <View style={styles.responseButtonsContainer}>
+                        {(item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA']).map((option) => {
+                          const currentResponse = closedResponses[item.id]?.response || '';
+                          const isSelected = item.question_type === 'multiple_choice' 
+                            ? currentResponse.split(',').map(s => s.trim()).includes(option)
+                            : currentResponse === option;
+                          return (
+                            <TouchableOpacity
+                              key={option}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                isSelected && { backgroundColor: '#6366f1' }
+                              ]}
+                              onPress={() => {
+                                if (item.question_type === 'multiple_choice') {
+                                  // Toggle option for multiple choice
+                                  const current = currentResponse.split(',').map(s => s.trim()).filter(s => s);
+                                  const newResponse = current.includes(option)
+                                    ? current.filter(opt => opt !== option).join(', ')
+                                    : [...current, option].join(', ');
+                                  handleClosedResponseChange(item.id, newResponse);
+                                } else {
+                                  // Single choice - replace
+                                  handleClosedResponseChange(item.id, option);
+                                }
+                              }}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {option}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      // Default: show C, CP, NC, NA for backward compatibility
+                      <View style={styles.responseButtonsContainer}>
+                        {(['C', 'CP', 'NC', 'NA'] as const).map((responseType) => {
+                          const currentResponse = closedResponses[item.id]?.response || '';
+                          const isSelected = currentResponse === responseType;
+                          return (
+                            <TouchableOpacity
+                              key={responseType}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                responseType === 'C' && isSelected && { backgroundColor: '#10b981' },
+                                responseType === 'CP' && isSelected && { backgroundColor: '#f59e0b' },
+                                responseType === 'NC' && isSelected && { backgroundColor: '#ef4444' },
+                                responseType === 'NA' && isSelected && { backgroundColor: '#6b7280' }
+                              ]}
+                              onPress={() => handleClosedResponseChange(item.id, responseType)}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {responseType}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
+                    
+                    {/* Explanation - After options */}
                     <TextInput
                       style={styles.explanationInput}
                       placeholder="Explicación (opcional)"
@@ -948,16 +1235,296 @@ export default function EditExistingResponseScreen() {
                       multiline
                       placeholderTextColor="#9ca3af"
                     />
+                    
+                    {/* Image Section - At the bottom */}
+                    <View style={styles.imageSection}>
+                      {(() => {
+                        const responseData = closedResponses[item.id];
+                        const imageUrl = responseData?.image_url ?? localImages[item.id];
+                        return (
+                          <View style={styles.imageContainer}>
+                            {imageUrl ? (
+                              <Image 
+                                source={{ uri: imageUrl }} 
+                                style={styles.previewImage}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={styles.imagePlaceholder}>
+                                <Ionicons name="image-outline" size={40} color="#9ca3af" />
+                                <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
+                              </View>
+                            )}
+                            {imageUrl ? (
+                              <View style={styles.imageActionButtons}>
+                                <TouchableOpacity 
+                                  style={styles.imageActionButton}
+                                  onPress={() => {
+                                    Alert.alert(
+                                      'Cambiar imagen',
+                                      '¿Cómo deseas cambiar la imagen?',
+                                      [
+                                        {
+                                          text: 'Tomar foto',
+                                          onPress: () => handleTakePhoto(item.id)
+                                        },
+                                        {
+                                          text: 'Galería',
+                                          onPress: () => handlePickImage(item.id)
+                                        },
+                                        {
+                                          text: 'Cancelar',
+                                          style: 'cancel'
+                                        }
+                                      ]
+                                    );
+                                  }}
+                                  disabled={uploadingImage}
+                                >
+                                  {uploadingImage && localImages[item.id] ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                  ) : (
+                                    <Ionicons name="swap-horizontal" size={18} color="#fff" />
+                                  )}
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                  style={[styles.imageActionButton, styles.imageDeleteButton]}
+                                  onPress={() => {
+                                    Alert.alert(
+                                      'Eliminar imagen',
+                                      '¿Estás seguro de que deseas eliminar esta imagen?',
+                                      [
+                                        {
+                                          text: 'Cancelar',
+                                          style: 'cancel'
+                                        },
+                                        {
+                                          text: 'Eliminar',
+                                          style: 'destructive',
+                                          onPress: () => {
+                                            setClosedResponses(prev => ({
+                                              ...prev,
+                                              [item.id]: { ...prev[item.id], image_url: undefined }
+                                            }));
+                                            setLocalImages(prev => {
+                                              const newState = { ...prev };
+                                              delete newState[item.id];
+                                              return newState;
+                                            });
+                                          }
+                                        }
+                                      ]
+                                    );
+                                  }}
+                                >
+                                  <Ionicons name="trash" size={18} color="#fff" />
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <View style={styles.imageActionButtons}>
+                                <TouchableOpacity 
+                                  style={styles.imageActionButton}
+                                  onPress={() => handleTakePhoto(item.id)}
+                                  disabled={uploadingImage}
+                                >
+                                  {uploadingImage && localImages[item.id] ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                  ) : (
+                                    <Ionicons name="camera" size={18} color="#fff" />
+                                  )}
+                                </TouchableOpacity>
+                                <TouchableOpacity 
+                                  style={styles.imageActionButton}
+                                  onPress={() => handlePickImage(item.id)}
+                                  disabled={uploadingImage}
+                                >
+                                  {uploadingImage && localImages[item.id] ? (
+                                    <ActivityIndicator size="small" color="#fff" />
+                                  ) : (
+                                    <Ionicons name="image" size={18} color="#fff" />
+                                  )}
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })()}
+                    </View>
                   </View>
                 ) : (
-                  <TextInput
-                    style={styles.openResponseInput}
-                    placeholder="Escribe tu respuesta aquí..."
-                    value={openResponses[item.id]?.response || ''}
-                    onChangeText={(text) => handleOpenResponseChange(item.id, text)}
-                    multiline
-                    placeholderTextColor="#9ca3af"
-                  />
+                  // Open inspections
+                  <>
+                    {/* Response Options/Input - In the middle */}
+                    {item.question_type === 'single_choice' || item.question_type === 'multiple_choice' ? (
+                      <View style={styles.responseButtonsContainer}>
+                        {(item.options && item.options.length > 0 ? item.options : []).map((option) => {
+                          const currentResponse = openResponses[item.id]?.response || '';
+                          const isSelected = item.question_type === 'multiple_choice' 
+                            ? currentResponse.split(',').map(s => s.trim()).includes(option)
+                            : currentResponse === option;
+                          return (
+                            <TouchableOpacity
+                              key={option}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                isSelected && { backgroundColor: '#6366f1' }
+                              ]}
+                              onPress={() => {
+                                if (item.question_type === 'multiple_choice') {
+                                  // Toggle option for multiple choice
+                                  const current = currentResponse.split(',').map(s => s.trim()).filter(s => s);
+                                  const newResponse = current.includes(option)
+                                    ? current.filter(opt => opt !== option).join(', ')
+                                    : [...current, option].join(', ');
+                                  handleOpenResponseChange(item.id, newResponse);
+                                } else {
+                                  // Single choice - replace
+                                  handleOpenResponseChange(item.id, option);
+                                }
+                              }}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {option}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <TextInput
+                        style={styles.openResponseInput}
+                        placeholder="Escribe tu respuesta aquí..."
+                        value={openResponses[item.id]?.response || ''}
+                        onChangeText={(text) => handleOpenResponseChange(item.id, text)}
+                        multiline
+                        placeholderTextColor="#9ca3af"
+                      />
+                    )}
+                    
+                    {/* Image Section - At the bottom */}
+                    <View style={styles.imageSection}>
+                  {(() => {
+                    const responseData = openResponses[item.id];
+                    // Prioritize image_url from database, then localImages, then null
+                    const imageUrl = responseData?.image_url !== null && responseData?.image_url !== undefined 
+                      ? responseData.image_url 
+                      : (localImages[item.id] || null);
+                    return (
+                      <View style={styles.imageContainer}>
+                        {imageUrl ? (
+                          <Image 
+                            source={{ uri: imageUrl }} 
+                            style={styles.previewImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.imagePlaceholder}>
+                            <Ionicons name="image-outline" size={40} color="#9ca3af" />
+                            <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
+                          </View>
+                        )}
+                        <View style={styles.imageActionButtons}>
+                          {imageUrl ? (
+                            <>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Cambiar imagen',
+                                    '¿Cómo deseas cambiar la imagen?',
+                                    [
+                                      {
+                                        text: 'Tomar foto',
+                                        onPress: () => handleTakePhoto(item.id)
+                                      },
+                                      {
+                                        text: 'Galería',
+                                        onPress: () => handlePickImage(item.id)
+                                      },
+                                      {
+                                        text: 'Cancelar',
+                                        style: 'cancel'
+                                      }
+                                    ]
+                                  );
+                                }}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="swap-horizontal" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.imageActionButton, styles.imageDeleteButton]}
+                                onPress={() => {
+                                  Alert.alert(
+                                    'Eliminar imagen',
+                                    '¿Estás seguro de que deseas eliminar esta imagen?',
+                                    [
+                                      {
+                                        text: 'Cancelar',
+                                        style: 'cancel'
+                                      },
+                                      {
+                                        text: 'Eliminar',
+                                        style: 'destructive',
+                                        onPress: () => {
+                                          setOpenResponses(prev => ({
+                                            ...prev,
+                                            [item.id]: { ...prev[item.id], image_url: undefined }
+                                          }));
+                                          setLocalImages(prev => {
+                                            const newState = { ...prev };
+                                            delete newState[item.id];
+                                            return newState;
+                                          });
+                                        }
+                                      }
+                                    ]
+                                  );
+                                }}
+                              >
+                                <Ionicons name="trash" size={18} color="#fff" />
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handleTakePhoto(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="camera" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handlePickImage(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="image" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })()}
+                    </View>
+                  </>
                 )}
               </View>
             ))}
@@ -1164,31 +1731,13 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   questionCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  questionHeader: {
     marginBottom: 12,
-  },
-  questionIndex: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3b82f6',
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
   },
   questionText: {
     fontSize: 16,
     color: '#1f2937',
     lineHeight: 22,
+    marginBottom: 10,
   },
   closedResponseContainer: {
     marginTop: 8,
@@ -1271,6 +1820,62 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  imageSection: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  previewImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0',
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: 120,
+    borderRadius: 6,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePlaceholderText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  imageActionButtons: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  imageActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  imageDeleteButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
   },
 });
 

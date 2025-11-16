@@ -25,6 +25,7 @@ interface FormTemplate {
   createdDate: string;
   lastModified: string;
   itemCount: number;
+  user_id?: string;
 }
 
 interface Category {
@@ -47,11 +48,19 @@ export default function ClosedInspectionsScreen() {
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [newTemplateDescription, setNewTemplateDescription] = useState('');
   const [newTemplateCategory, setNewTemplateCategory] = useState('');
-  const [newTemplateItems, setNewTemplateItems] = useState<Array<{text: string, category: string}>>([{text: '', category: ''}]);
+  const [newTemplateItems, setNewTemplateItems] = useState<Array<{
+    text: string, 
+    category: string, 
+    question_type: 'text' | 'single_choice' | 'multiple_choice',
+    options: string[]
+  }>>([{text: '', category: '', question_type: 'text', options: []}]);
+  const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   
   // States for viewing items
   const [showItemsModal, setShowItemsModal] = useState(false);
   const [selectedTemplateItems, setSelectedTemplateItems] = useState<Array<{category: string, items: any[]}>>([]);
+  const [selectedCategoryInModal, setSelectedCategoryInModal] = useState<string | null>(null);
+  const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   
   // States for editing template
   const [showEditModal, setShowEditModal] = useState(false);
@@ -59,28 +68,14 @@ export default function ClosedInspectionsScreen() {
   const [editTemplateTitle, setEditTemplateTitle] = useState('');
   const [editTemplateDescription, setEditTemplateDescription] = useState('');
   const [editTemplateCategory, setEditTemplateCategory] = useState('');
-  const [editTemplateItems, setEditTemplateItems] = useState<Array<{id?: string, text: string, category: string}>>([]);
+  const [editTemplateItems, setEditTemplateItems] = useState<Array<{
+    id?: string, 
+    text: string, 
+    category: string,
+    question_type?: 'text' | 'single_choice' | 'multiple_choice',
+    options?: string[]
+  }>>([]);
 
-  // Cargar templates de la base de datos para el usuario actual
-  useEffect(() => {
-    const loadDatabaseTemplates = async () => {
-      try {
-        if (user?.id) {
-          // Get templates for this user (includes 'ALL' templates too via backend filtering)
-          const response = await getTemplatesByUserId(user.id, 1, 100);
-          
-          if (response?.data?.templates) {
-            const allTemplates = response.data.templates.filter((t: any) => t.user_id === 'ALL');
-            const userTemplates = response.data.templates.filter((t: any) => t.user_id === user.id);
-          }
-        }
-      } catch (error) {
-        // Error loading templates
-      }
-    };
-
-    loadDatabaseTemplates();
-  }, [user?.id]);
 
   // Convertir templates de DB a formato FormTemplate cuando cambien
   useEffect(() => {
@@ -94,12 +89,13 @@ export default function ClosedInspectionsScreen() {
         createdDate: template.created_at ? new Date(template.created_at).toISOString().split('T')[0] : '2024-01-01',
         lastModified: template.updated_at ? new Date(template.updated_at).toISOString().split('T')[0] : '2024-01-01',
         itemCount: 0,
+        user_id: template.user_id || undefined,
       }));
 
       setFormTemplates(dbTemplates);
-      
-      // Save templates to AsyncStorage when they change
-      storage.saveUserTemplates(templates);
+    } else {
+      // Si no hay templates, limpiar la lista
+      setFormTemplates([]);
     }
   }, [templates]);
 
@@ -123,42 +119,21 @@ export default function ClosedInspectionsScreen() {
     }
   }, [formTemplates]);
 
-  // Cargar formularios guardados al iniciar
+  // Cargar templates del servidor al iniciar
   useEffect(() => {
-    clearUnwantedTemplates();
-    loadSavedForms();
-    initializeDefaultTemplate();
-  }, []);
+    if (user?.id) {
+      getTemplatesByUserId(user.id, 1, 100).catch(() => {});
+    }
+  }, [user?.id]);
 
-  // Recargar formularios cuando la pantalla vuelva a tener foco
+  // Recargar templates del servidor cuando la pantalla vuelva a tener foco
   useFocusEffect(
     React.useCallback(() => {
-      loadSavedForms();
-    }, [])
+      if (user?.id) {
+        getTemplatesByUserId(user.id, 1, 100).catch(() => {});
+      }
+    }, [user?.id, getTemplatesByUserId])
   );
-
-  const loadSavedForms = async () => {
-    try {
-      const savedForms = await storage.loadForms();
-      
-      // Convertir formularios guardados al formato FormTemplate
-      const userForms = savedForms.map((form: any) => ({
-        id: form.id,
-        title: form.title,
-        description: form.description,
-        category: form.category,
-        isTemplate: form.isTemplate || false,
-        createdDate: form.createdDate || '2024-01-15',
-        lastModified: form.lastModified || '2024-01-15',
-        itemCount: form.items ? form.items.length : 0,
-      }));
-
-      // Solo mostrar los formularios guardados (sin duplicar)
-      setFormTemplates(userForms);
-    } catch (error) {
-      setFormTemplates([]);
-    }
-  };
 
   // Limpiar templates duplicados
   // Limpiar templates no deseados - mantener solo CCM2L y Productos Químicos únicos
@@ -355,11 +330,15 @@ export default function ClosedInspectionsScreen() {
     setNewTemplateTitle('');
     setNewTemplateDescription('');
     setNewTemplateCategory('');
-    setNewTemplateItems([{text: '', category: ''}]);
+    setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
+    setIsCreatingTemplate(false);
     setShowCreateModal(true);
   };
   
   const handleCreateTemplate = async () => {
+    if (isCreatingTemplate) {
+      return;
+    }
     // Validate inputs
     if (!newTemplateTitle.trim()) {
       Alert.alert('Error', 'El título es requerido');
@@ -371,6 +350,28 @@ export default function ClosedInspectionsScreen() {
     }
     if (!newTemplateDescription.trim()) {
       Alert.alert('Error', 'La descripción es requerida');
+      return;
+    }
+    const trimmedItems = newTemplateItems.map((item) => ({
+      text: item.text.trim(),
+      category: item.category.trim(),
+      question_type: item.question_type || 'text',
+      options: item.options || []
+    }));
+    const hasEmptyItem = trimmedItems.some(item => !item.text || !item.category);
+    if (trimmedItems.length === 0 || hasEmptyItem) {
+      Alert.alert('Error', 'Completa todos los items con categoría y texto.');
+      return;
+    }
+    // Validate options for choice questions
+    const hasInvalidChoice = trimmedItems.some(item => {
+      if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+        return !item.options || item.options.length < 2 || item.options.some(opt => !opt.trim());
+      }
+      return false;
+    });
+    if (hasInvalidChoice) {
+      Alert.alert('Error', 'Las preguntas de tipo choice deben tener al menos 2 opciones válidas.');
       return;
     }
     
@@ -385,6 +386,7 @@ export default function ClosedInspectionsScreen() {
       return;
     }
     
+    setIsCreatingTemplate(true);
     try {
       // Get user info for created_by
       const userId = user?.id;
@@ -405,19 +407,23 @@ export default function ClosedInspectionsScreen() {
       const newTemplate = await createTemplate(templateData);
       
       // Filter valid items (with both text and category)
-      const validItems = newTemplateItems.filter(item => item.text.trim() && item.category.trim());
-      
       // Create items for the template if there are any
-      if (validItems.length > 0) {
-        for (let i = 0; i < validItems.length; i++) {
-          const item = validItems[i];
-          await createItem({
+      if (trimmedItems.length > 0) {
+        for (let i = 0; i < trimmedItems.length; i++) {
+          const item = trimmedItems[i];
+          const itemData: any = {
             template_id: newTemplate.id,
-            category: item.category.trim(),
+            category: item.category,
             question_index: i + 1,
-            text: item.text.trim(),
+            text: item.text,
+            question_type: item.question_type,
             sort_order: i + 1
-          });
+          };
+          // Add options only for choice types
+          if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+            itemData.options = item.options.filter(opt => opt.trim());
+          }
+          await createItem(itemData);
         }
       }
       
@@ -431,23 +437,62 @@ export default function ClosedInspectionsScreen() {
       setNewTemplateTitle('');
       setNewTemplateDescription('');
       setNewTemplateCategory('');
-      setNewTemplateItems([{text: '', category: ''}]);
+      setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
       
       Alert.alert('Éxito', 'Template creado correctamente');
     } catch (error: any) {
       const errorMessage = error?.message || 'No se pudo crear el template';
       Alert.alert('Error', errorMessage);
+    } finally {
+      setIsCreatingTemplate(false);
     }
   };
   
   const addNewItem = () => {
-    setNewTemplateItems([...newTemplateItems, {text: '', category: ''}]);
+    setNewTemplateItems([...newTemplateItems, {text: '', category: '', question_type: 'text', options: []}]);
   };
   
-  const updateNewItem = (index: number, field: 'text' | 'category', value: string) => {
+  const updateNewItem = (index: number, field: 'text' | 'category' | 'question_type', value: string | 'text' | 'single_choice' | 'multiple_choice') => {
     const updatedItems = [...newTemplateItems];
-    updatedItems[index][field] = value;
+    if (field === 'question_type') {
+      updatedItems[index].question_type = value as 'text' | 'single_choice' | 'multiple_choice';
+      // Reset options when changing to text
+      if (value === 'text') {
+        updatedItems[index].options = [];
+      } else if (updatedItems[index].options.length === 0) {
+        // Initialize with 2 empty options for choice types
+        updatedItems[index].options = ['', ''];
+      }
+    } else {
+      (updatedItems[index] as any)[field] = value;
+    }
     setNewTemplateItems(updatedItems);
+  };
+
+  const updateNewItemOption = (itemIndex: number, optionIndex: number, value: string) => {
+    const updatedItems = [...newTemplateItems];
+    if (!updatedItems[itemIndex].options) {
+      updatedItems[itemIndex].options = [];
+    }
+    updatedItems[itemIndex].options[optionIndex] = value;
+    setNewTemplateItems(updatedItems);
+  };
+
+  const addNewItemOption = (itemIndex: number) => {
+    const updatedItems = [...newTemplateItems];
+    if (!updatedItems[itemIndex].options) {
+      updatedItems[itemIndex].options = [];
+    }
+    updatedItems[itemIndex].options.push('');
+    setNewTemplateItems(updatedItems);
+  };
+
+  const removeNewItemOption = (itemIndex: number, optionIndex: number) => {
+    const updatedItems = [...newTemplateItems];
+    if (updatedItems[itemIndex].options && updatedItems[itemIndex].options.length > 2) {
+      updatedItems[itemIndex].options = updatedItems[itemIndex].options.filter((_, i) => i !== optionIndex);
+      setNewTemplateItems(updatedItems);
+    }
   };
   
   const removeNewItem = (index: number) => {
@@ -457,13 +502,50 @@ export default function ClosedInspectionsScreen() {
   };
   
   const addEditItem = () => {
-    setEditTemplateItems([...editTemplateItems, {text: '', category: ''}]);
+    setEditTemplateItems([...editTemplateItems, {text: '', category: '', question_type: 'text', options: []}]);
   };
   
-  const updateEditItem = (index: number, field: 'text' | 'category', value: string) => {
+  const updateEditItem = (index: number, field: 'text' | 'category' | 'question_type', value: string | 'text' | 'single_choice' | 'multiple_choice') => {
     const updatedItems = [...editTemplateItems];
-    updatedItems[index][field] = value;
+    if (field === 'question_type') {
+      updatedItems[index].question_type = value as 'text' | 'single_choice' | 'multiple_choice';
+      // Reset options when changing to text
+      if (value === 'text') {
+        updatedItems[index].options = [];
+      } else if (!updatedItems[index].options || updatedItems[index].options!.length === 0) {
+        // Initialize with 2 empty options for choice types
+        updatedItems[index].options = ['', ''];
+      }
+    } else {
+      (updatedItems[index] as any)[field] = value;
+    }
     setEditTemplateItems(updatedItems);
+  };
+
+  const updateEditItemOption = (itemIndex: number, optionIndex: number, value: string) => {
+    const updatedItems = [...editTemplateItems];
+    if (!updatedItems[itemIndex].options) {
+      updatedItems[itemIndex].options = [];
+    }
+    updatedItems[itemIndex].options![optionIndex] = value;
+    setEditTemplateItems(updatedItems);
+  };
+
+  const addEditItemOption = (itemIndex: number) => {
+    const updatedItems = [...editTemplateItems];
+    if (!updatedItems[itemIndex].options) {
+      updatedItems[itemIndex].options = [];
+    }
+    updatedItems[itemIndex].options!.push('');
+    setEditTemplateItems(updatedItems);
+  };
+
+  const removeEditItemOption = (itemIndex: number, optionIndex: number) => {
+    const updatedItems = [...editTemplateItems];
+    if (updatedItems[itemIndex].options && updatedItems[itemIndex].options!.length > 2) {
+      updatedItems[itemIndex].options = updatedItems[itemIndex].options!.filter((_, i) => i !== optionIndex);
+      setEditTemplateItems(updatedItems);
+    }
   };
   
   const removeEditItem = (index: number) => {
@@ -502,6 +584,13 @@ export default function ClosedInspectionsScreen() {
       }));
       
       setSelectedTemplateItems(groupedArray);
+      // Establecer la primera categoría como seleccionada por defecto
+      if (groupedArray.length > 0) {
+        setSelectedCategoryInModal(groupedArray[0].category);
+      } else {
+        setSelectedCategoryInModal(null);
+      }
+      setShowCategoryDropdown(false);
       setShowItemsModal(true);
     } catch (error: any) {
       Alert.alert('Error', `No se pudieron cargar los items del template: ${error.message}`);
@@ -522,10 +611,12 @@ export default function ClosedInspectionsScreen() {
       const itemsForEdit = items.map((item: any) => ({
         id: item.id,
         text: item.text,
-        category: item.category
+        category: item.category,
+        question_type: item.question_type || 'text',
+        options: item.options && Array.isArray(item.options) ? item.options : (typeof item.options === 'string' ? JSON.parse(item.options) : [])
       }));
       
-      setEditTemplateItems(itemsForEdit.length > 0 ? itemsForEdit : [{text: '', category: ''}]);
+      setEditTemplateItems(itemsForEdit.length > 0 ? itemsForEdit : [{text: '', category: '', question_type: 'text', options: []}]);
       setShowEditModal(true);
     } catch (error: any) {
       Alert.alert('Error', `No se pudieron cargar los items del template: ${error.message}`);
@@ -560,6 +651,18 @@ export default function ClosedInspectionsScreen() {
       // Filter valid items
       const validItems = editTemplateItems.filter(item => item.text.trim() && item.category.trim());
       
+      // Validate options for choice questions
+      const hasInvalidChoice = validItems.some(item => {
+        if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+          return !item.options || item.options.length < 2 || item.options.some(opt => !opt.trim());
+        }
+        return false;
+      });
+      if (hasInvalidChoice) {
+        Alert.alert('Error', 'Las preguntas de tipo choice deben tener al menos 2 opciones válidas.');
+        return;
+      }
+      
       // Get current items from database
       const currentItems = await getItemsByTemplateId(editingTemplate.id);
       const currentItemIds = Array.isArray(currentItems) ? currentItems.map((item: any) => item.id) : [];
@@ -583,25 +686,37 @@ export default function ClosedInspectionsScreen() {
       const existingCount = itemsToUpdate.length;
       for (let i = 0; i < itemsToCreate.length; i++) {
         const item = itemsToCreate[i];
-        await createItem({
+        const itemData: any = {
           template_id: editingTemplate.id,
           category: item.category.trim(),
           question_index: existingCount + i + 1,
           text: item.text.trim(),
+          question_type: item.question_type || 'text',
           sort_order: existingCount + i + 1
-        });
+        };
+        // Add options only for choice types
+        if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+          itemData.options = item.options ? item.options.filter((opt: string) => opt.trim()) : [];
+        }
+        await createItem(itemData);
       }
       
       // Update existing items
       for (let i = 0; i < itemsToUpdate.length; i++) {
         const item = itemsToUpdate[i];
         if (item.id) {
-          await updateItem(item.id, {
+          const updateData: any = {
             category: item.category.trim(),
             text: item.text.trim(),
             question_index: i + 1,
+            question_type: item.question_type || 'text',
             sort_order: i + 1
-          });
+          };
+          // Add options only for choice types
+          if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+            updateData.options = item.options ? item.options.filter((opt: string) => opt.trim()) : [];
+          }
+          await updateItem(item.id, updateData);
         }
       }
       
@@ -696,11 +811,11 @@ export default function ClosedInspectionsScreen() {
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
         <View>
           <Text style={styles.headerTitle}>Inspecciones Cerradas</Text>
-          <Text style={styles.headerSubtitle}>
-            Gestiona tus templates de inspección de seguridad
-          </Text>
         </View>
       </View>
 
@@ -783,16 +898,40 @@ export default function ClosedInspectionsScreen() {
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.editButton}
-                onPress={() => handleEditForm(form)}
+                style={[
+                  styles.editButton,
+                  form.user_id === 'ALL' && styles.disabledButton
+                ]}
+                onPress={() => {
+                  if (form.user_id !== 'ALL') {
+                    handleEditForm(form);
+                  }
+                }}
+                disabled={form.user_id === 'ALL'}
               >
-                <Ionicons name="create" size={20} color="#fff" />
+                <Ionicons 
+                  name="create" 
+                  size={20} 
+                  color={form.user_id === 'ALL' ? '#9ca3af' : '#fff'} 
+                />
               </TouchableOpacity>
               <TouchableOpacity 
-                style={styles.deleteButton}
-                onPress={() => handleDeleteForm(form)}
+                style={[
+                  styles.deleteButton,
+                  form.user_id === 'ALL' && styles.disabledButton
+                ]}
+                onPress={() => {
+                  if (form.user_id !== 'ALL') {
+                    handleDeleteForm(form);
+                  }
+                }}
+                disabled={form.user_id === 'ALL'}
               >
-                <Ionicons name="trash" size={20} color="#fff" />
+                <Ionicons 
+                  name="trash" 
+                  size={20} 
+                  color={form.user_id === 'ALL' ? '#9ca3af' : '#fff'} 
+                />
               </TouchableOpacity>
             </View>
           ))}
@@ -848,8 +987,76 @@ export default function ClosedInspectionsScreen() {
                     onChangeText={(value) => updateNewItem(index, 'category', value)}
                     placeholder="Categoría del item"
                   />
+                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4, marginTop: 8}}>Tipo de pregunta</Text>
+                  <View style={{flexDirection: 'row', marginBottom: 8, gap: 8}}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: item.question_type === 'text' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateNewItem(index, 'question_type', 'text')}
+                    >
+                      <Text style={{color: item.question_type === 'text' ? '#fff' : '#374151', fontWeight: '600'}}>Texto</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: item.question_type === 'single_choice' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateNewItem(index, 'question_type', 'single_choice')}
+                    >
+                      <Text style={{color: item.question_type === 'single_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Opción Única</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: item.question_type === 'multiple_choice' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateNewItem(index, 'question_type', 'multiple_choice')}
+                    >
+                      <Text style={{color: item.question_type === 'multiple_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Múltiple</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(item.question_type === 'single_choice' || item.question_type === 'multiple_choice') && (
+                    <View style={{marginBottom: 8}}>
+                      <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Opciones</Text>
+                      {item.options.map((option, optIndex) => (
+                        <View key={optIndex} style={{flexDirection: 'row', marginBottom: 4, alignItems: 'center'}}>
+                          <TextInput
+                            style={[styles.renameInput, {flex: 1, marginBottom: 0}]}
+                            value={option}
+                            onChangeText={(value) => updateNewItemOption(index, optIndex, value)}
+                            placeholder={`Opción ${optIndex + 1}`}
+                          />
+                          {item.options.length > 2 && (
+                            <TouchableOpacity
+                              style={{marginLeft: 8, padding: 8}}
+                              onPress={() => removeNewItemOption(index, optIndex)}
+                            >
+                              <Ionicons name="close-circle" size={20} color="#ef4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      ))}
+                      <TouchableOpacity
+                        style={{alignSelf: 'flex-start', marginTop: 4}}
+                        onPress={() => addNewItemOption(index)}
+                      >
+                        <Text style={{color: '#6366f1', fontSize: 12}}>+ Agregar opción</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                   <TextInput
-                    style={[styles.renameInput, {minHeight: 60}]}
+                    style={[styles.renameInput, {minHeight: 60, marginTop: 8}]}
                     value={item.text}
                     onChangeText={(value) => updateNewItem(index, 'text', value)}
                     placeholder="Texto de la pregunta"
@@ -882,17 +1089,18 @@ export default function ClosedInspectionsScreen() {
                   setNewTemplateTitle('');
                   setNewTemplateDescription('');
                   setNewTemplateCategory('');
-                  setNewTemplateItems([{text: '', category: ''}]);
+                  setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
                 }}
               >
                 <Text style={styles.renameCancelText}>Cancelar</Text>
               </TouchableOpacity>
               
               <TouchableOpacity 
-                style={styles.renameConfirmButton}
+                style={[styles.renameConfirmButton, isCreatingTemplate && styles.renameConfirmButtonDisabled]}
                 onPress={handleCreateTemplate}
+                disabled={isCreatingTemplate}
               >
-                <Text style={styles.renameConfirmText}>Crear</Text>
+                <Text style={styles.renameConfirmText}>{isCreatingTemplate ? 'Creando...' : 'Crear'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -903,53 +1111,141 @@ export default function ClosedInspectionsScreen() {
       <Modal
         visible={showItemsModal}
         transparent={true}
-        animationType="slide"
+        animationType="fade"
         onRequestClose={() => setShowItemsModal(false)}
       >
-        <TouchableOpacity 
-          style={styles.renameModalOverlay}
-          activeOpacity={1}
-          onPress={() => setShowItemsModal(false)}
+        <View 
+          style={styles.itemsModalOverlay}
         >
+          <TouchableOpacity 
+            style={styles.itemsModalOverlayTouchable}
+            activeOpacity={1}
+            onPress={() => {
+              setShowItemsModal(false);
+              setShowCategoryDropdown(false);
+            }}
+          />
           <View 
-            style={[styles.renameModalContent, {maxHeight: '90%', width: '95%', paddingTop: 20, paddingBottom: 20}]}
-            onStartShouldSetResponder={() => true}
+            style={styles.itemsModalContent}
           >
-            <TouchableOpacity 
-              style={{position: 'absolute', top: -6, right: -8, zIndex: 10, padding: 10}}
-              onPress={() => setShowItemsModal(false)}
-            >
-              <Ionicons name="close" size={28} color="#6366f1" />
+            {/* Header del Modal */}
+            <View style={styles.itemsModalHeader}>
+              <Text style={styles.itemsModalTitle}>Inspeccion</Text>
+              <TouchableOpacity 
+                style={styles.itemsModalCloseButton}
+                onPress={() => {
+                  setShowItemsModal(false);
+                  setShowCategoryDropdown(false);
+                }}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
             </TouchableOpacity>
-            <ScrollView showsVerticalScrollIndicator={true}>
-              {selectedTemplateItems.length > 0 ? (
-                selectedTemplateItems.map((categoryGroup, idx) => (
-                  <View key={idx} style={{marginBottom: 32}}>
-                    <View style={{backgroundColor: '#6366f1', padding: 16, borderRadius: 12, marginBottom: 16}}>
-                      <Text style={{fontSize: 20, fontWeight: 'bold', color: '#fff', textAlign: 'center'}}>
-                        {categoryGroup.category}
-                      </Text>
-                    </View>
-                    {categoryGroup.items.map((item: any, itemIdx: number) => (
-                      <View key={itemIdx} style={{flexDirection: 'row', marginLeft: 8, marginBottom: 12}}>
-                        <Text style={{color: '#6366f1', marginRight: 12, fontSize: 18, fontWeight: '600'}}>•</Text>
-                        <Text style={{flex: 1, fontSize: 15, color: '#374151', lineHeight: 24}}>
-                          {item.text}
+            </View>
+
+            {/* Selector de Categoría */}
+            {selectedTemplateItems.length > 0 && (
+              <View style={styles.itemsCategorySelectorContainer}>
+                <TouchableOpacity
+                  style={styles.itemsCategorySelector}
+                  onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
+                >
+                  <Ionicons name="folder" size={20} color="#6366f1" />
+                  <Text style={styles.itemsCategorySelectorText}>
+                    {selectedCategoryInModal || 'Seleccionar categoría'}
+                  </Text>
+                  <Ionicons 
+                    name={showCategoryDropdown ? "chevron-up" : "chevron-down"} 
+                    size={20} 
+                    color="#6b7280" 
+                  />
+                </TouchableOpacity>
+
+                {/* Dropdown de Categorías */}
+                {showCategoryDropdown && (
+                  <ScrollView 
+                    style={styles.itemsCategoryDropdown}
+                    nestedScrollEnabled={true}
+                  >
+                    {selectedTemplateItems.map((categoryGroup, idx) => (
+                      <TouchableOpacity
+                        key={idx}
+                        style={[
+                          styles.itemsCategoryDropdownItem,
+                          selectedCategoryInModal === categoryGroup.category && styles.itemsCategoryDropdownItemActive
+                        ]}
+                        onPress={() => {
+                          setSelectedCategoryInModal(categoryGroup.category);
+                          setShowCategoryDropdown(false);
+                        }}
+                      >
+                        <Text style={[
+                          styles.itemsCategoryDropdownItemText,
+                          selectedCategoryInModal === categoryGroup.category && styles.itemsCategoryDropdownItemTextActive
+                        ]}>
+                          {categoryGroup.category}
                         </Text>
-                      </View>
+                        <View style={styles.itemsCategoryBadge}>
+                          <Text style={styles.itemsCategoryBadgeText}>
+                            {categoryGroup.items.length}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
                     ))}
-                  </View>
-                ))
+                  </ScrollView>
+                )}
+              </View>
+            )}
+
+            <ScrollView 
+              style={styles.itemsModalScrollView}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.itemsModalScrollContent}
+              nestedScrollEnabled={true}
+              bounces={true}
+              scrollEnabled={true}
+              keyboardShouldPersistTaps="handled"
+              onStartShouldSetResponder={() => false}
+              onMoveShouldSetResponder={() => false}
+            >
+              {selectedTemplateItems.length > 0 && selectedCategoryInModal ? (
+                (() => {
+                  const selectedCategoryGroup = selectedTemplateItems.find(
+                    group => group.category === selectedCategoryInModal
+                  );
+                  return selectedCategoryGroup ? (
+                    <View style={styles.itemsListContainer}>
+                      {selectedCategoryGroup.items.map((item: any, itemIdx: number) => (
+                        <View key={itemIdx} style={styles.itemsQuestionCard}>
+                          {item.question_index && (
+                            <View style={styles.itemsQuestionHeader}>
+                              <View style={styles.itemsQuestionIndex}>
+                                <Text style={styles.itemsQuestionIndexText}>
+                                  {item.question_index}
+                                </Text>
+                              </View>
+                            </View>
+                          )}
+                          <Text style={styles.itemsQuestionText}>
+                            {item.text}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  ) : null;
+                })()
               ) : (
-                <View style={{padding: 40, alignItems: 'center'}}>
-                  <Text style={{fontSize: 16, color: '#6b7280', textAlign: 'center'}}>
-                    Este template no tiene items asignados aún.
+                <View style={styles.itemsEmptyContainer}>
+                  <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
+                  <Text style={styles.itemsEmptyText}>
+                    {selectedTemplateItems.length === 0 
+                      ? 'Este template no tiene preguntas asignadas aún.'
+                      : 'Selecciona una categoría para ver las preguntas.'}
                   </Text>
                 </View>
               )}
             </ScrollView>
           </View>
-        </TouchableOpacity>
+        </View>
       </Modal>
 
       {/* Modal de Editar Template */}
@@ -997,8 +1293,76 @@ export default function ClosedInspectionsScreen() {
                     onChangeText={(value) => updateEditItem(index, 'category', value)}
                     placeholder="Categoría del item"
                   />
+                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4, marginTop: 8}}>Tipo de pregunta</Text>
+                  <View style={{flexDirection: 'row', marginBottom: 8, gap: 8}}>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: (item.question_type || 'text') === 'text' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateEditItem(index, 'question_type', 'text')}
+                    >
+                      <Text style={{color: (item.question_type || 'text') === 'text' ? '#fff' : '#374151', fontWeight: '600'}}>Texto</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: item.question_type === 'single_choice' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateEditItem(index, 'question_type', 'single_choice')}
+                    >
+                      <Text style={{color: item.question_type === 'single_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Opción Única</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={{
+                        flex: 1,
+                        padding: 10,
+                        borderRadius: 8,
+                        backgroundColor: item.question_type === 'multiple_choice' ? '#6366f1' : '#e5e7eb',
+                        alignItems: 'center'
+                      }}
+                      onPress={() => updateEditItem(index, 'question_type', 'multiple_choice')}
+                    >
+                      <Text style={{color: item.question_type === 'multiple_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Múltiple</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {(item.question_type === 'single_choice' || item.question_type === 'multiple_choice') && (
+                    <View style={{marginBottom: 8}}>
+                      <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Opciones</Text>
+                      {(item.options || []).map((option, optIndex) => (
+                        <View key={optIndex} style={{flexDirection: 'row', marginBottom: 4, alignItems: 'center'}}>
+                          <TextInput
+                            style={[styles.renameInput, {flex: 1, marginBottom: 0}]}
+                            value={option}
+                            onChangeText={(value) => updateEditItemOption(index, optIndex, value)}
+                            placeholder={`Opción ${optIndex + 1}`}
+                          />
+                          {(item.options || []).length > 2 && (
+                            <TouchableOpacity
+                              style={{marginLeft: 8, padding: 8}}
+                              onPress={() => removeEditItemOption(index, optIndex)}
+                            >
+                              <Ionicons name="close-circle" size={20} color="#ef4444" />
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      ))}
+                      <TouchableOpacity
+                        style={{alignSelf: 'flex-start', marginTop: 4}}
+                        onPress={() => addEditItemOption(index)}
+                      >
+                        <Text style={{color: '#6366f1', fontSize: 12}}>+ Agregar opción</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                   <TextInput
-                    style={[styles.renameInput, {minHeight: 60}]}
+                    style={[styles.renameInput, {minHeight: 60, marginTop: 8}]}
                     value={item.text}
                     onChangeText={(value) => updateEditItem(index, 'text', value)}
                     placeholder="Texto de la pregunta"
@@ -1062,6 +1426,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#22c55a',
     padding: 20,
     paddingTop: 60,
+    flexDirection: 'row',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1070,6 +1436,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
   },
   headerTitle: {
     fontSize: 24,
@@ -1292,6 +1667,10 @@ const styles = StyleSheet.create({
     elevation: 5,
     zIndex: 10,
   },
+  disabledButton: {
+    backgroundColor: '#e5e7eb',
+    opacity: 0.6,
+  },
   // Estilos para el modal de cambiar nombre
   renameModalOverlay: {
     flex: 1,
@@ -1355,12 +1734,242 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
     alignItems: 'center',
   },
+  renameConfirmButtonDisabled: {
+    backgroundColor: '#93c5fd',
+  },
   renameConfirmText: {
     fontSize: 16,
     fontWeight: '500',
     color: '#fff',
   },
-
+  // Estilos para el modal de items mejorado
+  itemsModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    position: 'relative',
+  },
+  itemsModalOverlayTouchable: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+  },
+  itemsModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '95%',
+    maxWidth: 600,
+    height: '85%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+    overflow: 'hidden',
+    flexDirection: 'column',
+  },
+  itemsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#f9fafb',
+  },
+  itemsModalTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1f2937',
+  },
+  itemsModalCloseButton: {
+    padding: 4,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+  },
+  itemsCategorySelectorContainer: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    position: 'relative',
+    zIndex: 100,
+  },
+  itemsCategorySelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  itemsCategorySelectorText: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginLeft: 10,
+  },
+  itemsCategoryDropdown: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginTop: 4,
+    maxHeight: 250,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 10,
+    zIndex: 1000,
+  },
+  itemsCategoryDropdownItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  itemsCategoryDropdownItemActive: {
+    backgroundColor: '#eff6ff',
+  },
+  itemsCategoryDropdownItemText: {
+    fontSize: 15,
+    fontWeight: '500',
+    color: '#374151',
+    flex: 1,
+  },
+  itemsCategoryDropdownItemTextActive: {
+    color: '#6366f1',
+    fontWeight: '700',
+  },
+  itemsModalScrollView: {
+    flex: 1,
+    flexGrow: 1,
+  },
+  itemsModalScrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 24,
+  },
+  itemsCategoryContainer: {
+    marginBottom: 32,
+  },
+  itemsCategoryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 2,
+    borderBottomColor: '#e5e7eb',
+  },
+  itemsCategoryTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginLeft: 8,
+    flex: 1,
+  },
+  itemsCategoryBadge: {
+    backgroundColor: '#dbeafe',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  itemsCategoryBadgeText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#3b82f6',
+  },
+  itemsListContainer: {
+    // gap no funciona en React Native, usamos marginBottom en cada card
+  },
+  itemsQuestionCard: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    padding: 18,
+    marginBottom: 16,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6366f1',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  itemsQuestionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  itemsQuestionIndex: {
+    backgroundColor: '#6366f1',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  itemsQuestionIndexText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+    textTransform: 'uppercase',
+  },
+  itemsQuestionNumber: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#e0e7ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemsQuestionNumberText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6366f1',
+  },
+  itemsQuestionText: {
+    fontSize: 16,
+    color: '#374151',
+    lineHeight: 26,
+    fontWeight: '500',
+    marginTop: 4,
+  },
+  itemsEmptyContainer: {
+    padding: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  itemsEmptyText: {
+    fontSize: 16,
+    color: '#9ca3af',
+    textAlign: 'center',
+    marginTop: 16,
+    fontWeight: '500',
+  },
 });
 
 

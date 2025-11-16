@@ -1,8 +1,62 @@
 import { Ionicons } from '@expo/vector-icons';
-import { Tabs } from 'expo-router';
-import React from 'react';
+import { Redirect, Tabs } from 'expo-router';
+import React, { useMemo } from 'react';
+import { ActivityIndicator, View, useWindowDimensions, ViewStyle } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../contexts/AuthContext';
 
 export default function TabLayout() {
+  const { user, isLoading } = useAuth();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+
+  const tabMetrics = useMemo(() => {
+    const isSmallDevice = width < 360;
+    const isLargeDevice = width > 768;
+    const baseHeight = Math.min(80, Math.max(58, width * 0.18));
+    const paddingBottom = Math.max(insets.bottom || 0, isSmallDevice ? 10 : 14);
+    const paddingTop = isSmallDevice ? 6 : 10;
+    const horizontalMargin = isLargeDevice ? 24 : 0;
+    const borderRadius = isLargeDevice ? 24 : 0;
+    const paddingHorizontal = isLargeDevice ? Math.max(18, width * 0.04) : Math.max(12, width * 0.03);
+    const iconSize = isSmallDevice ? 20 : Math.min(28, Math.max(22, width * 0.06));
+
+    const tabBarStyle: ViewStyle = {
+      position: 'absolute',
+      bottom: 0,
+      left: horizontalMargin,
+      right: horizontalMargin,
+      backgroundColor: '#f3f4f6',
+      borderTopWidth: 0,
+      height: baseHeight + paddingBottom,
+      paddingBottom,
+      paddingTop,
+      paddingHorizontal,
+      borderRadius,
+      shadowColor: '#00000020',
+      shadowOpacity: 0.1,
+      shadowRadius: 8,
+      elevation: borderRadius ? 4 : 0,
+    };
+
+    return {
+      tabBarStyle,
+      iconSize
+    };
+  }, [width, insets.bottom]);
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#1e40af" />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return <Redirect href="/login" />;
+  }
+
   return (
     <Tabs
       screenOptions={{
@@ -11,17 +65,7 @@ export default function TabLayout() {
         headerShown: false,
         tabBarShowLabel: false,
         animation: 'none',
-        tabBarStyle: {
-          position: 'absolute',
-          bottom: 0,
-          left: 0,
-          right: 0,
-          backgroundColor: '#f3f4f6',
-          borderTopWidth: 0,
-          height: 80,
-          paddingBottom: 45,
-          paddingTop: 8,
-        },
+        tabBarStyle: tabMetrics.tabBarStyle,
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: '500',
@@ -34,7 +78,7 @@ export default function TabLayout() {
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="stats-chart" size={22} color={color} />
+            <Ionicons name="stats-chart" size={tabMetrics.iconSize} color={color} />
           ),
         }}
       />
@@ -43,7 +87,7 @@ export default function TabLayout() {
         options={{
           title: 'Servicios',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="grid" size={22} color={color} />
+            <Ionicons name="grid" size={tabMetrics.iconSize} color={color} />
           ),
         }}
       />
@@ -52,7 +96,7 @@ export default function TabLayout() {
         options={{
           title: 'Procedimientos',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="document-text" size={22} color={color} />
+            <Ionicons name="document-text" size={tabMetrics.iconSize} color={color} />
           ),
         }}
       />
@@ -61,7 +105,7 @@ export default function TabLayout() {
         options={{
           title: 'Historial',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="time" size={22} color={color} />
+            <Ionicons name="time" size={tabMetrics.iconSize} color={color} />
           ),
         }}
       />
@@ -70,7 +114,7 @@ export default function TabLayout() {
         options={{
           title: 'Perfil',
           tabBarIcon: ({ color }) => (
-            <Ionicons name="person" size={22} color={color} />
+            <Ionicons name="person" size={tabMetrics.iconSize} color={color} />
           ),
         }}
       />

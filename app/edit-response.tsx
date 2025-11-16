@@ -1,8 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -12,7 +11,14 @@ import {
   TouchableOpacity,
   View,
   Modal,
+  Image,
+  ActivityIndicator,
+  Alert,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../contexts/AuthContext';
 import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
@@ -21,7 +27,9 @@ import { useOpenInspectionResponses } from '../hooks/useOpenInspectionResponses'
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
 import { useCompanies } from '../hooks/useCompanies';
+import { useImageUpload } from '../hooks/useImageUpload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import CustomAlert from '../components/CustomAlert';
 
 interface TemplateItem {
   id: string;
@@ -29,6 +37,8 @@ interface TemplateItem {
   question_index: string;
   text: string;
   category: string;
+  question_type?: 'text' | 'single_choice' | 'multiple_choice';
+  options?: string[];
 }
 
 interface Company {
@@ -41,14 +51,16 @@ interface Company {
 interface ClosedResponseData {
   item_id: string;
   question_index: string;
-  response: 'C' | 'CP' | 'NC' | 'NA' | '';
+  response: string; // Can be any option value, not just C/CP/NC/NA
   explanation?: string;
+  image_url?: string;
 }
 
 interface OpenResponseData {
   item_id: string;
   question_index: string;
   response: string;
+  image_url?: string;
 }
 
 export default function EditResponseScreen() {
@@ -65,10 +77,12 @@ export default function EditResponseScreen() {
   const { createItem: createClosedResponseItem } = useClosedInspectionResponseItems();
   const { createItem: createOpenResponseItem } = useOpenInspectionResponseItems();
   const { getAllCompanies } = useCompanies();
+  const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
 
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [localImages, setLocalImages] = useState<Record<string, string>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -82,11 +96,91 @@ export default function EditResponseScreen() {
   
   const [responseTitle, setResponseTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const navigation = useNavigation();
+  const isSavingRef = useRef(false);
+  
+  // Custom alert states
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertTitle, setAlertTitle] = useState('');
+  const [alertMessage, setAlertMessage] = useState('');
+  const [alertButtons, setAlertButtons] = useState<any[]>([]);
+  
+  // Completion alert state
+  const [showCompletionAlert, setShowCompletionAlert] = useState(false);
+  const [wasAllAnswered, setWasAllAnswered] = useState(false);
+  const [responseAlreadySaved, setResponseAlreadySaved] = useState(false);
 
   useEffect(() => {
     loadCompanies();
     loadTemplateItems();
   }, [templateId, type]);
+
+  // Track changes to detect unsaved data
+  useEffect(() => {
+    const hasClosedResponses = type === 'closed' && Object.values(closedResponses).some(r => r.response && r.response !== '');
+    const hasOpenResponses = type === 'open' && Object.values(openResponses).some(r => r.response && r.response.trim() !== '');
+    const hasTitle = responseTitle.trim() !== '';
+    const hasNotes = type === 'open' && notes.trim() !== '';
+    
+    setHasUnsavedChanges(hasClosedResponses || hasOpenResponses || hasTitle || hasNotes);
+  }, [closedResponses, openResponses, responseTitle, notes, type]);
+
+  // Check if all questions are answered
+  const areAllQuestionsAnswered = useCallback(() => {
+    if (templateItems.length === 0) return false;
+    
+    if (type === 'closed') {
+      return templateItems.every(item => {
+        const response = closedResponses[item.id];
+        if (!response || !response.response) return false;
+        
+        // If item has options, validate against them
+        if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+          if (item.options && item.options.length > 0) {
+            return item.options.includes(response.response);
+          }
+        }
+        // Fallback to default options for backward compatibility
+        return ['C', 'CP', 'NC', 'NA'].includes(response.response);
+      });
+    } else {
+      return templateItems.every(item => {
+        const response = openResponses[item.id];
+        if (!response || !response.response) return false;
+        
+        // For text questions, just check if not empty
+        if (item.question_type === 'text' || !item.question_type) {
+          return response.response.trim() !== '';
+        }
+        
+        // For choice questions, validate against options
+        if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
+          if (item.options && item.options.length > 0) {
+            // For multiple choice, response might be comma-separated
+            const selectedOptions = response.response.split(',').map(s => s.trim()).filter(s => s);
+            return selectedOptions.length > 0 && selectedOptions.every(opt => item.options!.includes(opt));
+          }
+        }
+        
+        return response.response.trim() !== '';
+      });
+    }
+  }, [templateItems, closedResponses, openResponses, type]);
+
+  // Show custom alert helper
+  const showAlert = useCallback((title: string, message: string, buttons: any[] = [{ text: 'OK' }]) => {
+    setAlertTitle(title);
+    setAlertMessage(message);
+    setAlertButtons(buttons);
+    setAlertVisible(true);
+  }, []);
+
+  // Track completion state (but don't show alert automatically)
+  useEffect(() => {
+    const allAnswered = areAllQuestionsAnswered();
+    setWasAllAnswered(allAnswered);
+  }, [areAllQuestionsAnswered, templateItems.length]);
 
   const loadCompanies = async () => {
     try {
@@ -123,14 +217,14 @@ export default function EditResponseScreen() {
         setTemplateItems(items);
         
         // Group items by category to set initial selected category
-        const grouped = items.reduce((acc, item: any) => {
+        const grouped = items.reduce((acc: Record<string, TemplateItem[]>, item: any) => {
           const category = item.category || 'Sin categoría';
           if (!acc[category]) {
             acc[category] = [];
           }
           acc[category].push(item);
           return acc;
-        }, {} as Record<string, any[]>);
+        }, {} as Record<string, TemplateItem[]>);
         
         const categories = Object.keys(grouped);
         if (categories.length > 0) {
@@ -163,13 +257,13 @@ export default function EditResponseScreen() {
         }
       }
     } catch (error: any) {
-      Alert.alert('Error', `No se pudieron cargar las preguntas: ${error.message}`);
+      showAlert('Error', `No se pudieron cargar las preguntas: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleClosedResponseChange = (itemId: string, response: 'C' | 'CP' | 'NC' | 'NA') => {
+  const handleClosedResponseChange = (itemId: string, response: string) => {
     setClosedResponses(prev => ({
       ...prev,
       [itemId]: {
@@ -199,18 +293,73 @@ export default function EditResponseScreen() {
     }));
   };
 
-  const handleSave = async () => {
+  const handlePickImage = async (itemId: string) => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permisos requeridos', 'Se necesitan permisos para acceder a las fotos');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+      }
+    } catch (error: any) {
+      console.error('Error picking image:', error);
+      showAlert('Error', 'No se pudo seleccionar la imagen');
+    }
+  };
+
+  const handleTakePhoto = async (itemId: string) => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        showAlert('Permisos requeridos', 'Se necesitan permisos de cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const imageUri = result.assets[0].uri;
+        setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+      }
+    } catch (error: any) {
+      console.error('Error taking photo:', error);
+      showAlert('Error', 'No se pudo tomar la foto');
+    }
+  };
+
+  const handleAutoSave = useCallback(async (navigationAction?: any) => {
     if (!selectedCompany) {
-      Alert.alert('Error', 'Por favor selecciona una empresa');
+      if (navigationAction) {
+        navigation.dispatch(navigationAction);
+      }
       return;
     }
 
     if (!responseTitle.trim()) {
-      Alert.alert('Error', 'Por favor ingresa un título para la respuesta');
+      if (navigationAction) {
+        navigation.dispatch(navigationAction);
+      }
       return;
     }
 
     try {
+      isSavingRef.current = true;
       setSaving(true);
 
       // Get auth token
@@ -243,6 +392,66 @@ export default function EditResponseScreen() {
 
       const responseId = createdResponse.id;
 
+      // Upload images that are in localImages
+      const imageUploads: Record<string, string> = {};
+      for (const [itemId, imageUri] of Object.entries(localImages)) {
+        try {
+          // Get current image URL before replacing (if this is an update)
+          const currentImageUrl = type === 'closed' 
+            ? closedResponses[itemId]?.image_url 
+            : openResponses[itemId]?.image_url;
+          
+          // Delete old image from S3 if it exists
+          if (currentImageUrl) {
+            try {
+              await deleteImage(currentImageUrl);
+            } catch (deleteError: any) {
+              console.warn(`Error deleting old image for item ${itemId} (continuing with upload):`, deleteError);
+              // Continue with upload even if deletion fails
+            }
+          }
+          
+          const imageUrl = await uploadImage({
+            imageUri,
+            folder: 'inspection-images',
+            subfolder: type,
+            identifier: responseId,
+            itemId: itemId,
+          });
+          
+          if (imageUrl) {
+            // Store with both string and original key to ensure we can find it later
+            imageUploads[itemId] = imageUrl;
+            imageUploads[itemId.toString()] = imageUrl;
+            
+            // Update the response data with the uploaded image URL
+            if (type === 'closed') {
+              setClosedResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            } else {
+              setOpenResponses(prev => ({
+                ...prev,
+                [itemId]: {
+                  ...prev[itemId],
+                  image_url: imageUrl
+                }
+              }));
+            }
+          }
+        } catch (error: any) {
+          console.error(`Error uploading image for item ${itemId}:`, error);
+          // Continue with other items even if one image fails
+        }
+      }
+      
+      // Clear local images after upload
+      setLocalImages({});
+
       // Create only response items that have valid responses
       const createdItems = [];
       
@@ -251,10 +460,35 @@ export default function EditResponseScreen() {
         for (const itemData of Object.values(closedResponses)) {
           const closedItem = itemData as ClosedResponseData;
           
-          // Skip items without response or with invalid response
-          if (!closedItem.response || 
-              !['C', 'CP', 'NC', 'NA'].includes(closedItem.response)) {
+          // Skip items without response
+          if (!closedItem.response || closedItem.response.trim() === '') {
             continue;
+          }
+          
+          // Find the template item to validate response
+          const templateItem = templateItems.find(ti => ti.id === closedItem.item_id);
+          if (templateItem) {
+            // If item has options, validate against them
+            if (templateItem.question_type === 'single_choice' || templateItem.question_type === 'multiple_choice') {
+              if (templateItem.options && templateItem.options.length > 0) {
+                if (!templateItem.options.includes(closedItem.response)) {
+                  console.warn('Skipping item with invalid response option:', closedItem);
+                  continue;
+                }
+              }
+            } else {
+              // For text or default, validate against default options
+              if (!['C', 'CP', 'NC', 'NA'].includes(closedItem.response)) {
+                console.warn('Skipping item with invalid default response:', closedItem);
+                continue;
+              }
+            }
+          } else {
+            // Fallback validation for backward compatibility
+            if (!['C', 'CP', 'NC', 'NA'].includes(closedItem.response)) {
+              console.warn('Skipping item with invalid response:', closedItem);
+              continue;
+            }
           }
           
           // Validate required fields
@@ -270,6 +504,8 @@ export default function EditResponseScreen() {
           responseItemData.question_index = closedItem.question_index || null;
           responseItemData.response = closedItem.response || null;
           responseItemData.explanation = closedItem.explanation?.trim() || null;
+          // Prioritize imageUploads (from just-uploaded images) over state image_url
+          responseItemData.image_url = imageUploads[closedItem.item_id] || closedItem.image_url || null;
           
           // Final validation - ensure no undefined values
           if (Object.values(responseItemData).some(v => v === undefined)) {
@@ -315,6 +551,14 @@ export default function EditResponseScreen() {
           responseItemData.question_index = openItem.question_index || null;
           responseItemData.response = trimmedResponse || null;
           
+          // Prioritize imageUploads (from just-uploaded images) over state image_url
+          // Try multiple key formats to ensure we find the image URL
+          const imageUrlFromUploads = imageUploads[openItem.item_id] || 
+                                     imageUploads[openItem.item_id?.toString()] ||
+                                     (openItem.image_url && openItem.image_url !== 'undefined' ? openItem.image_url : null);
+          
+          responseItemData.image_url = imageUrlFromUploads;
+          
           // Final validation - ensure no undefined values
           if (Object.values(responseItemData).some(v => v === undefined)) {
             console.error('[handleSave] Found undefined in responseItemData:', responseItemData);
@@ -337,29 +581,58 @@ export default function EditResponseScreen() {
         }
       }
 
-      // Show success message
-      if (createdItems.length === 0) {
-        Alert.alert(
-          'Respuesta creada',
-          'La respuesta se creó exitosamente, pero no se guardaron items porque no hay preguntas respondidas. Puedes editar la respuesta más tarde para agregar respuestas.',
-          [
-            {
-              text: 'OK',
-              onPress: () => router.back()
-            }
-          ]
-        );
+      // Mark response as saved
+      setResponseAlreadySaved(true);
+      setHasUnsavedChanges(false);
+
+      // Show success message only if not auto-saving
+      if (!navigationAction) {
+        if (createdItems.length === 0) {
+          showAlert(
+            'Respuesta creada',
+            'La respuesta se creó exitosamente, pero no se guardaron items porque no hay preguntas respondidas. Puedes editar la respuesta más tarde para agregar respuestas.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  // Navigate to correct page based on type
+                  if (type === 'open') {
+                    router.push('/open-inspections');
+                  } else {
+                    router.push('/closed-inspections');
+                  }
+                }
+              }
+            ]
+          );
+        } else {
+          // Check if all questions were answered
+          if (areAllQuestionsAnswered()) {
+            // Show completion alert with send/download options
+            setShowCompletionAlert(true);
+          } else {
+            showAlert(
+              'Éxito',
+              `Respuesta creada exitosamente con ${createdItems.length} pregunta(s) respondida(s)`,
+              [
+                {
+                  text: 'OK',
+                  onPress: () => {
+                    // Navigate to correct page based on type
+                    if (type === 'open') {
+                      router.push('/open-inspections');
+                    } else {
+                      router.push('/closed-inspections');
+                    }
+                  }
+                }
+              ]
+            );
+          }
+        }
       } else {
-        Alert.alert(
-          'Éxito',
-          `Respuesta creada exitosamente con ${createdItems.length} pregunta(s) respondida(s)`,
-          [
-            {
-              text: 'OK',
-              onPress: () => router.back()
-            }
-          ]
-        );
+        // Auto-save completed, allow navigation
+        navigation.dispatch(navigationAction);
       }
     } catch (error: any) {
       console.error('Error saving response:', error);
@@ -377,11 +650,142 @@ export default function EditResponseScreen() {
         }
       }
       
-      Alert.alert('Error', errorMessage);
+      if (!navigationAction) {
+        showAlert('Error', errorMessage);
+      } else {
+        // Even if save fails, allow navigation
+        navigation.dispatch(navigationAction);
+      }
     } finally {
       setSaving(false);
+      isSavingRef.current = false;
+    }
+  }, [selectedCompany, responseTitle, type, notes, closedResponses, openResponses, templateId, createClosedResponse, createOpenResponse, createClosedResponseItem, createOpenResponseItem, navigation, showAlert, areAllQuestionsAnswered]);
+
+  const handleSave = async () => {
+    await handleAutoSave();
+  };
+
+  const handleDownload = async () => {
+    try {
+      // Generar un CSV simple de prueba
+      const csvLines: string[] = [];
+      
+      // Header básico
+      csvLines.push('Inspección Completada');
+      csvLines.push(`Título,${responseTitle || 'Sin título'}`);
+      csvLines.push(`Tipo,${type === 'closed' ? 'Cerrada' : 'Abierta'}`);
+      csvLines.push(`Empresa,${selectedCompany?.name || 'Sin empresa'}`);
+      csvLines.push(`Fecha,${new Date().toLocaleDateString('es-CL')}`);
+      csvLines.push('');
+      
+      // Preguntas y respuestas
+      if (type === 'closed') {
+        csvLines.push('Pregunta,Respuesta');
+        templateItems.forEach(item => {
+          const response = closedResponses[item.id];
+          const responseText = response?.response || 'Sin respuesta';
+          // Escapar comillas en el texto
+          const questionText = `"${item.text.replace(/"/g, '""')}"`;
+          csvLines.push(`${questionText},${responseText}`);
+        });
+      } else {
+        csvLines.push('Pregunta,Respuesta');
+        templateItems.forEach(item => {
+          const response = openResponses[item.id];
+          const responseText = response?.response || 'Sin respuesta';
+          // Escapar comillas en el texto
+          const questionText = `"${item.text.replace(/"/g, '""')}"`;
+          csvLines.push(`${questionText},${responseText}`);
+        });
+      }
+      
+      // Convertir a string
+      const csvContent = csvLines.join('\n');
+      
+      // Crear nombre de archivo
+      const sanitizedTitle = (responseTitle || 'sin-titulo').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `inspeccion-${sanitizedTitle}-${Date.now()}.csv`;
+      
+      // Escribir archivo usando FileSystem
+      // @ts-ignore - documentDirectory exists in expo-file-system
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      await FileSystem.writeAsStringAsync(fileUri, csvContent);
+      
+      // Compartir archivo
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'text/csv',
+          dialogTitle: 'Descargar Inspección',
+        });
+        showAlert('Éxito', 'Archivo CSV generado y listo para compartir');
+      } else {
+        showAlert('Error', 'La función de compartir no está disponible en este dispositivo');
+      }
+    } catch (error: any) {
+      showAlert('Error', `No se pudo generar el archivo: ${error.message}`);
     }
   };
+
+  const handleCompletionAction = (action: 'send' | 'download') => {
+    setShowCompletionAlert(false);
+    if (action === 'send') {
+      // TODO: Implement send functionality
+      showAlert('Próximamente', 'La funcionalidad de envío estará disponible pronto.');
+    } else if (action === 'download') {
+      handleDownload();
+    }
+  };
+
+  // Intercept navigation to save automatically before leaving
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (isSavingRef.current) {
+        // Don't prevent navigation if we're already saving
+        return;
+      }
+
+      // If response was already saved, allow navigation without prompting
+      if (responseAlreadySaved) {
+        return;
+      }
+
+      if (!hasUnsavedChanges) {
+        // No unsaved changes, allow navigation
+        return;
+      }
+
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+
+      // Check if title exists
+      if (!responseTitle.trim()) {
+        showAlert(
+          'Cambios no guardados',
+          'Los cambios no se guardarán a menos que ingreses un título. ¿Deseas salir sin guardar?',
+          [
+            {
+              text: 'Cancelar',
+              style: 'cancel',
+              onPress: () => {}
+            },
+            {
+              text: 'Salir sin guardar',
+              style: 'destructive',
+              onPress: () => navigation.dispatch(e.data.action)
+            }
+          ]
+        );
+        return;
+      } else {
+        // Auto-save before leaving
+        handleAutoSave(e.data.action);
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, hasUnsavedChanges, responseTitle, closedResponses, openResponses, notes, selectedCompany, templateId, type, handleAutoSave, responseAlreadySaved, showAlert]);
 
   const groupedItems = templateItems.reduce((acc, item) => {
     const category = item.category || 'Sin categoría';
@@ -420,7 +824,13 @@ export default function EditResponseScreen() {
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => {
+            // Navigation will be intercepted by beforeRemove listener
+            router.back();
+          }}
+        >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
@@ -591,44 +1001,92 @@ export default function EditResponseScreen() {
         {/* Questions for Selected Category */}
         {selectedCategory && currentCategoryItems.length > 0 && (
           <View style={styles.section}>
-            <Text style={styles.categoryTitle}>{selectedCategory}</Text>
-            
             {currentCategoryItems.map((item, index) => (
               <View key={item.id} style={styles.questionCard}>
-                <View style={styles.questionHeader}>
-                  <Text style={styles.questionIndex}>{item.question_index}</Text>
-                  <Text style={styles.questionText}>{item.text}</Text>
-                </View>
+                {/* Question Text */}
+                <Text style={styles.questionText}>{item.text}</Text>
 
                 {type === 'closed' ? (
                   <View style={styles.closedResponseContainer}>
-                    <View style={styles.responseButtonsContainer}>
-                      {(['C', 'CP', 'NC', 'NA'] as const).map((responseType) => {
-                        const currentResponse = closedResponses[item.id]?.response || '';
-                        const isSelected = currentResponse === responseType;
-                        return (
-                          <TouchableOpacity
-                            key={responseType}
-                            style={[
-                              styles.responseButton,
-                              isSelected && styles.responseButtonSelected,
-                              responseType === 'C' && isSelected && { backgroundColor: '#10b981' },
-                              responseType === 'CP' && isSelected && { backgroundColor: '#f59e0b' },
-                              responseType === 'NC' && isSelected && { backgroundColor: '#ef4444' },
-                              responseType === 'NA' && isSelected && { backgroundColor: '#6b7280' }
-                            ]}
-                            onPress={() => handleClosedResponseChange(item.id, responseType)}
-                          >
-                            <Text style={[
-                              styles.responseButtonText,
-                              isSelected && styles.responseButtonTextSelected
-                            ]}>
-                              {responseType}
-                            </Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
+                    {/* Render based on question type */}
+                    {item.question_type === 'text' ? (
+                      <TextInput
+                        style={styles.openResponseInput}
+                        placeholder="Escribe tu respuesta aquí..."
+                        value={closedResponses[item.id]?.response || ''}
+                        onChangeText={(text) => handleClosedResponseChange(item.id, text)}
+                        multiline
+                        placeholderTextColor="#9ca3af"
+                      />
+                    ) : item.question_type === 'single_choice' || item.question_type === 'multiple_choice' ? (
+                      <View style={styles.responseButtonsContainer}>
+                        {(item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA']).map((option) => {
+                          const currentResponse = closedResponses[item.id]?.response || '';
+                          const isSelected = item.question_type === 'multiple_choice' 
+                            ? currentResponse.split(',').map(s => s.trim()).includes(option)
+                            : currentResponse === option;
+                          return (
+                            <TouchableOpacity
+                              key={option}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                isSelected && { backgroundColor: '#6366f1' }
+                              ]}
+                              onPress={() => {
+                                if (item.question_type === 'multiple_choice') {
+                                  // Toggle option for multiple choice
+                                  const current = currentResponse.split(',').map(s => s.trim()).filter(s => s);
+                                  const newResponse = current.includes(option)
+                                    ? current.filter(opt => opt !== option).join(', ')
+                                    : [...current, option].join(', ');
+                                  handleClosedResponseChange(item.id, newResponse);
+                                } else {
+                                  // Single choice - replace
+                                  handleClosedResponseChange(item.id, option);
+                                }
+                              }}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {option}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      // Default: show C, CP, NC, NA for backward compatibility
+                      <View style={styles.responseButtonsContainer}>
+                        {(['C', 'CP', 'NC', 'NA'] as const).map((responseType) => {
+                          const currentResponse = closedResponses[item.id]?.response || '';
+                          const isSelected = currentResponse === responseType;
+                          return (
+                            <TouchableOpacity
+                              key={responseType}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                responseType === 'C' && isSelected && { backgroundColor: '#10b981' },
+                                responseType === 'CP' && isSelected && { backgroundColor: '#f59e0b' },
+                                responseType === 'NC' && isSelected && { backgroundColor: '#ef4444' },
+                                responseType === 'NA' && isSelected && { backgroundColor: '#6b7280' }
+                              ]}
+                              onPress={() => handleClosedResponseChange(item.id, responseType)}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {responseType}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    )}
                     <TextInput
                       style={styles.explanationInput}
                       placeholder="Explicación (opcional)"
@@ -637,16 +1095,246 @@ export default function EditResponseScreen() {
                       multiline
                       placeholderTextColor="#9ca3af"
                     />
+                    
+                    {/* Image Section */}
+                    <View style={styles.imageSection}>
+                      {(() => {
+                        const responseData = closedResponses[item.id];
+                        const imageUrl = responseData?.image_url || localImages[item.id];
+                        return (
+                          <View style={styles.imageContainer}>
+                            {imageUrl ? (
+                              <Image 
+                                source={{ uri: imageUrl }} 
+                                style={styles.previewImage}
+                                resizeMode="cover"
+                              />
+                            ) : (
+                              <View style={styles.imagePlaceholder}>
+                                <Ionicons name="image-outline" size={40} color="#9ca3af" />
+                                <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
+                              </View>
+                            )}
+                            <View style={styles.imageActionButtons}>
+                              {imageUrl ? (
+                                <>
+                                  <TouchableOpacity 
+                                    style={styles.imageActionButton}
+                                    onPress={() => handleTakePhoto(item.id)}
+                                    disabled={uploadingImage}
+                                  >
+                                    {uploadingImage && localImages[item.id] ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Ionicons name="camera" size={18} color="#fff" />
+                                    )}
+                                  </TouchableOpacity>
+                                  <TouchableOpacity 
+                                    style={styles.imageActionButton}
+                                    onPress={() => handlePickImage(item.id)}
+                                    disabled={uploadingImage}
+                                  >
+                                    {uploadingImage && localImages[item.id] ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Ionicons name="image" size={18} color="#fff" />
+                                    )}
+                                  </TouchableOpacity>
+                                  <TouchableOpacity 
+                                    style={[styles.imageActionButton, styles.imageDeleteButton]}
+                                    onPress={() => {
+                                      setClosedResponses(prev => ({
+                                        ...prev,
+                                        [item.id]: { ...prev[item.id], image_url: undefined }
+                                      }));
+                                      setLocalImages(prev => {
+                                        const newState = { ...prev };
+                                        delete newState[item.id];
+                                        return newState;
+                                      });
+                                    }}
+                                  >
+                                    <Ionicons name="trash" size={18} color="#fff" />
+                                  </TouchableOpacity>
+                                </>
+                              ) : (
+                                <>
+                                  <TouchableOpacity 
+                                    style={styles.imageActionButton}
+                                    onPress={() => handleTakePhoto(item.id)}
+                                    disabled={uploadingImage}
+                                  >
+                                    {uploadingImage && localImages[item.id] ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Ionicons name="camera" size={18} color="#fff" />
+                                    )}
+                                  </TouchableOpacity>
+                                  <TouchableOpacity 
+                                    style={styles.imageActionButton}
+                                    onPress={() => handlePickImage(item.id)}
+                                    disabled={uploadingImage}
+                                  >
+                                    {uploadingImage && localImages[item.id] ? (
+                                      <ActivityIndicator size="small" color="#fff" />
+                                    ) : (
+                                      <Ionicons name="image" size={18} color="#fff" />
+                                    )}
+                                  </TouchableOpacity>
+                                </>
+                              )}
+                            </View>
+                          </View>
+                        );
+                      })()}
+                    </View>
                   </View>
                 ) : (
-                  <TextInput
-                    style={styles.openResponseInput}
-                    placeholder="Escribe tu respuesta aquí..."
-                    value={openResponses[item.id]?.response || ''}
-                    onChangeText={(text) => handleOpenResponseChange(item.id, text)}
-                    multiline
-                    placeholderTextColor="#9ca3af"
-                  />
+                  // Open inspections
+                  <>
+                    {item.question_type === 'single_choice' || item.question_type === 'multiple_choice' ? (
+                      <View style={styles.responseButtonsContainer}>
+                        {(item.options && item.options.length > 0 ? item.options : []).map((option) => {
+                          const currentResponse = openResponses[item.id]?.response || '';
+                          const isSelected = item.question_type === 'multiple_choice' 
+                            ? currentResponse.split(',').map(s => s.trim()).includes(option)
+                            : currentResponse === option;
+                          return (
+                            <TouchableOpacity
+                              key={option}
+                              style={[
+                                styles.responseButton,
+                                isSelected && styles.responseButtonSelected,
+                                isSelected && { backgroundColor: '#6366f1' }
+                              ]}
+                              onPress={() => {
+                                if (item.question_type === 'multiple_choice') {
+                                  // Toggle option for multiple choice
+                                  const current = currentResponse.split(',').map(s => s.trim()).filter(s => s);
+                                  const newResponse = current.includes(option)
+                                    ? current.filter(opt => opt !== option).join(', ')
+                                    : [...current, option].join(', ');
+                                  handleOpenResponseChange(item.id, newResponse);
+                                } else {
+                                  // Single choice - replace
+                                  handleOpenResponseChange(item.id, option);
+                                }
+                              }}
+                            >
+                              <Text style={[
+                                styles.responseButtonText,
+                                isSelected && styles.responseButtonTextSelected
+                              ]}>
+                                {option}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : (
+                      <TextInput
+                        style={styles.openResponseInput}
+                        placeholder="Escribe tu respuesta aquí..."
+                        value={openResponses[item.id]?.response || ''}
+                        onChangeText={(text) => handleOpenResponseChange(item.id, text)}
+                        multiline
+                        placeholderTextColor="#9ca3af"
+                      />
+                    )}
+                    
+                {/* Image Section for Open Inspections */}
+                <View style={styles.imageSection}>
+                  {(() => {
+                    const responseData = openResponses[item.id];
+                    const imageUrl = responseData?.image_url || localImages[item.id];
+                    return (
+                      <View style={styles.imageContainer}>
+                        {imageUrl ? (
+                          <Image 
+                            source={{ uri: imageUrl }} 
+                            style={styles.previewImage}
+                            resizeMode="cover"
+                          />
+                        ) : (
+                          <View style={styles.imagePlaceholder}>
+                            <Ionicons name="image-outline" size={40} color="#9ca3af" />
+                            <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
+                          </View>
+                        )}
+                        <View style={styles.imageActionButtons}>
+                          {imageUrl ? (
+                            <>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handleTakePhoto(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="camera" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handlePickImage(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="image" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={[styles.imageActionButton, styles.imageDeleteButton]}
+                                onPress={() => {
+                                  setOpenResponses(prev => ({
+                                    ...prev,
+                                    [item.id]: { ...prev[item.id], image_url: undefined }
+                                  }));
+                                  setLocalImages(prev => {
+                                    const newState = { ...prev };
+                                    delete newState[item.id];
+                                    return newState;
+                                  });
+                                }}
+                              >
+                                <Ionicons name="trash" size={18} color="#fff" />
+                              </TouchableOpacity>
+                            </>
+                          ) : (
+                            <>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handleTakePhoto(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="camera" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                              <TouchableOpacity 
+                                style={styles.imageActionButton}
+                                onPress={() => handlePickImage(item.id)}
+                                disabled={uploadingImage}
+                              >
+                                {uploadingImage && localImages[item.id] ? (
+                                  <ActivityIndicator size="small" color="#fff" />
+                                ) : (
+                                  <Ionicons name="image" size={18} color="#fff" />
+                                )}
+                              </TouchableOpacity>
+                            </>
+                          )}
+                        </View>
+                      </View>
+                    );
+                  })()}
+                </View>
+                  </>
                 )}
               </View>
             ))}
@@ -668,21 +1356,83 @@ export default function EditResponseScreen() {
           </View>
         )}
 
-        {/* Save Button */}
-        <TouchableOpacity 
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
-          onPress={handleSave}
-          disabled={saving}
-        >
-          <Ionicons name="checkmark-circle" size={24} color="#fff" />
-          <Text style={styles.saveButtonText}>
-            {saving ? 'Guardando...' : 'Guardar Respuesta'}
-          </Text>
-        </TouchableOpacity>
+        {/* Save Button - Only show if all questions are answered */}
+        {areAllQuestionsAnswered() && (
+          <TouchableOpacity 
+            style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
+            onPress={handleSave}
+            disabled={saving}
+          >
+            <Ionicons name="checkmark-circle" size={24} color="#fff" />
+            <Text style={styles.saveButtonText}>
+              {saving ? 'Guardando...' : 'Guardar Respuesta'}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Custom Alert */}
+      <CustomAlert
+        visible={alertVisible}
+        title={alertTitle}
+        message={alertMessage}
+        buttons={alertButtons}
+        onClose={() => setAlertVisible(false)}
+      />
+
+      {/* Completion Alert - Send/Download */}
+      <Modal
+        visible={showCompletionAlert}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowCompletionAlert(false)}
+      >
+        <View style={styles.completionAlertOverlay}>
+          <View style={styles.completionAlertContainer}>
+            <View style={styles.completionHeader}>
+              <Ionicons name="checkmark-circle" size={48} color="#10b981" />
+              <Text style={styles.completionTitle}>¡Inspección Completada!</Text>
+              <Text style={styles.completionMessage}>
+                Has completado todas las preguntas. ¿Qué deseas hacer ahora?
+              </Text>
+            </View>
+            <View style={styles.completionButtons}>
+              <TouchableOpacity
+                style={[styles.completionButton, styles.sendButton]}
+                onPress={() => handleCompletionAction('send')}
+              >
+                <Ionicons name="send" size={24} color="#fff" />
+                <Text style={styles.completionButtonText}>Enviar Inspección</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.completionButton, styles.downloadButton]}
+                onPress={() => handleCompletionAction('download')}
+              >
+                <Ionicons name="download" size={24} color="#fff" />
+                <Text style={styles.completionButtonText}>Descargar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.completionButton, styles.laterButton]}
+                onPress={() => {
+                  setShowCompletionAlert(false);
+                  // Navigate to correct page based on type
+                  if (type === 'open') {
+                    router.push('/open-inspections');
+                  } else {
+                    router.push('/closed-inspections');
+                  }
+                }}
+              >
+                <Ionicons name="time-outline" size={24} color="#6b7280" />
+                <Text style={styles.laterButtonText}>Continuar más tarde</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -853,31 +1603,13 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   questionCard: {
-    backgroundColor: '#f9fafb',
-    borderRadius: 8,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#e5e7eb',
-  },
-  questionHeader: {
     marginBottom: 12,
-  },
-  questionIndex: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#3b82f6',
-    backgroundColor: '#dbeafe',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    alignSelf: 'flex-start',
-    marginBottom: 8,
   },
   questionText: {
     fontSize: 16,
     color: '#1f2937',
     lineHeight: 22,
+    marginBottom: 10,
   },
   closedResponseContainer: {
     marginTop: 8,
@@ -960,6 +1692,145 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  completionAlertOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  completionAlertContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  completionHeader: {
+    padding: 24,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  completionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  completionMessage: {
+    fontSize: 16,
+    color: '#6b7280',
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  completionButtons: {
+    padding: 20,
+  },
+  completionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  sendButton: {
+    backgroundColor: '#3b82f6',
+  },
+  downloadButton: {
+    backgroundColor: '#10b981',
+  },
+  completionButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  laterButton: {
+    backgroundColor: '#f3f4f6',
+    marginTop: 0,
+    marginBottom: 0,
+  },
+  laterButtonText: {
+    color: '#6b7280',
+    fontSize: 16,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+  imageSection: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  imageContainer: {
+    position: 'relative',
+    width: '100%',
+  },
+  previewImage: {
+    width: '100%',
+    height: 120,
+    borderRadius: 6,
+    backgroundColor: '#f0f0f0',
+  },
+  imagePlaceholder: {
+    width: '100%',
+    height: 120,
+    borderRadius: 6,
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  imagePlaceholderText: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#9ca3af',
+  },
+  imageActionButtons: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    gap: 6,
+  },
+  imageActionButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(59, 130, 246, 0.9)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  imageDeleteButton: {
+    backgroundColor: 'rgba(239, 68, 68, 0.9)',
   },
 });
 

@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCompanies } from '../../hooks/useCompanies';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface Company {
   id: string;
@@ -76,6 +77,7 @@ const formatDate = (value?: string) => {
 };
 
 export default function ProceduresScreen() {
+  const { user } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -250,14 +252,20 @@ export default function ProceduresScreen() {
         <View style={styles.filesContainer}>
           <View style={styles.sectionHeader}>
             <Text style={styles.sectionTitle}>
-              {selectedCategory === 'todos' ? 'Todas las Empresas' : 
-               industryOptions.find(i => i.id === selectedCategory)?.name || 'Empresas'}
-              {' '}({filteredCompanies.length})
+              {selectedCategory === 'todos'
+                ? 'Todas las Empresas'
+                : industryOptions.find(i => i.id === selectedCategory)?.name || 'Empresas'}
+              {' '}
+              ({filteredCompanies.length})
             </Text>
-            <TouchableOpacity style={styles.addButton} onPress={handleAddCompany}>
-              <Ionicons name="add" size={20} color="#fff" />
-              <Text style={styles.addButtonText}>Nueva</Text>
-            </TouchableOpacity>
+            {user?.role === 'manager' ? (
+              <TouchableOpacity style={styles.addButton} onPress={handleAddCompany}>
+                <Ionicons name="add" size={20} color="#fff" />
+                <Text style={styles.addButtonText}>Nueva</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={{ height: 36, width: 36 }} />
+            )}
           </View>
 
           {loadingCompanies && (

@@ -32,8 +32,8 @@ export default function DashboardScreen() {
   const [phoneNumber, setPhoneNumber] = useState('');
   
   // Hooks para templates
-  const { getAllTemplates: getAllClosedTemplates } = useClosedInspectionTemplates();
-  const { getAllTemplates: getAllOpenTemplates } = useOpenInspectionTemplates();
+  const { getTemplatesByUserId: getClosedTemplatesByUserId } = useClosedInspectionTemplates();
+  const { getTemplatesByUserId: getOpenTemplatesByUserId } = useOpenInspectionTemplates();
   
   // State para el total de templates
   const [totalTemplates, setTotalTemplates] = useState<number>(0);
@@ -50,7 +50,7 @@ export default function DashboardScreen() {
 
       // Abrir cámara
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
@@ -115,33 +115,51 @@ export default function DashboardScreen() {
     setShowPhotoModal(false);
   };
 
-  // useEffect para obtener el total de templates
+  // useEffect para obtener el total de templates (solo user_id === 'ALL' o user_id === user.id)
   useEffect(() => {
+    if (!user?.id) {
+      setTotalTemplates(0);
+      setLoadingTemplates(false);
+      return;
+    }
+
+    let isMounted = true;
+
     const fetchTemplatesCount = async () => {
       try {
         setLoadingTemplates(true);
         
-        // Obtener templates cerrados
-        const closedData = await getAllClosedTemplates(1, 100);
-        const closedCount = closedData?.data?.pagination?.total || 0;
+        // Obtener templates cerrados filtrados por user_id
+        const closedData = await getClosedTemplatesByUserId(user.id, 1, 100);
+        const closedTemplates = closedData?.data?.templates || [];
+        const closedCount = closedTemplates.length;
         
-        // Obtener templates abiertos
-        const openData = await getAllOpenTemplates(1, 100);
-        const openCount = openData?.data?.pagination?.total || 0;
+        // Obtener templates abiertos filtrados por user_id
+        const openData = await getOpenTemplatesByUserId(user.id, 1, 100);
+        const openTemplates = openData?.data?.templates || [];
+        const openCount = openTemplates.length;
         
-        // Sumar totales
-        const total = closedCount + openCount;
-        setTotalTemplates(total);
+        // Sumar totales solo si el componente sigue montado
+        if (isMounted) {
+          const total = closedCount + openCount;
+          setTotalTemplates(total);
+          setLoadingTemplates(false);
+        }
       } catch (error) {
         // Silently fail - no mostrar error al usuario
-        setTotalTemplates(0);
-      } finally {
-        setLoadingTemplates(false);
+        if (isMounted) {
+          setTotalTemplates(0);
+          setLoadingTemplates(false);
+        }
       }
     };
 
     fetchTemplatesCount();
-  }, []);
+
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.id]);
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -168,7 +186,7 @@ export default function DashboardScreen() {
         <View style={styles.statsRow}>
           <TouchableOpacity 
             style={[styles.statCard, styles.blueCard]}
-            onPress={() => router.push('/(tabs)/explore')}
+            onPress={() => router.push('/inspection-types')}
           >
             <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
             <Text style={styles.statNumber}>

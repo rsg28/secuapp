@@ -16,7 +16,7 @@
  * - deleteItem: Eliminar item
  * 
  * Columnas válidas: id, response_id, item_id, question_index, response, 
- * created_at, updated_at (SIN explanation)
+ * image_url, created_at, updated_at (SIN explanation)
  * 
  * @returns {object} Objeto con funciones y estados para gestión de items de respuestas abiertas
  */

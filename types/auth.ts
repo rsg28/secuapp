@@ -23,6 +23,7 @@ export interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<boolean>;
+  register: (params: { firstName: string; lastName: string; email: string; password: string; phone: string }) => Promise<boolean>;
   logout: () => Promise<void>;
   isManager: boolean;
   userCompanies: any[];

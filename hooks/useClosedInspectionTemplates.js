@@ -16,7 +16,7 @@
  * 
  * @returns {object} Objeto con funciones y estados para gestión de templates cerrados
  */
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
@@ -195,7 +195,7 @@ export const useClosedInspectionTemplates = () => {
   };
 
   // Obtener templates por user_id
-  const getTemplatesByUserId = async (userId, page = 1, limit = 10) => {
+  const getTemplatesByUserId = useCallback(async (userId, page = 1, limit = 10) => {
     try {
       setLoading(true);
       setError(null);
@@ -229,7 +229,7 @@ export const useClosedInspectionTemplates = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   return {
     templates,

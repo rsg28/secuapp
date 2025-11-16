@@ -72,6 +72,8 @@ export const TABLE_COLUMNS = {
     'category',
     'question_index',
     'text',
+    'question_type',
+    'options',
     'sort_order',
     'created_at'
   ],
@@ -94,6 +96,8 @@ export const TABLE_COLUMNS = {
     'category',
     'question_index',
     'text',
+    'question_type',
+    'options',
     'sort_order',
     'created_at'
   ],
@@ -120,6 +124,7 @@ export const TABLE_COLUMNS = {
     'question_index',
     'response',
     'explanation',
+    'image_url',
     'created_at',
     'updated_at'
   ],
@@ -145,6 +150,7 @@ export const TABLE_COLUMNS = {
     'item_id',
     'question_index',
     'response',
+    'image_url',
     'created_at',
     'updated_at'
   ]

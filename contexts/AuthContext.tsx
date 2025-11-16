@@ -24,7 +24,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [userCompanies, setUserCompanies] = useState<any[]>([]);
   const [currentCompany, setCurrentCompany] = useState<any | null>(null);
   
-  // Usar el hook de autenticación que conecta con el backend
   const authHook = useAuthHook();
 
   useEffect(() => {
@@ -45,32 +44,60 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  const login = async (email: string, password: string): Promise<boolean> => {
+  const buildBackendUser = (profile: any): User => ({
+    id: profile.id,
+    email: profile.email,
+    fullName: `${profile.first_name} ${profile.last_name}`.trim(),
+    role: profile.role,
+    company: 'SecuApp',
+    phone: profile.phone || undefined
+  });
+
+  const register = async ({ firstName, lastName, email, password, phone }: { firstName: string; lastName: string; email: string; password: string; phone: string; }): Promise<boolean> => {
     try {
       setIsLoading(true);
-      
-      // Usar el hook de autenticación que conecta con el backend
-      const result = await authHook.login(email, password);
-      
-      if (result) {
-        // Obtener el perfil del usuario desde el backend
-        const userProfile = await authHook.getProfile();
-        
-        if (userProfile) {
-          const backendUser: User = {
-            id: userProfile.id,
-            email: userProfile.email,
-            fullName: `${userProfile.first_name} ${userProfile.last_name}`,
-            role: userProfile.role,
-            company: 'SecuApp' // Por ahora fijo, después se puede obtener de la empresa
-          };
-          
+
+      const registeredUser = await authHook.register({
+        email,
+        password,
+        first_name: firstName,
+        last_name: lastName,
+        role: 'employee',
+        phone
+      });
+
+      if (registeredUser) {
+        const profile = await authHook.getProfile();
+        if (profile) {
+          const backendUser = buildBackendUser(profile);
           await storage.saveUserSession(backendUser);
           setUser(backendUser);
           return true;
         }
       }
-      
+
+      return false;
+    } catch (error) {
+      console.error('Error during register:', error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const login = async (email: string, password: string): Promise<boolean> => {
+    try {
+      setIsLoading(true);
+      const result = await authHook.login(email, password);
+      if (result) {
+        const userProfile = await authHook.getProfile();
+        if (userProfile) {
+          const backendUser = buildBackendUser(userProfile);
+          await storage.saveUserSession(backendUser);
+          setUser(backendUser);
+          return true;
+        }
+      }
       return false;
     } catch (error) {
       console.error('Error during login:', error);
@@ -82,9 +109,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const logout = async () => {
     try {
-      // Usar el hook de autenticación para cerrar sesión en el backend
       await authHook.logout();
-      
       await storage.clearUserSession();
       setUser(null);
       setUserCompanies([]);
@@ -94,16 +119,11 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Cargar empresas del usuario
   const loadUserCompanies = async () => {
     try {
-      // Inicializar empresas si no existen
       await initializeCompanies(storage);
-      
       const companies = await storage.loadCompanies();
       setUserCompanies(companies);
-      
-      // Si solo hay una empresa, establecerla como actual
       if (companies.length === 1) {
         setCurrentCompany(companies[0]);
       }
@@ -112,15 +132,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
-  // Cambiar empresa actual
   const changeCurrentCompany = (company: any) => {
     setCurrentCompany(company);
   };
 
-  // Verificar si el usuario trabaja para múltiples empresas
   const hasMultipleCompanies = userCompanies.length > 1;
-  
-  // Obtener empresa actual o primera empresa
+
   const getCurrentCompany = () => {
     return currentCompany || userCompanies[0];
   };
@@ -129,6 +146,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     user,
     isLoading,
     login,
+    register,
     logout,
     isManager: user?.role === 'manager',
     userCompanies,
