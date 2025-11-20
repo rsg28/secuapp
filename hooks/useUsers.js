@@ -12,7 +12,7 @@
  * - deleteUser: Eliminar usuario
  * 
  * Columnas válidas: id, email, password_hash, first_name, last_name, role, 
- * phone, is_active, created_at, updated_at
+ * phone, profile_image_url, is_active, created_at, updated_at
  * 
  * @returns {object} Objeto con funciones y estados para gestión de usuarios
  */

@@ -87,7 +87,8 @@ export default function ProceduresScreen() {
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const { getAllCompanies } = useCompanies();
+  const { getAllCompanies, deleteCompany } = useCompanies();
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     loadCompanies();
@@ -186,6 +187,41 @@ export default function ProceduresScreen() {
 
   const handleAddCompany = () => {
     router.push('/create-company');
+  };
+
+  const handleDeleteCompany = (company: Company, event: any) => {
+    // Prevenir que el evento se propague al TouchableOpacity del card
+    event?.stopPropagation();
+    
+    Alert.alert(
+      'Eliminar Empresa',
+      `¿Estás seguro de que deseas eliminar "${company.name}"? Esta acción no se puede deshacer.`,
+      [
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+        {
+          text: 'Eliminar',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              setDeletingId(company.id);
+              await deleteCompany(company.id);
+              // Recargar la lista después de eliminar
+              await loadCompanies();
+            } catch (error: any) {
+              Alert.alert(
+                'Error',
+                `No se pudo eliminar la empresa: ${error?.message || 'Error desconocido'}`
+              );
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -288,6 +324,19 @@ export default function ProceduresScreen() {
               style={styles.fileCard}
               onPress={() => handleCompanyPress(company)}
             >
+              {user?.role === 'manager' && (
+                <TouchableOpacity
+                  style={styles.deleteButton}
+                  onPress={(e) => handleDeleteCompany(company, e)}
+                  disabled={deletingId === company.id}
+                >
+                  {deletingId === company.id ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="trash" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              )}
               <View style={styles.fileCardHeader}>
                 <View style={styles.fileIconContainer}>
                   <Ionicons 
@@ -303,15 +352,6 @@ export default function ProceduresScreen() {
                     <Text style={styles.fileSize}>{company.formCount} formularios</Text>
                     <Text style={styles.fileDate}>• {company.lastActivity}</Text>
                   </View>
-                </View>
-                <View style={styles.fileStatus}>
-                  <View style={[
-                    styles.statusDot,
-                    { backgroundColor: company.status === 'active' ? '#22c55e' : '#f59e0b' }
-                  ]} />
-                  <Text style={styles.statusText}>
-                    {company.status === 'active' ? 'Activa' : 'Inactiva'}
-                  </Text>
                 </View>
               </View>
             </TouchableOpacity>
@@ -471,6 +511,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 2,
     elevation: 2,
+    position: 'relative',
   },
   fileCardHeader: {
     flexDirection: 'row',
@@ -512,20 +553,25 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginLeft: 8,
   },
-  fileStatus: {
+  deleteButton: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: '#ef4444',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     alignItems: 'center',
-    marginLeft: 16,
-  },
-  statusDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginBottom: 4,
-  },
-  statusText: {
-    fontSize: 10,
-    color: '#6b7280',
-    fontWeight: '500',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 3,
+    zIndex: 10,
   },
   emptyState: {
     alignItems: 'center',

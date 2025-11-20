@@ -7,17 +7,23 @@ import {
     StyleSheet,
     Text,
     TouchableOpacity,
-    View
+    View,
+    Image,
+    ActivityIndicator,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
+import { useImageUpload } from '../../hooks/useImageUpload';
 
 export default function ProfileScreen() {
-  const { user, logout } = useAuth();
+  const { user, logout, refreshProfile, updateProfile } = useAuth();
   const { countResponsesByInspectorId: countClosedResponses } = useClosedInspectionResponses();
   const { countResponsesByInspectorId: countOpenResponses } = useOpenInspectionResponses();
+  const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
   const [formCount, setFormCount] = useState<number | null>(null);
+  const [updatingProfile, setUpdatingProfile] = useState(false);
 
   useEffect(() => {
     const loadFormCounts = async () => {
@@ -57,6 +63,116 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleChangeProfileImage = () => {
+    Alert.alert(
+      'Cambiar Foto de Perfil',
+      '¿Cómo deseas cambiar tu foto de perfil?',
+      [
+        {
+          text: 'Tomar Foto',
+          onPress: handleTakePhoto,
+        },
+        {
+          text: 'Galería',
+          onPress: handlePickImage,
+        },
+        {
+          text: 'Cancelar',
+          style: 'cancel',
+        },
+      ]
+    );
+  };
+
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la galería');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1], // Aspect ratio cuadrado para que se muestre completo
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfileImage(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', 'Error al seleccionar imagen: ' + error.message);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [1, 1], // Aspect ratio cuadrado para que se muestre completo
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        await uploadProfileImage(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', 'Error al tomar foto: ' + error.message);
+    }
+  };
+
+  const uploadProfileImage = async (imageUri: string) => {
+    if (!user?.id) {
+      Alert.alert('Error', 'Usuario no identificado');
+      return;
+    }
+
+    try {
+      setUpdatingProfile(true);
+
+      // Eliminar imagen anterior de S3 si existe
+      if (user.profile_image_url) {
+        try {
+          await deleteImage(user.profile_image_url);
+        } catch (deleteError: any) {
+          console.warn('Error eliminando imagen anterior (continuando):', deleteError);
+          // Continuar con la subida aunque falle la eliminación
+        }
+      }
+
+      // Subir nueva imagen
+      const imageUrl = await uploadImage({
+        imageUri,
+        folder: 'profile-images',
+        identifier: user.id,
+      });
+
+      if (imageUrl) {
+        // Actualizar usuario con la nueva URL usando el endpoint de perfil
+        await updateProfile({
+          profile_image_url: imageUrl,
+        });
+
+        // Actualizar el usuario en el contexto
+        await refreshProfile();
+        
+        Alert.alert('Éxito', 'Foto de perfil actualizada correctamente');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', 'Error al actualizar foto de perfil: ' + error.message);
+    } finally {
+      setUpdatingProfile(false);
+    }
+  };
+
   const handleEditProfile = () => {
     Alert.alert('Editar Perfil', 'Funcionalidad próximamente disponible');
   };
@@ -86,11 +202,27 @@ export default function ProfileScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.profileImageContainer}>
-          <View style={styles.profileImage}>
-            <IconSymbol name="person.fill" size={50} color="#fff" />
-          </View>
-          <TouchableOpacity style={styles.editImageButton}>
-            <IconSymbol name="camera.fill" size={16} color="#fff" />
+          {user.profile_image_url ? (
+            <Image 
+              source={{ uri: user.profile_image_url }} 
+              style={styles.profileImage}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={styles.profileImage}>
+              <IconSymbol name="person.fill" size={50} color="#fff" />
+            </View>
+          )}
+          <TouchableOpacity 
+            style={styles.editImageButton}
+            onPress={handleChangeProfileImage}
+            disabled={updatingProfile || uploadingImage}
+          >
+            {updatingProfile || uploadingImage ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <IconSymbol name="camera.fill" size={16} color="#fff" />
+            )}
           </TouchableOpacity>
         </View>
         <Text style={styles.userName}>{user.fullName}</Text>

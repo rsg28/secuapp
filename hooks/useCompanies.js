@@ -12,7 +12,7 @@
  * - deleteCompany: Eliminar empresa
  * 
  * Columnas válidas: id, name, industry, address, contact_person, contact_email, 
- * contact_phone, created_by, created_at, updated_at
+ * contact_phone, image_url, created_by, created_at, updated_at
  * 
  * @returns {object} Objeto con funciones y estados para gestión de empresas
  */

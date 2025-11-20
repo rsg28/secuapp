@@ -5,6 +5,7 @@ export interface User {
   role: 'employee' | 'manager';
   company?: string;
   phone?: string;
+  profile_image_url?: string;
   joinDate?: string;
 }
 
@@ -32,6 +33,8 @@ export interface AuthContextType {
   getCurrentCompany: () => any | null;
   changeCurrentCompany: (company: any) => void;
   loadUserCompanies: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
+  updateProfile: (profileData: { first_name?: string; last_name?: string; phone?: string; profile_image_url?: string }) => Promise<any>;
 }
 
 

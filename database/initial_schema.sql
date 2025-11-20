@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`companies` (
   `contact_person` VARCHAR(255) NULL DEFAULT NULL,
   `contact_email` VARCHAR(255) NULL DEFAULT NULL,
   `contact_phone` VARCHAR(20) NULL DEFAULT NULL,
+  `image_url` VARCHAR(500) NULL DEFAULT NULL,
   `created_by` VARCHAR(36) NULL DEFAULT NULL,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -83,6 +84,7 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`companies` (
   INDEX `created_by` (`created_by` ASC) VISIBLE,
   INDEX `idx_name` (`name` ASC) VISIBLE,
   INDEX `idx_industry` (`industry` ASC) VISIBLE,
+  INDEX `idx_image_url` (`image_url` ASC) VISIBLE,
   CONSTRAINT `companies_ibfk_1`
     FOREIGN KEY (`created_by`)
     REFERENCES `aws-secu`.`users` (`id`)
@@ -129,33 +131,6 @@ COLLATE = utf8mb4_0900_ai_ci;
 
 
 -- -----------------------------------------------------
--- Table `aws-secu`.`closed_inspection_response_items`
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_response_items` (
-  `id` VARCHAR(36) NOT NULL,
-  `response_id` VARCHAR(36) NOT NULL,
-  `item_id` VARCHAR(50) NOT NULL,
-  `question_index` VARCHAR(20) NOT NULL,
-  `response` ENUM('C', 'CP', 'NC', 'NA') NOT NULL,
-  `explanation` TEXT NULL DEFAULT NULL,
-  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE INDEX `unique_response_item` (`response_id` ASC, `item_id` ASC) VISIBLE,
-  INDEX `idx_response` (`response_id` ASC) VISIBLE,
-  INDEX `idx_item_id` (`item_id` ASC) VISIBLE,
-  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
-  INDEX `idx_response_type` (`response` ASC) VISIBLE,
-  CONSTRAINT `closed_inspection_response_items_ibfk_1`
-    FOREIGN KEY (`response_id`)
-    REFERENCES `aws-secu`.`closed_inspection_responses` (`id`)
-    ON DELETE CASCADE)
-ENGINE = InnoDB
-DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
-
-
--- -----------------------------------------------------
 -- Table `aws-secu`.`closed_template_items`
 -- -----------------------------------------------------
 CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_template_items` (
@@ -164,15 +139,51 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_template_items` (
   `category` VARCHAR(255) NULL DEFAULT NULL,
   `question_index` VARCHAR(20) NOT NULL,
   `text` TEXT NOT NULL,
+  `question_type` ENUM('text', 'single_choice', 'multiple_choice') NULL DEFAULT 'text',
+  `options` JSON NULL DEFAULT NULL,
   `sort_order` INT NULL DEFAULT '0',
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `idx_template` (`template_id` ASC) VISIBLE,
   INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
   INDEX `idx_sort` (`sort_order` ASC) VISIBLE,
+  INDEX `idx_question_type` (`question_type` ASC) VISIBLE,
   CONSTRAINT `closed_template_items_ibfk_1`
     FOREIGN KEY (`template_id`)
     REFERENCES `aws-secu`.`closed_inspection_templates` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`closed_inspection_response_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_response_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `response_id` VARCHAR(36) NOT NULL,
+  `item_id` VARCHAR(36) NOT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `response` VARCHAR(500) NOT NULL,
+  `explanation` TEXT NULL DEFAULT NULL,
+  `image_url` VARCHAR(500) NULL DEFAULT NULL,
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `unique_response_item` (`response_id` ASC, `item_id` ASC) VISIBLE,
+  INDEX `idx_response` (`response_id` ASC) VISIBLE,
+  INDEX `idx_item_id` (`item_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_response_type` (`response` ASC) VISIBLE,
+  INDEX `idx_image_url` (`image_url` ASC) VISIBLE,
+  CONSTRAINT `closed_inspection_response_items_ibfk_1`
+    FOREIGN KEY (`response_id`)
+    REFERENCES `aws-secu`.`closed_inspection_responses` (`id`)
+    ON DELETE CASCADE,
+  CONSTRAINT `fk_response_item_template_item`
+    FOREIGN KEY (`item_id`)
+    REFERENCES `aws-secu`.`closed_template_items` (`id`)
     ON DELETE CASCADE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
@@ -188,15 +199,44 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_templates` (
   `description` TEXT NULL DEFAULT NULL,
   `temp_category` VARCHAR(255) NULL DEFAULT NULL,
   `created_by` VARCHAR(36) NULL DEFAULT NULL,
+  `user_id` VARCHAR(36) NULL DEFAULT 'ALL',
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   INDEX `created_by` (`created_by` ASC) VISIBLE,
   INDEX `idx_title` (`title` ASC) VISIBLE,
+  INDEX `idx_user_id` (`user_id` ASC) VISIBLE,
   CONSTRAINT `open_inspection_templates_ibfk_1`
     FOREIGN KEY (`created_by`)
     REFERENCES `aws-secu`.`users` (`id`)
     ON DELETE SET NULL)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`open_template_items`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`open_template_items` (
+  `id` VARCHAR(36) NOT NULL,
+  `template_id` VARCHAR(36) NOT NULL,
+  `category` VARCHAR(255) NULL DEFAULT NULL,
+  `question_index` VARCHAR(20) NOT NULL,
+  `text` TEXT NOT NULL,
+  `question_type` ENUM('text', 'single_choice', 'multiple_choice') NULL DEFAULT 'text',
+  `options` JSON NULL DEFAULT NULL,
+  `sort_order` INT NULL DEFAULT '0',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_template` (`template_id` ASC) VISIBLE,
+  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_sort` (`sort_order` ASC) VISIBLE,
+  INDEX `idx_question_type` (`question_type` ASC) VISIBLE,
+  CONSTRAINT `open_template_items_ibfk_1`
+    FOREIGN KEY (`template_id`)
+    REFERENCES `aws-secu`.`open_inspection_templates` (`id`)
+    ON DELETE CASCADE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
@@ -244,9 +284,10 @@ COLLATE = utf8mb4_0900_ai_ci;
 CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_response_items` (
   `id` VARCHAR(36) NOT NULL,
   `response_id` VARCHAR(36) NOT NULL,
-  `item_id` VARCHAR(50) NOT NULL,
+  `item_id` VARCHAR(36) NOT NULL,
   `question_index` VARCHAR(20) NOT NULL,
   `response` TEXT NULL DEFAULT NULL,
+  `image_url` VARCHAR(500) NULL DEFAULT NULL,
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -254,33 +295,14 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`open_inspection_response_items` (
   INDEX `idx_response` (`response_id` ASC) VISIBLE,
   INDEX `idx_item_id` (`item_id` ASC) VISIBLE,
   INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
+  INDEX `idx_image_url` (`image_url` ASC) VISIBLE,
+  CONSTRAINT `fk_open_response_item_template_item`
+    FOREIGN KEY (`item_id`)
+    REFERENCES `aws-secu`.`open_template_items` (`id`)
+    ON DELETE CASCADE,
   CONSTRAINT `open_inspection_response_items_ibfk_1`
     FOREIGN KEY (`response_id`)
     REFERENCES `aws-secu`.`open_inspection_responses` (`id`)
-    ON DELETE CASCADE)
-ENGINE = InnoDB
-DEFAULT CHARACTER SET = utf8mb4
-COLLATE = utf8mb4_0900_ai_ci;
-
-
--- -----------------------------------------------------
--- Table `aws-secu`.`open_template_items`
--- -----------------------------------------------------
-CREATE TABLE IF NOT EXISTS `aws-secu`.`open_template_items` (
-  `id` VARCHAR(36) NOT NULL,
-  `template_id` VARCHAR(36) NOT NULL,
-  `category` VARCHAR(255) NULL DEFAULT NULL,
-  `question_index` VARCHAR(20) NOT NULL,
-  `text` TEXT NOT NULL,
-  `sort_order` INT NULL DEFAULT '0',
-  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  INDEX `idx_template` (`template_id` ASC) VISIBLE,
-  INDEX `idx_question_index` (`question_index` ASC) VISIBLE,
-  INDEX `idx_sort` (`sort_order` ASC) VISIBLE,
-  CONSTRAINT `open_template_items_ibfk_1`
-    FOREIGN KEY (`template_id`)
-    REFERENCES `aws-secu`.`open_inspection_templates` (`id`)
     ON DELETE CASCADE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4

@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { useNavigation } from '@react-navigation/native';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -25,6 +26,7 @@ import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionRe
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
 import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
+import { useInspectionTeam } from '../hooks/useInspectionTeam';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface TemplateItem {
@@ -49,7 +51,7 @@ interface ClosedResponseData {
   question_index: string;
   response: string; // Can be any option value, not just C/CP/NC/NA
   explanation?: string;
-  image_url?: string;
+  image_url?: string | null;
   response_item_id?: string; // ID del item de respuesta existente
 }
 
@@ -57,8 +59,16 @@ interface OpenResponseData {
   item_id: string;
   question_index: string;
   response: string;
-  image_url?: string;
+  image_url?: string | null;
   response_item_id?: string; // ID del item de respuesta existente
+}
+
+interface TeamMember {
+  id?: string;
+  cargo: string;
+  empresa: string;
+  nombre: string;
+  sort_order?: number;
 }
 
 export default function EditExistingResponseScreen() {
@@ -87,6 +97,69 @@ export default function EditExistingResponseScreen() {
   } = useOpenInspectionResponseItems();
   const { getAllCompanies } = useCompanies();
   const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
+  const { createTeamMember, updateTeamMember, deleteTeamMember, getTeamMembersByResponseId } = useInspectionTeam();
+
+  const handleDeleteImage = async (itemId: string) => {
+    try {
+      // Get current image URL from state - check both responseData and localImages
+      const responseData = type === 'closed' 
+        ? closedResponses[itemId] 
+        : openResponses[itemId];
+      const currentImageUrl = localImages[itemId] || responseData?.image_url;
+      
+      // Delete from S3 if image exists
+      if (currentImageUrl) {
+        try {
+          await deleteImage(currentImageUrl);
+        } catch (error) {
+          console.error('Error deleting image from S3:', error);
+          // Continue with state update even if S3 deletion fails
+        }
+      }
+      
+      // Update state to remove image - ensure the object exists before updating
+      if (type === 'closed') {
+        setClosedResponses(prev => {
+          if (!prev[itemId]) {
+            return prev; // Item doesn't exist, nothing to update
+          }
+          return {
+            ...prev,
+            [itemId]: { 
+              ...prev[itemId], 
+              image_url: null 
+            }
+          };
+        });
+      } else {
+        setOpenResponses(prev => {
+          if (!prev[itemId]) {
+            return prev; // Item doesn't exist, nothing to update
+          }
+          return {
+            ...prev,
+            [itemId]: { 
+              ...prev[itemId], 
+              image_url: null 
+            }
+          };
+        });
+      }
+      
+      // Remove from localImages
+      setLocalImages(prev => {
+        const newState = { ...prev };
+        delete newState[itemId];
+        return newState;
+      });
+      
+      // Note: We don't update originalResponseItems here because we want to keep
+      // the original value so the save function can detect the change from original to null
+    } catch (error) {
+      console.error('Error in handleDeleteImage:', error);
+      Alert.alert('Error', 'No se pudo eliminar la imagen');
+    }
+  };
 
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -111,10 +184,46 @@ export default function EditExistingResponseScreen() {
   
   // Store original response items data for comparison
   const [originalResponseItems, setOriginalResponseItems] = useState<Record<string, any>>({});
+  
+  // Estados para tabs y equipo
+  const [activeTab, setActiveTab] = useState<'preguntas' | 'equipo'>('preguntas');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
+    { cargo: '', empresa: '', nombre: '', sort_order: 0 }
+  ]);
+  const [loadingTeam, setLoadingTeam] = useState(false);
+  
+  // Navigation and auto-save
+  const navigation = useNavigation();
+  const isSavingRef = useRef(false);
 
   useEffect(() => {
     loadData();
   }, [responseId, templateId, type]);
+
+  // Load team members after data is loaded
+  useEffect(() => {
+    if (responseId && type === 'closed' && !loading) {
+      loadTeamMembers();
+    }
+  }, [responseId, type, loading]);
+
+  // Intercept navigation to save automatically before leaving
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      if (isSavingRef.current) {
+        // Don't prevent navigation if we're already saving
+        return;
+      }
+
+      // Prevent default behavior of leaving the screen
+      e.preventDefault();
+
+      // Save changes before leaving
+      handleSave(e.data.action);
+    });
+
+    return unsubscribe;
+  }, [navigation, closedResponses, openResponses, responseTitle, notes, selectedCompany, type, templateItems, existingResponseItems, originalResponseItems, localImages]);
 
   const loadData = async () => {
     try {
@@ -354,6 +463,61 @@ export default function EditExistingResponseScreen() {
     }));
   };
 
+  // Funciones para manejar el equipo de inspección
+  const handleTeamMemberChange = (index: number, field: keyof TeamMember, value: string) => {
+    setTeamMembers(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addTeamMember = () => {
+    setTeamMembers(prev => [...prev, { 
+      cargo: '', 
+      empresa: '', 
+      nombre: '', 
+      sort_order: prev.length 
+    }]);
+  };
+
+  const removeTeamMember = async (index: number) => {
+    const member = teamMembers[index];
+    if (member.id) {
+      try {
+        await deleteTeamMember(member.id);
+      } catch (error) {
+        console.error('Error deleting team member:', error);
+      }
+    }
+    setTeamMembers(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const isTeamComplete = () => {
+    // Al menos el primer miembro debe estar completo
+    if (teamMembers.length < 1) return false;
+    const firstMember = teamMembers[0];
+    return firstMember.cargo.trim() !== '' && 
+           firstMember.empresa.trim() !== '' && 
+           firstMember.nombre.trim() !== '';
+  };
+
+  const loadTeamMembers = async () => {
+    if (!responseId || type !== 'closed') return;
+    
+    try {
+      setLoadingTeam(true);
+      const members = await getTeamMembersByResponseId(responseId);
+      if (members && members.length > 0) {
+        setTeamMembers(members);
+      }
+    } catch (error) {
+      console.error('Error loading team members:', error);
+    } finally {
+      setLoadingTeam(false);
+    }
+  };
+
   const handlePickImage = async (itemId: string) => {
     try {
       const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -365,7 +529,6 @@ export default function EditExistingResponseScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -448,7 +611,6 @@ export default function EditExistingResponseScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -520,18 +682,29 @@ export default function EditExistingResponseScreen() {
     }
   };
 
-  const handleSave = async () => {
+  const handleSave = async (navigationAction?: any) => {
     if (!selectedCompany) {
-      Alert.alert('Error', 'Por favor selecciona una empresa');
+      if (navigationAction) {
+        // If navigating, just allow it without saving
+        navigation.dispatch(navigationAction);
+      } else {
+        Alert.alert('Error', 'Por favor selecciona una empresa');
+      }
       return;
     }
 
     if (!responseTitle.trim()) {
-      Alert.alert('Error', 'Por favor ingresa un título para la respuesta');
+      if (navigationAction) {
+        // If navigating, just allow it without saving
+        navigation.dispatch(navigationAction);
+      } else {
+        Alert.alert('Error', 'Por favor ingresa un título para la respuesta');
+      }
       return;
     }
 
     try {
+      isSavingRef.current = true;
       setSaving(true);
 
       // Update the response
@@ -608,8 +781,9 @@ export default function EditExistingResponseScreen() {
             // Compare current data with original
             const responseChanged = originalItem?.response !== trimmedResponse;
             const explanationChanged = originalExplanation !== currentExplanation;
-            // Get image_url from responseData, ensuring it's not undefined
-            const currentImageUrl = responseData.image_url ?? null;
+            // Prioritize localImages (recently uploaded) over responseData.image_url
+            // If image was deleted, responseData.image_url will be null
+            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url ?? null);
             const originalImageUrl = originalItem?.image_url ?? null;
             const imageUrlChanged = originalImageUrl !== currentImageUrl;
             
@@ -892,16 +1066,48 @@ export default function EditExistingResponseScreen() {
         ? `Respuesta actualizada exitosamente. ${messageParts.join(', ')}.`
         : 'Respuesta actualizada exitosamente.';
       
-      Alert.alert(
-        'Éxito',
-        message,
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back()
+      // Save/update inspection team members (only for closed inspections)
+      if (type === 'closed' && teamMembers.length > 0) {
+        for (const member of teamMembers) {
+          // Only save members that have all required fields
+          if (member.cargo.trim() && member.empresa.trim() && member.nombre.trim()) {
+            try {
+              if (member.id) {
+                // Update existing member
+                await updateTeamMember(member.id, {
+                  cargo: member.cargo.trim(),
+                  empresa: member.empresa.trim(),
+                  nombre: member.nombre.trim(),
+                  sort_order: member.sort_order || 0
+                });
+              } else {
+                // Create new member
+                const created = await createTeamMember({
+                  response_id: responseId,
+                  cargo: member.cargo.trim(),
+                  empresa: member.empresa.trim(),
+                  nombre: member.nombre.trim(),
+                  sort_order: member.sort_order || 0
+                });
+                // Update member with ID from DB
+                member.id = created.id;
+              }
+            } catch (error: any) {
+              console.error('Error saving team member:', error);
+              // Continue with other members even if one fails
+            }
           }
-        ]
-      );
+        }
+      }
+
+      if (!navigationAction) {
+        // If called from "Listo" button, don't show alert, just return success
+        // Navigation will be handled by the button's onPress
+        return;
+      } else {
+        // Auto-save completed, allow navigation
+        navigation.dispatch(navigationAction);
+      }
     } catch (error: any) {
       console.error('Error saving response:', error);
       
@@ -917,6 +1123,15 @@ export default function EditExistingResponseScreen() {
         }
       }
       
+      if (!navigationAction) {
+        Alert.alert('Error', errorMessage);
+        // Throw error so the button's onPress can catch it and prevent navigation
+        throw error;
+      } else {
+        // Even if save fails, allow navigation (for auto-save on back button)
+        navigation.dispatch(navigationAction);
+      }
+      
       // Log full error details for debugging
       console.error('[handleSave] Full error details:', {
         error,
@@ -924,10 +1139,9 @@ export default function EditExistingResponseScreen() {
         errorMessage: error?.message,
         errorStack: error?.stack
       });
-      
-      Alert.alert('Error', errorMessage);
     } finally {
       setSaving(false);
+      isSavingRef.current = false;
     }
   };
 
@@ -947,7 +1161,13 @@ export default function EditExistingResponseScreen() {
     return (
       <View style={styles.container}>
         <View style={styles.header}>
-          <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <TouchableOpacity 
+            style={styles.backButton} 
+            onPress={() => {
+              // Save changes before going back
+              handleSave();
+            }}
+          >
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
           <View style={styles.headerContent}>
@@ -977,7 +1197,29 @@ export default function EditExistingResponseScreen() {
         </View>
       </View>
 
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'preguntas' && styles.activeTab]}
+          onPress={() => setActiveTab('preguntas')}
+        >
+          <Text style={[styles.tabText, activeTab === 'preguntas' && styles.activeTabText]}>
+            Preguntas
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'equipo' && styles.activeTab]}
+          onPress={() => setActiveTab('equipo')}
+        >
+          <Text style={[styles.tabText, activeTab === 'equipo' && styles.activeTabText]}>
+            Equipo
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'preguntas' && (
+          <>
         {/* Company Selector */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Empresa</Text>
@@ -1240,14 +1482,19 @@ export default function EditExistingResponseScreen() {
                     <View style={styles.imageSection}>
                       {(() => {
                         const responseData = closedResponses[item.id];
-                        const imageUrl = responseData?.image_url ?? localImages[item.id];
+                        // Prioritize localImages (recently uploaded), then image_url from database, then null
+                        // If image_url is explicitly null, it means it was deleted
+                        const imageUrl = localImages[item.id] 
+                          || (responseData?.image_url !== null && responseData?.image_url !== undefined 
+                            ? responseData.image_url 
+                            : null);
                         return (
                           <View style={styles.imageContainer}>
                             {imageUrl ? (
                               <Image 
                                 source={{ uri: imageUrl }} 
                                 style={styles.previewImage}
-                                resizeMode="cover"
+                                resizeMode="contain"
                               />
                             ) : (
                               <View style={styles.imagePlaceholder}>
@@ -1301,17 +1548,7 @@ export default function EditExistingResponseScreen() {
                                         {
                                           text: 'Eliminar',
                                           style: 'destructive',
-                                          onPress: () => {
-                                            setClosedResponses(prev => ({
-                                              ...prev,
-                                              [item.id]: { ...prev[item.id], image_url: undefined }
-                                            }));
-                                            setLocalImages(prev => {
-                                              const newState = { ...prev };
-                                              delete newState[item.id];
-                                              return newState;
-                                            });
-                                          }
+                                          onPress: () => handleDeleteImage(item.id)
                                         }
                                       ]
                                     );
@@ -1409,17 +1646,19 @@ export default function EditExistingResponseScreen() {
                     <View style={styles.imageSection}>
                   {(() => {
                     const responseData = openResponses[item.id];
-                    // Prioritize image_url from database, then localImages, then null
-                    const imageUrl = responseData?.image_url !== null && responseData?.image_url !== undefined 
-                      ? responseData.image_url 
-                      : (localImages[item.id] || null);
+                    // Prioritize localImages (recently uploaded), then image_url from database, then null
+                    // If image_url is explicitly null, it means it was deleted
+                    const imageUrl = localImages[item.id] 
+                      || (responseData?.image_url !== null && responseData?.image_url !== undefined 
+                        ? responseData.image_url 
+                        : null);
                     return (
                       <View style={styles.imageContainer}>
                         {imageUrl ? (
                           <Image 
                             source={{ uri: imageUrl }} 
                             style={styles.previewImage}
-                            resizeMode="cover"
+                            resizeMode="contain"
                           />
                         ) : (
                           <View style={styles.imagePlaceholder}>
@@ -1471,21 +1710,11 @@ export default function EditExistingResponseScreen() {
                                         text: 'Cancelar',
                                         style: 'cancel'
                                       },
-                                      {
-                                        text: 'Eliminar',
-                                        style: 'destructive',
-                                        onPress: () => {
-                                          setOpenResponses(prev => ({
-                                            ...prev,
-                                            [item.id]: { ...prev[item.id], image_url: undefined }
-                                          }));
-                                          setLocalImages(prev => {
-                                            const newState = { ...prev };
-                                            delete newState[item.id];
-                                            return newState;
-                                          });
+                                        {
+                                          text: 'Eliminar',
+                                          style: 'destructive',
+                                          onPress: () => handleDeleteImage(item.id)
                                         }
-                                      }
                                     ]
                                   );
                                 }}
@@ -1546,20 +1775,109 @@ export default function EditExistingResponseScreen() {
           </View>
         )}
 
-        {/* Save Button */}
+        {/* Done Button */}
         <TouchableOpacity 
-          style={[styles.saveButton, saving && styles.saveButtonDisabled]} 
-          onPress={handleSave}
-          disabled={saving}
+          style={[styles.saveButton, (saving || (type === 'closed' && !isTeamComplete())) && styles.saveButtonDisabled]} 
+          onPress={async () => {
+            try {
+              await handleSave();
+              // Navigate to history after saving successfully
+              router.push('/(tabs)/history');
+            } catch (error) {
+              // Error is already handled in handleSave, don't navigate
+              console.error('Error saving before navigation:', error);
+            }
+          }}
+          disabled={saving || (type === 'closed' && !isTeamComplete())}
         >
           <Ionicons name="checkmark-circle" size={24} color="#fff" />
           <Text style={styles.saveButtonText}>
-            {saving ? 'Guardando...' : 'Guardar Cambios'}
+            {saving ? 'Guardando...' : 'Listo'}
           </Text>
         </TouchableOpacity>
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
+          </>
+        )}
+
+        {/* Equipo Section */}
+        {activeTab === 'equipo' && (
+          <View style={styles.equipoSection}>
+            <Text style={styles.equipoTitle}>Equipo de Inspección</Text>
+            <Text style={styles.equipoSubtitle}>
+              Complete al menos un miembro del equipo que realizó la inspección
+            </Text>
+
+            {loadingTeam ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#6366f1" />
+                <Text style={styles.loadingText}>Cargando equipo...</Text>
+              </View>
+            ) : (
+              <>
+                {teamMembers.map((member, index) => (
+                  <View key={index} style={styles.teamMemberCard}>
+                    <View style={styles.teamMemberHeader}>
+                      <Text style={styles.teamMemberIndex}>Miembro {index + 1}</Text>
+                      {index >= 1 && (
+                        <TouchableOpacity 
+                          onPress={() => removeTeamMember(index)}
+                          style={styles.removeMemberButton}
+                        >
+                          <Ionicons name="close-circle" size={24} color="#ef4444" />
+                        </TouchableOpacity>
+                      )}
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Cargo *</Text>
+                      <TextInput
+                        style={styles.teamInput}
+                        placeholder="Ej: Supervisor de SST"
+                        value={member.cargo}
+                        onChangeText={(text) => handleTeamMemberChange(index, 'cargo', text)}
+                        placeholderTextColor="#9ca3af"
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Empresa *</Text>
+                      <TextInput
+                        style={styles.teamInput}
+                        placeholder="Ej: SecuApp S.A."
+                        value={member.empresa}
+                        onChangeText={(text) => handleTeamMemberChange(index, 'empresa', text)}
+                        placeholderTextColor="#9ca3af"
+                      />
+                    </View>
+
+                    <View style={styles.inputGroup}>
+                      <Text style={styles.inputLabel}>Nombre(s) y Apellidos *</Text>
+                      <TextInput
+                        style={styles.teamInput}
+                        placeholder="Ej: Juan Pérez García"
+                        value={member.nombre}
+                        onChangeText={(text) => handleTeamMemberChange(index, 'nombre', text)}
+                        placeholderTextColor="#9ca3af"
+                      />
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity 
+                  style={styles.addMemberButton}
+                  onPress={addTeamMember}
+                >
+                  <Ionicons name="add-circle-outline" size={24} color="#6366f1" />
+                  <Text style={styles.addMemberButtonText}>Agregar otro miembro</Text>
+                </TouchableOpacity>
+
+                <View style={styles.bottomSpacing} />
+              </>
+            )}
+          </View>
+        )}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -1820,6 +2138,112 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 100,
+  },
+  // Tabs styles
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#6366f1',
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  activeTabText: {
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  // Equipo section styles
+  equipoSection: {
+    padding: 20,
+  },
+  equipoTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  equipoSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 24,
+  },
+  teamMemberCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  teamMemberHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  teamMemberIndex: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  removeMemberButton: {
+    padding: 4,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  teamInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+  },
+  addMemberButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#6366f1',
+    borderStyle: 'dashed',
+    marginBottom: 20,
+  },
+  addMemberButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6366f1',
+    marginLeft: 8,
   },
   imageSection: {
     marginTop: 10,

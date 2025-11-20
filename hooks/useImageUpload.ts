@@ -5,10 +5,10 @@ const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
 interface UploadImageParams {
   imageUri: string;
-  folder: 'inspection-images' | 'profile-images';
+  folder: 'inspection-images' | 'profile-images' | 'company-images';
   subfolder?: 'closed' | 'open'; // Solo para inspection-images
-  identifier: string; // response_id para inspection, user_id para profile
-  itemId: string; // item_id para inspection-images
+  identifier: string; // response_id para inspection, user_id para profile, company_id para company-images
+  itemId?: string; // item_id para inspection-images (opcional)
 }
 
 export const useImageUpload = () => {
@@ -57,7 +57,7 @@ export const useImageUpload = () => {
       
       formData.append('identifier', params.identifier);
       
-      if (params.folder === 'inspection-images') {
+      if (params.folder === 'inspection-images' && params.itemId) {
         formData.append('itemId', params.itemId);
       }
 

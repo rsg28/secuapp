@@ -28,8 +28,11 @@ import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionRe
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
 import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
+import { useInspectionTeam } from '../hooks/useInspectionTeam';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomAlert from '../components/CustomAlert';
+
+const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
 interface TemplateItem {
   id: string;
@@ -63,6 +66,14 @@ interface OpenResponseData {
   image_url?: string;
 }
 
+interface TeamMember {
+  id?: string;
+  cargo: string;
+  empresa: string;
+  nombre: string;
+  sort_order?: number;
+}
+
 export default function EditResponseScreen() {
   const params = useLocalSearchParams();
   const templateId = params.templateId as string;
@@ -78,6 +89,7 @@ export default function EditResponseScreen() {
   const { createItem: createOpenResponseItem } = useOpenInspectionResponseItems();
   const { getAllCompanies } = useCompanies();
   const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
+  const { createTeamMember } = useInspectionTeam();
 
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,8 +120,18 @@ export default function EditResponseScreen() {
   
   // Completion alert state
   const [showCompletionAlert, setShowCompletionAlert] = useState(false);
+  
+  // Estados para tabs y equipo
+  const [activeTab, setActiveTab] = useState<'preguntas' | 'equipo'>('preguntas');
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
+    { cargo: '', empresa: '', nombre: '', sort_order: 0 }
+  ]);
   const [wasAllAnswered, setWasAllAnswered] = useState(false);
   const [responseAlreadySaved, setResponseAlreadySaved] = useState(false);
+  const [savedResponseId, setSavedResponseId] = useState<string | null>(null);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [sendEmail, setSendEmail] = useState('');
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     loadCompanies();
@@ -129,6 +151,9 @@ export default function EditResponseScreen() {
   // Check if all questions are answered
   const areAllQuestionsAnswered = useCallback(() => {
     if (templateItems.length === 0) return false;
+    
+    // Check if team is complete
+    if (!isTeamComplete()) return false;
     
     if (type === 'closed') {
       return templateItems.every(item => {
@@ -304,7 +329,6 @@ export default function EditResponseScreen() {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -329,7 +353,6 @@ export default function EditResponseScreen() {
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ['images'],
         allowsEditing: true,
-        aspect: [4, 3],
         quality: 0.8,
       });
 
@@ -341,6 +364,37 @@ export default function EditResponseScreen() {
       console.error('Error taking photo:', error);
       showAlert('Error', 'No se pudo tomar la foto');
     }
+  };
+
+  // Funciones para manejar el equipo de inspección
+  const handleTeamMemberChange = (index: number, field: keyof TeamMember, value: string) => {
+    setTeamMembers(prev => {
+      const updated = [...prev];
+      updated[index] = { ...updated[index], [field]: value };
+      return updated;
+    });
+  };
+
+  const addTeamMember = () => {
+    setTeamMembers(prev => [...prev, { 
+      cargo: '', 
+      empresa: '', 
+      nombre: '', 
+      sort_order: prev.length 
+    }]);
+  };
+
+  const removeTeamMember = (index: number) => {
+    setTeamMembers(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const isTeamComplete = () => {
+    // Al menos el primer miembro debe estar completo
+    if (teamMembers.length < 1) return false;
+    const firstMember = teamMembers[0];
+    return firstMember.cargo.trim() !== '' && 
+           firstMember.empresa.trim() !== '' && 
+           firstMember.nombre.trim() !== '';
   };
 
   const handleAutoSave = useCallback(async (navigationAction?: any) => {
@@ -391,6 +445,30 @@ export default function EditResponseScreen() {
       }
 
       const responseId = createdResponse.id;
+      
+      // Save responseId for later use (e.g., sending email)
+      setSavedResponseId(responseId);
+
+      // Save inspection team members (only for closed inspections)
+      if (type === 'closed' && teamMembers.length > 0) {
+        for (const member of teamMembers) {
+          // Only save members that have all required fields
+          if (member.cargo.trim() && member.empresa.trim() && member.nombre.trim()) {
+            try {
+              await createTeamMember({
+                response_id: responseId,
+                cargo: member.cargo.trim(),
+                empresa: member.empresa.trim(),
+                nombre: member.nombre.trim(),
+                sort_order: member.sort_order || 0
+              });
+            } catch (error: any) {
+              console.error('Error saving team member:', error);
+              // Continue with other members even if one fails
+            }
+          }
+        }
+      }
 
       // Upload images that are in localImages
       const imageUploads: Record<string, string> = {};
@@ -668,58 +746,54 @@ export default function EditResponseScreen() {
 
   const handleDownload = async () => {
     try {
-      // Generar un CSV simple de prueba
-      const csvLines: string[] = [];
-      
-      // Header básico
-      csvLines.push('Inspección Completada');
-      csvLines.push(`Título,${responseTitle || 'Sin título'}`);
-      csvLines.push(`Tipo,${type === 'closed' ? 'Cerrada' : 'Abierta'}`);
-      csvLines.push(`Empresa,${selectedCompany?.name || 'Sin empresa'}`);
-      csvLines.push(`Fecha,${new Date().toLocaleDateString('es-CL')}`);
-      csvLines.push('');
-      
-      // Preguntas y respuestas
-      if (type === 'closed') {
-        csvLines.push('Pregunta,Respuesta');
-        templateItems.forEach(item => {
-          const response = closedResponses[item.id];
-          const responseText = response?.response || 'Sin respuesta';
-          // Escapar comillas en el texto
-          const questionText = `"${item.text.replace(/"/g, '""')}"`;
-          csvLines.push(`${questionText},${responseText}`);
-        });
-      } else {
-        csvLines.push('Pregunta,Respuesta');
-        templateItems.forEach(item => {
-          const response = openResponses[item.id];
-          const responseText = response?.response || 'Sin respuesta';
-          // Escapar comillas en el texto
-          const questionText = `"${item.text.replace(/"/g, '""')}"`;
-          csvLines.push(`${questionText},${responseText}`);
-        });
+      if (!savedResponseId) {
+        showAlert('Error', 'La respuesta aún no ha sido guardada. Por favor guarda primero.');
+        return;
       }
-      
-      // Convertir a string
-      const csvContent = csvLines.join('\n');
-      
-      // Crear nombre de archivo
+
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
+      }
+
+      // Descargar directamente usando FileSystem (React Native compatible)
       const sanitizedTitle = (responseTitle || 'sin-titulo').replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const fileName = `inspeccion-${sanitizedTitle}-${Date.now()}.csv`;
+      const fileName = `inspeccion-${sanitizedTitle}-${Date.now()}.xlsx`;
       
-      // Escribir archivo usando FileSystem
       // @ts-ignore - documentDirectory exists in expo-file-system
       const fileUri = `${FileSystem.documentDirectory}${fileName}`;
-      await FileSystem.writeAsStringAsync(fileUri, csvContent);
+      
+      // Descargar directamente usando FileSystem
+      const downloadResult = await FileSystem.downloadAsync(
+        `${API_BASE_URL}/inspection-responses/download?responseId=${savedResponseId}&type=${type}`,
+        fileUri,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      // Verificar que la descarga fue exitosa
+      if (downloadResult.status !== 200) {
+        throw new Error(`Error al descargar el archivo: ${downloadResult.status}`);
+      }
       
       // Compartir archivo
       const canShare = await Sharing.isAvailableAsync();
       if (canShare) {
-        await Sharing.shareAsync(fileUri, {
-          mimeType: 'text/csv',
+        await Sharing.shareAsync(downloadResult.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           dialogTitle: 'Descargar Inspección',
         });
-        showAlert('Éxito', 'Archivo CSV generado y listo para compartir');
+        showAlert('Éxito', 'Archivo Excel generado y listo para compartir');
+        
+        // Navigate to correct page based on type
+        if (type === 'open') {
+          router.push('/open-inspections');
+        } else {
+          router.push('/closed-inspections');
+        }
       } else {
         showAlert('Error', 'La función de compartir no está disponible en este dispositivo');
       }
@@ -731,10 +805,72 @@ export default function EditResponseScreen() {
   const handleCompletionAction = (action: 'send' | 'download') => {
     setShowCompletionAlert(false);
     if (action === 'send') {
-      // TODO: Implement send functionality
-      showAlert('Próximamente', 'La funcionalidad de envío estará disponible pronto.');
+      // Open send modal
+      setShowSendModal(true);
+      setSendEmail('');
     } else if (action === 'download') {
       handleDownload();
+    }
+  };
+
+  const handleSend = async () => {
+    if (!savedResponseId) {
+      Alert.alert('Error', 'No se encontró la respuesta guardada');
+      return;
+    }
+    
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!sendEmail.trim()) {
+      Alert.alert('Error', 'Por favor ingresa un correo electrónico');
+      return;
+    }
+    
+    if (!emailRegex.test(sendEmail.trim())) {
+      Alert.alert('Error', 'Por favor ingresa un correo electrónico válido');
+      return;
+    }
+
+    try {
+      setSending(true);
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/inspection-responses/export`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          responseId: savedResponseId,
+          type,
+          email: sendEmail.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'No se pudo procesar el envío');
+      }
+
+      Alert.alert('Éxito', `El archivo se ha enviado a ${sendEmail.trim()}`);
+      setShowSendModal(false);
+      setSendEmail('');
+      
+      // Navigate to correct page based on type
+      if (type === 'open') {
+        router.push('/open-inspections');
+      } else {
+        router.push('/closed-inspections');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error?.message || 'No se pudo enviar el archivo por correo');
+    } finally {
+      setSending(false);
     }
   };
 
@@ -839,7 +975,29 @@ export default function EditResponseScreen() {
         </View>
       </View>
 
+      {/* Tabs */}
+      <View style={styles.tabsContainer}>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'preguntas' && styles.activeTab]}
+          onPress={() => setActiveTab('preguntas')}
+        >
+          <Text style={[styles.tabText, activeTab === 'preguntas' && styles.activeTabText]}>
+            Preguntas
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={[styles.tab, activeTab === 'equipo' && styles.activeTab]}
+          onPress={() => setActiveTab('equipo')}
+        >
+          <Text style={[styles.tabText, activeTab === 'equipo' && styles.activeTabText]}>
+            Equipo
+          </Text>
+        </TouchableOpacity>
+      </View>
+
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+        {activeTab === 'preguntas' && (
+          <>
         {/* Company Selector */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Empresa</Text>
@@ -1372,6 +1530,77 @@ export default function EditResponseScreen() {
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
+          </>
+        )}
+
+        {/* Equipo Section */}
+        {activeTab === 'equipo' && (
+          <View style={styles.equipoSection}>
+            <Text style={styles.equipoTitle}>Equipo de Inspección</Text>
+            <Text style={styles.equipoSubtitle}>
+              Complete al menos un miembro del equipo que realizó la inspección
+            </Text>
+
+            {teamMembers.map((member, index) => (
+              <View key={index} style={styles.teamMemberCard}>
+                <View style={styles.teamMemberHeader}>
+                  <Text style={styles.teamMemberIndex}>Miembro {index + 1}</Text>
+                  {index >= 1 && (
+                    <TouchableOpacity 
+                      onPress={() => removeTeamMember(index)}
+                      style={styles.removeMemberButton}
+                    >
+                      <Ionicons name="close-circle" size={24} color="#ef4444" />
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Cargo *</Text>
+                  <TextInput
+                    style={styles.teamInput}
+                    placeholder="Ej: Supervisor de SST"
+                    value={member.cargo}
+                    onChangeText={(text) => handleTeamMemberChange(index, 'cargo', text)}
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Empresa *</Text>
+                  <TextInput
+                    style={styles.teamInput}
+                    placeholder="Ej: SecuApp S.A."
+                    value={member.empresa}
+                    onChangeText={(text) => handleTeamMemberChange(index, 'empresa', text)}
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Nombre(s) y Apellidos *</Text>
+                  <TextInput
+                    style={styles.teamInput}
+                    placeholder="Ej: Juan Pérez García"
+                    value={member.nombre}
+                    onChangeText={(text) => handleTeamMemberChange(index, 'nombre', text)}
+                    placeholderTextColor="#9ca3af"
+                  />
+                </View>
+              </View>
+            ))}
+
+            <TouchableOpacity 
+              style={styles.addMemberButton}
+              onPress={addTeamMember}
+            >
+              <Ionicons name="add-circle-outline" size={24} color="#6366f1" />
+              <Text style={styles.addMemberButtonText}>Agregar otro miembro</Text>
+            </TouchableOpacity>
+
+            <View style={styles.bottomSpacing} />
+          </View>
+        )}
       </ScrollView>
 
       {/* Custom Alert */}
@@ -1428,6 +1657,64 @@ export default function EditResponseScreen() {
               >
                 <Ionicons name="time-outline" size={24} color="#6b7280" />
                 <Text style={styles.laterButtonText}>Continuar más tarde</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Send Email Modal */}
+      <Modal
+        visible={showSendModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowSendModal(false)}
+      >
+        <View style={styles.sendModalOverlay}>
+          <View style={styles.sendModalContent}>
+            <View style={styles.sendModalHeader}>
+              <Ionicons name="mail" size={32} color="#3b82f6" />
+              <Text style={styles.sendModalTitle}>Enviar Inspección</Text>
+            </View>
+            <View style={styles.sendModalBody}>
+              <Text style={styles.sendModalLabel}>Correo electrónico</Text>
+              <TextInput
+                style={styles.sendModalInput}
+                placeholder="ejemplo@correo.com"
+                value={sendEmail}
+                onChangeText={setSendEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                placeholderTextColor="#9ca3af"
+              />
+              <Text style={styles.sendModalInfo}>
+                Se enviará un archivo CSV con los detalles de la inspección al correo especificado.
+              </Text>
+            </View>
+            <View style={styles.sendModalActions}>
+              <TouchableOpacity
+                style={styles.sendModalCancelButton}
+                onPress={() => {
+                  setShowSendModal(false);
+                  setSendEmail('');
+                }}
+              >
+                <Text style={styles.sendModalCancelText}>Cancelar</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.sendModalSendButton, sending && styles.sendModalSendButtonDisabled]}
+                onPress={handleSend}
+                disabled={sending}
+              >
+                {sending ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="send" size={20} color="#fff" />
+                    <Text style={styles.sendModalSendText}>Enviar</Text>
+                  </>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -1693,6 +1980,112 @@ const styles = StyleSheet.create({
   bottomSpacing: {
     height: 100,
   },
+  // Tabs styles
+  tabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  activeTab: {
+    borderBottomColor: '#6366f1',
+  },
+  tabText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: '#6b7280',
+  },
+  activeTabText: {
+    color: '#6366f1',
+    fontWeight: '600',
+  },
+  // Equipo section styles
+  equipoSection: {
+    padding: 20,
+  },
+  equipoTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: '#1f2937',
+    marginBottom: 8,
+  },
+  equipoSubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 24,
+  },
+  teamMemberCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  teamMemberHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  teamMemberIndex: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  removeMemberButton: {
+    padding: 4,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  teamInput: {
+    backgroundColor: '#f9fafb',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+  },
+  addMemberButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#6366f1',
+    borderStyle: 'dashed',
+    marginBottom: 20,
+  },
+  addMemberButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6366f1',
+    marginLeft: 8,
+  },
   completionAlertOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1831,6 +2224,104 @@ const styles = StyleSheet.create({
   },
   imageDeleteButton: {
     backgroundColor: 'rgba(239, 68, 68, 0.9)',
+  },
+  sendModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  sendModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  sendModalHeader: {
+    padding: 24,
+    alignItems: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  sendModalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#1f2937',
+    marginTop: 12,
+  },
+  sendModalBody: {
+    padding: 24,
+  },
+  sendModalLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#374151',
+    marginBottom: 8,
+  },
+  sendModalInput: {
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#fff',
+    marginBottom: 12,
+  },
+  sendModalInfo: {
+    fontSize: 14,
+    color: '#6b7280',
+    lineHeight: 20,
+  },
+  sendModalActions: {
+    flexDirection: 'row',
+    padding: 24,
+    paddingTop: 0,
+    gap: 12,
+  },
+  sendModalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendModalCancelText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6b7280',
+  },
+  sendModalSendButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#3b82f6',
+    gap: 8,
+  },
+  sendModalSendButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  sendModalSendText: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

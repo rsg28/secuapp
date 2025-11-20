@@ -50,7 +50,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     fullName: `${profile.first_name} ${profile.last_name}`.trim(),
     role: profile.role,
     company: 'SecuApp',
-    phone: profile.phone || undefined
+    phone: profile.phone || undefined,
+    profile_image_url: profile.profile_image_url || undefined
   });
 
   const register = async ({ firstName, lastName, email, password, phone }: { firstName: string; lastName: string; email: string; password: string; phone: string; }): Promise<boolean> => {
@@ -142,6 +143,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     return currentCompany || userCompanies[0];
   };
 
+  const refreshProfile = async () => {
+    try {
+      const userProfile = await authHook.getProfile();
+      if (userProfile) {
+        const backendUser = buildBackendUser(userProfile);
+        await storage.saveUserSession(backendUser);
+        setUser(backendUser);
+      }
+    } catch (error) {
+      console.error('Error refreshing profile:', error);
+    }
+  };
+
+  const updateProfile = async (profileData: { first_name?: string; last_name?: string; phone?: string; profile_image_url?: string }) => {
+    try {
+      const updatedProfile = await authHook.updateProfile(profileData);
+      if (updatedProfile) {
+        const backendUser = buildBackendUser(updatedProfile);
+        await storage.saveUserSession(backendUser);
+        setUser(backendUser);
+        return updatedProfile;
+      }
+      return null;
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      throw error;
+    }
+  };
+
   const value: AuthContextType = {
     user,
     isLoading,
@@ -154,7 +184,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     hasMultipleCompanies,
     getCurrentCompany,
     changeCurrentCompany,
-    loadUserCompanies
+    loadUserCompanies,
+    refreshProfile,
+    updateProfile
   };
 
   return (

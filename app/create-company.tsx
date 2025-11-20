@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
     Alert,
     KeyboardAvoidingView,
@@ -11,7 +11,13 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Image,
+    ActivityIndicator,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { useAuth } from '../contexts/AuthContext';
+import { useCompanies } from '../hooks/useCompanies';
+import { useImageUpload } from '../hooks/useImageUpload';
 
 interface CompanyData {
   name: string;
@@ -23,6 +29,31 @@ interface CompanyData {
 }
 
 export default function CreateCompanyScreen() {
+  const { user } = useAuth();
+  const { createCompany, updateCompany } = useCompanies();
+  const { uploadImage, uploading: uploadingImage } = useImageUpload();
+  
+  // Verificar que el usuario sea manager
+  useEffect(() => {
+    if (user && user.role !== 'manager') {
+      Alert.alert(
+        'Acceso Denegado',
+        'Solo los managers pueden crear empresas.',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    }
+  }, [user]);
+
+  // Si no es manager, no renderizar nada
+  if (!user || user.role !== 'manager') {
+    return null;
+  }
+  
   const [companyData, setCompanyData] = useState<CompanyData>({
     name: '',
     industry: '',
@@ -44,6 +75,8 @@ export default function CreateCompanyScreen() {
   ];
 
   const [showIndustryDropdown, setShowIndustryDropdown] = useState(false);
+  const [companyImage, setCompanyImage] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const handleBack = () => {
     if (companyData.name || companyData.industry || companyData.contactPerson || 
@@ -61,7 +94,54 @@ export default function CreateCompanyScreen() {
     }
   };
 
-  const handleSaveCompany = () => {
+  const handlePickImage = async () => {
+    try {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la galería');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setCompanyImage(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', 'Error al seleccionar imagen: ' + error.message);
+    }
+  };
+
+  const handleTakePhoto = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permisos', 'Se necesitan permisos para acceder a la cámara');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setCompanyImage(result.assets[0].uri);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', 'Error al tomar foto: ' + error.message);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setCompanyImage(null);
+  };
+
+  const handleSaveCompany = async () => {
     if (!companyData.name.trim()) {
       Alert.alert('Error', 'Por favor ingresa el nombre de la empresa');
       return;
@@ -77,18 +157,74 @@ export default function CreateCompanyScreen() {
       return;
     }
 
-    // Aquí se guardaría la empresa en la base de datos
-    // Por ahora solo mostramos un mensaje de éxito
-    Alert.alert(
-      'Empresa Creada',
-      'La empresa se ha creado exitosamente',
-      [
-        {
-          text: 'OK',
-          onPress: () => router.back(),
-        },
-      ]
-    );
+    // La imagen es requerida (solo managers pueden crear empresas)
+    if (!companyImage) {
+      Alert.alert('Error', 'Por favor sube una insignia de la empresa');
+      return;
+    }
+
+    try {
+      setSaving(true);
+
+      let imageUrl: string | null = null;
+
+      // Subir imagen si existe
+      if (companyImage) {
+        // Primero creamos la empresa temporalmente para obtener el ID
+        // Pero mejor: subimos la imagen después de crear la empresa
+        // Necesitamos el company_id, así que creamos primero sin imagen, luego actualizamos
+        const tempCompany = await createCompany({
+          name: companyData.name,
+          industry: companyData.industry,
+          contact_person: companyData.contactPerson,
+          contact_email: companyData.email || null,
+          contact_phone: companyData.phone || null,
+          address: companyData.address || null,
+          image_url: null,
+          created_by: user?.id || null,
+        });
+
+        // Ahora subimos la imagen con el company_id
+        imageUrl = await uploadImage({
+          imageUri: companyImage,
+          folder: 'company-images',
+          identifier: tempCompany.id,
+        });
+
+        // Actualizamos la empresa con la URL de la imagen
+        await updateCompany(tempCompany.id, {
+          image_url: imageUrl,
+        });
+      } else {
+        // Crear empresa sin imagen (solo si no es manager)
+        await createCompany({
+          name: companyData.name,
+          industry: companyData.industry,
+          contact_person: companyData.contactPerson,
+          contact_email: companyData.email || null,
+          contact_phone: companyData.phone || null,
+          address: companyData.address || null,
+          image_url: null,
+          created_by: user?.id || null,
+        });
+      }
+
+      Alert.alert(
+        'Empresa Creada',
+        'La empresa se ha creado exitosamente',
+        [
+          {
+            text: 'OK',
+            onPress: () => router.back(),
+          },
+        ]
+      );
+    } catch (error: any) {
+      console.error('Error creating company:', error);
+      Alert.alert('Error', 'Error al crear la empresa: ' + (error.message || 'Error desconocido'));
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -108,12 +244,16 @@ export default function CreateCompanyScreen() {
         <TouchableOpacity 
           style={[
             styles.saveButton,
-            (!companyData.name || !companyData.industry || !companyData.contactPerson) && styles.saveButtonDisabled
+            ((!companyData.name || !companyData.industry || !companyData.contactPerson || !companyImage) || saving || uploadingImage) && styles.saveButtonDisabled
           ]} 
           onPress={handleSaveCompany}
-          disabled={!companyData.name || !companyData.industry || !companyData.contactPerson}
+          disabled={(!companyData.name || !companyData.industry || !companyData.contactPerson || !companyImage) || saving || uploadingImage}
         >
-          <Ionicons name="checkmark" size={20} color="#fff" />
+          {saving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="checkmark" size={20} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -189,6 +329,74 @@ export default function CreateCompanyScreen() {
               </View>
             )}
           </View>
+        </View>
+
+        {/* Insignia de la empresa */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>
+            Insignia de la Empresa <Text style={styles.required}>*</Text>
+          </Text>
+          <Text style={styles.sectionSubtitle}>
+            La insignia es requerida para crear una empresa
+          </Text>
+          
+          {companyImage ? (
+            <View style={styles.imageContainer}>
+              <Image source={{ uri: companyImage }} style={styles.previewImage} />
+              <View style={styles.imageActions}>
+                <TouchableOpacity 
+                  style={styles.imageActionButton}
+                  onPress={handlePickImage}
+                  disabled={uploadingImage || saving}
+                >
+                  <Ionicons name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.imageActionText}>Cambiar</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.imageActionButton, styles.imageDeleteButton]}
+                  onPress={handleRemoveImage}
+                  disabled={uploadingImage || saving}
+                >
+                  <Ionicons name="trash" size={20} color="#ef4444" />
+                  <Text style={[styles.imageActionText, styles.imageDeleteText]}>Eliminar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons name="image-outline" size={48} color="#9ca3af" />
+              <Text style={styles.imagePlaceholderText}>
+                Insignia requerida
+              </Text>
+              <View style={styles.imageButtons}>
+                <TouchableOpacity 
+                  style={styles.imageButton}
+                  onPress={handleTakePhoto}
+                  disabled={uploadingImage || saving}
+                >
+                  <Ionicons name="camera" size={20} color="#3b82f6" />
+                  <Text style={styles.imageButtonText}>Tomar Foto</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={styles.imageButton}
+                  onPress={handlePickImage}
+                  disabled={uploadingImage || saving}
+                >
+                  <Ionicons name="images" size={20} color="#3b82f6" />
+                  <Text style={styles.imageButtonText}>Galería</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+          
+          {(uploadingImage || saving) && (
+            <View style={styles.uploadingIndicator}>
+              <ActivityIndicator size="small" color="#3b82f6" />
+              <Text style={styles.uploadingText}>
+                {uploadingImage ? 'Subiendo imagen...' : 'Guardando empresa...'}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Información de contacto */}
@@ -398,5 +606,98 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 120,
+  },
+  required: {
+    color: '#ef4444',
+  },
+  sectionSubtitle: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 16,
+    marginTop: -8,
+  },
+  imageContainer: {
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  previewImage: {
+    width: '100%',
+    height: 200,
+    borderRadius: 12,
+    marginBottom: 12,
+    resizeMode: 'contain',
+    backgroundColor: '#f3f4f6',
+  },
+  imageActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageActionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    gap: 6,
+  },
+  imageDeleteButton: {
+    backgroundColor: '#fee2e2',
+  },
+  imageActionText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#3b82f6',
+  },
+  imageDeleteText: {
+    color: '#ef4444',
+  },
+  imagePlaceholder: {
+    alignItems: 'center',
+    paddingVertical: 32,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#f9fafb',
+    borderWidth: 2,
+    borderColor: '#e5e7eb',
+    borderStyle: 'dashed',
+    marginTop: 8,
+  },
+  imagePlaceholderText: {
+    fontSize: 14,
+    color: '#9ca3af',
+    marginTop: 12,
+    marginBottom: 16,
+  },
+  imageButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  imageButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    gap: 6,
+  },
+  imageButtonText: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#3b82f6',
+  },
+  uploadingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 12,
+    gap: 8,
+  },
+  uploadingText: {
+    fontSize: 14,
+    color: '#6b7280',
   },
 });

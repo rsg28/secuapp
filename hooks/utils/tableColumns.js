@@ -24,6 +24,7 @@ export const TABLE_COLUMNS = {
     'last_name',
     'role',
     'phone',
+    'profile_image_url',
     'is_active',
     'created_at',
     'updated_at'
@@ -38,6 +39,7 @@ export const TABLE_COLUMNS = {
     'contact_person',
     'contact_email',
     'contact_phone',
+    'image_url',
     'created_by',
     'created_at',
     'updated_at'
@@ -151,6 +153,19 @@ export const TABLE_COLUMNS = {
     'question_index',
     'response',
     'image_url',
+    'created_at',
+    'updated_at'
+  ],
+
+  // Tabla inspection_team
+  inspection_team: [
+    'id',
+    'response_id',
+    'cargo',
+    'empresa',
+    'nombre',
+    'firma_url',
+    'sort_order',
     'created_at',
     'updated_at'
   ]

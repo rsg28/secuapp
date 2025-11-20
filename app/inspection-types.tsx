@@ -62,7 +62,7 @@ export default function InspectionTypesScreen() {
         <TouchableOpacity style={styles.inspectionCard} onPress={handleClosedInspections}>
           <View style={styles.cardHeader}>
             <View style={styles.cardIconContainer}>
-              <IconSymbol name="checkmark.circle.fill" size={32} color="#22c55e" />
+              <Ionicons name="document-text" size={32} color="#22c55e" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Inspecciones Cerradas</Text>

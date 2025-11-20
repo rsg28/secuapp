@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
   ActivityIndicator,
@@ -12,6 +13,8 @@ import {
     GestureResponderEvent,
     useWindowDimensions,
 } from 'react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
@@ -61,16 +64,20 @@ export default function HistoryScreen() {
     loading: openLoading 
   } = useOpenInspectionResponses();
   const { 
-    countItemsByTemplateId: countClosedTemplateItems
+    countItemsByTemplateId: countClosedTemplateItems,
+    getItemsByTemplateId: getClosedTemplateItems
   } = useClosedTemplateItems();
   const { 
-    countItemsByTemplateId: countOpenTemplateItems
+    countItemsByTemplateId: countOpenTemplateItems,
+    getItemsByTemplateId: getOpenTemplateItems
   } = useOpenTemplateItems();
   const { 
-    countItemsByResponseId: countClosedResponseItems
+    countItemsByResponseId: countClosedResponseItems,
+    getItemsByResponseId: getClosedResponseItems
   } = useClosedInspectionResponseItems();
   const { 
-    countItemsByResponseId: countOpenResponseItems
+    countItemsByResponseId: countOpenResponseItems,
+    getItemsByResponseId: getOpenResponseItems
   } = useOpenInspectionResponseItems();
   
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
@@ -82,6 +89,10 @@ export default function HistoryScreen() {
   });
   const [showServiceModal, setShowServiceModal] = useState(false);
   const [showWorkingModal, setShowWorkingModal] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
+  const [selectedItemForSend, setSelectedItemForSend] = useState<HistoryItem | null>(null);
+  const [sendEmail, setSendEmail] = useState('');
+  const [sendingId, setSendingId] = useState<string | null>(null);
   const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -344,15 +355,76 @@ export default function HistoryScreen() {
     );
   };
 
-  const handleDownloadExcel = async (item: HistoryItem) => {
+  const handleDownload = async (item: HistoryItem) => {
     try {
-      if (!user?.email) {
-        Alert.alert('Error', 'No se pudo determinar tu correo. Inicia sesión nuevamente.');
-        return;
+      setDownloadingId(item.id);
+      const type = item.category === 'cerrado' ? 'closed' : 'open';
+      
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
       }
 
-      const type = item.category === 'cerrado' ? 'closed' : 'open';
-      setDownloadingId(item.id);
+      // Descargar directamente usando FileSystem (React Native compatible)
+      const sanitizedTitle = (item.title || item.details || 'sin-titulo').replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const fileName = `inspeccion-${sanitizedTitle}-${Date.now()}.xlsx`;
+      
+      // @ts-ignore - documentDirectory exists in expo-file-system
+      const fileUri = `${FileSystem.documentDirectory}${fileName}`;
+      
+      // Descargar directamente usando FileSystem
+      const downloadResult = await FileSystem.downloadAsync(
+        `${API_BASE_URL}/inspection-responses/download?responseId=${item.id}&type=${type}`,
+        fileUri,
+        {
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
+        }
+      );
+
+      // Verificar que la descarga fue exitosa
+      if (downloadResult.status !== 200) {
+        throw new Error(`Error al descargar el archivo: ${downloadResult.status}`);
+      }
+
+      // Compartir archivo
+      const canShare = await Sharing.isAvailableAsync();
+      if (canShare) {
+        await Sharing.shareAsync(downloadResult.uri, {
+          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          dialogTitle: 'Descargar Inspección',
+        });
+        Alert.alert('Éxito', 'Archivo Excel generado y listo para compartir');
+      } else {
+        Alert.alert('Error', 'La función de compartir no está disponible en este dispositivo');
+      }
+    } catch (error: any) {
+      console.error('Error downloading file:', error);
+      Alert.alert('Error', `No se pudo generar el archivo: ${error.message}`);
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleSend = async () => {
+    if (!selectedItemForSend) return;
+    
+    // Validar email
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!sendEmail.trim()) {
+      Alert.alert('Error', 'Por favor ingresa un correo electrónico');
+      return;
+    }
+    
+    if (!emailRegex.test(sendEmail.trim())) {
+      Alert.alert('Error', 'Por favor ingresa un correo electrónico válido');
+      return;
+    }
+
+    try {
+      setSendingId(selectedItemForSend.id);
+      const type = selectedItemForSend.category === 'cerrado' ? 'closed' : 'open';
 
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
@@ -366,24 +438,27 @@ export default function HistoryScreen() {
           'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({
-          responseId: item.id,
+          responseId: selectedItemForSend.id,
           type,
-          email: user.email
+          email: sendEmail.trim()
         })
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data?.message || 'No se pudo procesar la exportación');
+        throw new Error(data?.message || 'No se pudo procesar el envío');
       }
 
-      Alert.alert('Correo enviado', data?.message || `Te enviamos el archivo a ${user.email}`);
+      Alert.alert('Éxito', `El archivo se ha enviado a ${sendEmail.trim()}`);
+      setShowSendModal(false);
+      setSendEmail('');
+      setSelectedItemForSend(null);
     } catch (error: any) {
-      console.error('Error exporting inspection:', error);
+      console.error('Error sending email:', error);
       Alert.alert('Error', error?.message || 'No se pudo enviar el archivo por correo');
     } finally {
-      setDownloadingId(null);
+      setSendingId(null);
     }
   };
 
@@ -565,25 +640,37 @@ export default function HistoryScreen() {
                     <Text style={[styles.serviceName, { fontSize: responsive.smallText }]}>{item.service}</Text>
                   </View>
                   <View style={styles.historyActions}>
-                    {item.status === 'completed' && (
-                      <TouchableOpacity
-                        style={styles.downloadButton}
-                        onPress={(event: GestureResponderEvent) => {
-                          event.stopPropagation();
-                          handleDownloadExcel(item);
-                        }}
-                        disabled={downloadingId === item.id}
-                      >
-                        {downloadingId === item.id ? (
-                          <ActivityIndicator size="small" color="#2563eb" />
-                        ) : (
-                          <Ionicons name="download" size={18} color="#2563eb" />
-                        )}
-                      </TouchableOpacity>
-                    )}
+                    <TouchableOpacity
+                      style={styles.downloadButton}
+                      onPress={(event: GestureResponderEvent) => {
+                        event.stopPropagation();
+                        handleDownload(item);
+                      }}
+                      disabled={downloadingId === item.id}
+                    >
+                      {downloadingId === item.id ? (
+                        <ActivityIndicator size="small" color="#2563eb" />
+                      ) : (
+                        <Ionicons name="download" size={18} color="#2563eb" />
+                      )}
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.sendButton}
+                      onPress={(event: GestureResponderEvent) => {
+                        event.stopPropagation();
+                        setSelectedItemForSend(item);
+                        setSendEmail('');
+                        setShowSendModal(true);
+                      }}
+                    >
+                      <Ionicons name="send" size={18} color="#10b981" />
+                    </TouchableOpacity>
                     <TouchableOpacity
                       style={styles.deleteButton}
-                      onPress={() => handleDeleteResponse(item)}
+                      onPress={(event: GestureResponderEvent) => {
+                        event.stopPropagation();
+                        handleDeleteResponse(item);
+                      }}
                     >
                       <Ionicons name="trash" size={18} color="#ef4444" />
                     </TouchableOpacity>
@@ -690,6 +777,92 @@ export default function HistoryScreen() {
             >
               <Text style={[styles.workingModalButtonText, { fontSize: responsive.baseText }]}>Entendido</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Modal de Enviar por Correo */}
+      <Modal
+        visible={showSendModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => {
+          setShowSendModal(false);
+          setSendEmail('');
+          setSelectedItemForSend(null);
+        }}
+      >
+        <View style={styles.workingModalOverlay}>
+          <View style={styles.sendModalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={[styles.modalTitle, { fontSize: responsive.modalTitleSize }]}>Enviar Inspección</Text>
+              <TouchableOpacity 
+                style={styles.modalCloseButton}
+                onPress={() => {
+                  setShowSendModal(false);
+                  setSendEmail('');
+                  setSelectedItemForSend(null);
+                }}
+                disabled={!!sendingId}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.sendModalBody}>
+              <Text style={[styles.sendModalLabel, { fontSize: responsive.baseText }]}>
+                Correo electrónico de destino
+              </Text>
+              <TextInput
+                style={styles.sendModalInput}
+                placeholder="ejemplo@correo.com"
+                placeholderTextColor="#9ca3af"
+                value={sendEmail}
+                onChangeText={setSendEmail}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!sendingId}
+              />
+              
+              {selectedItemForSend && (
+                <Text style={[styles.sendModalInfo, { fontSize: responsive.smallText }]}>
+                  Enviando: {selectedItemForSend.title || selectedItemForSend.details}
+                </Text>
+              )}
+            </View>
+
+            <View style={styles.sendModalActions}>
+              <TouchableOpacity
+                style={[styles.sendModalCancelButton, { opacity: sendingId ? 0.5 : 1 }]}
+                onPress={() => {
+                  setShowSendModal(false);
+                  setSendEmail('');
+                  setSelectedItemForSend(null);
+                }}
+                disabled={!!sendingId}
+              >
+                <Text style={[styles.sendModalCancelText, { fontSize: responsive.baseText }]}>Cancelar</Text>
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={[
+                  styles.sendModalSendButton,
+                  { opacity: sendingId || !sendEmail.trim() ? 0.5 : 1 }
+                ]}
+                onPress={handleSend}
+                disabled={!!sendingId || !sendEmail.trim()}
+              >
+                {sendingId ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="send" size={20} color="#fff" />
+                    <Text style={[styles.sendModalSendText, { fontSize: responsive.baseText }]}>Enviar</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
@@ -846,6 +1019,15 @@ const styles = StyleSheet.create({
     height: 32,
     borderRadius: 16,
     backgroundColor: '#dbeafe',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  sendButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#d1fae5',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 8,
@@ -1022,6 +1204,79 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     textAlign: 'center',
+  },
+  // Modal de envío
+  sendModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 0,
+    marginHorizontal: 20,
+    maxWidth: 400,
+    width: '90%',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  sendModalBody: {
+    padding: 20,
+  },
+  sendModalLabel: {
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  sendModalInput: {
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+    backgroundColor: '#fff',
+  },
+  sendModalInfo: {
+    color: '#6b7280',
+    marginTop: 12,
+    fontStyle: 'italic',
+  },
+  sendModalActions: {
+    flexDirection: 'row',
+    padding: 20,
+    paddingTop: 0,
+    gap: 12,
+  },
+  sendModalCancelButton: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#f3f4f6',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sendModalCancelText: {
+    color: '#374151',
+    fontWeight: '600',
+  },
+  sendModalSendButton: {
+    flex: 1,
+    flexDirection: 'row',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    backgroundColor: '#10b981',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  sendModalSendText: {
+    color: '#fff',
+    fontWeight: '600',
   },
   loadingContainer: {
     padding: 40,
