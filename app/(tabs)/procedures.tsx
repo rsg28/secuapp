@@ -10,6 +10,8 @@ import {
     TextInput,
     TouchableOpacity,
     View,
+    Modal,
+    Image,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCompanies } from '../../hooks/useCompanies';
@@ -27,6 +29,7 @@ interface Company {
   formCount: number;
   lastActivity: string;
   industryKey: string;
+  image_url?: string;
 }
 
 interface IndustryOption {
@@ -89,6 +92,8 @@ export default function ProceduresScreen() {
 
   const { getAllCompanies, deleteCompany } = useCompanies();
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showCompanyModal, setShowCompanyModal] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
 
   useEffect(() => {
     loadCompanies();
@@ -122,7 +127,8 @@ export default function ProceduresScreen() {
           address: company.address || 'Sin dirección',
           status: company.status === 'inactive' ? 'inactive' : 'active',
           formCount: company.form_count ?? 0,
-          lastActivity: formatDate(company.updated_at || company.created_at) 
+          lastActivity: formatDate(company.updated_at || company.created_at),
+          image_url: company.image_url || undefined,
         };
       });
 
@@ -172,17 +178,8 @@ export default function ProceduresScreen() {
   }, [companies, selectedCategory, searchQuery]);
 
   const handleCompanyPress = (company: Company) => {
-    // Aquí se navegaría a una pantalla que muestre todos los formularios de la empresa
-    // Por ahora solo mostramos un alert con la información
-    Alert.alert(
-      company.name,
-      `📋 Industria: ${company.industry}\n👤 Contacto: ${company.contactPerson}\n📧 Email: ${company.email}\n📱 Teléfono: ${company.phone}\n📄 Formularios: ${company.formCount}\n🕒 Última actividad: ${company.lastActivity}`,
-      [
-        { text: 'Ver Formularios', onPress: () => {} },
-        { text: 'Editar Empresa', onPress: () => {} },
-        { text: 'Cancelar', style: 'cancel' },
-      ]
-    );
+    setSelectedCompany(company);
+    setShowCompanyModal(true);
   };
 
   const handleAddCompany = () => {
@@ -325,17 +322,31 @@ export default function ProceduresScreen() {
               onPress={() => handleCompanyPress(company)}
             >
               {user?.role === 'manager' && (
-                <TouchableOpacity
-                  style={styles.deleteButton}
-                  onPress={(e) => handleDeleteCompany(company, e)}
-                  disabled={deletingId === company.id}
-                >
-                  {deletingId === company.id ? (
-                    <ActivityIndicator size="small" color="#fff" />
-                  ) : (
-                    <Ionicons name="trash" size={16} color="#fff" />
-                  )}
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity
+                    style={styles.editButton}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      router.push({
+                        pathname: '/edit-company',
+                        params: { companyId: company.id }
+                      });
+                    }}
+                  >
+                    <Ionicons name="pencil" size={16} color="#fff" />
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={(e) => handleDeleteCompany(company, e)}
+                    disabled={deletingId === company.id}
+                  >
+                    {deletingId === company.id ? (
+                      <ActivityIndicator size="small" color="#fff" />
+                    ) : (
+                      <Ionicons name="trash" size={16} color="#fff" />
+                    )}
+                  </TouchableOpacity>
+                </>
               )}
               <View style={styles.fileCardHeader}>
                 <View style={styles.fileIconContainer}>
@@ -371,6 +382,181 @@ export default function ProceduresScreen() {
         {/* Bottom spacing for tab bar */}
         <View style={styles.bottomSpacing} />
       </ScrollView>
+
+      {/* Modal de detalles de la empresa */}
+      <Modal
+        visible={showCompanyModal}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setShowCompanyModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity 
+            style={styles.modalOverlayBackground}
+            activeOpacity={1}
+            onPress={() => setShowCompanyModal(false)}
+          />
+          <View style={styles.modalContent}>
+            {/* Header del modal */}
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Detalles de la Empresa</Text>
+              <TouchableOpacity
+                onPress={() => setShowCompanyModal(false)}
+                style={styles.modalCloseButton}
+              >
+                <Ionicons name="close" size={24} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Contenido del modal */}
+            {selectedCompany && (
+              <ScrollView 
+                style={styles.modalBodyScroll}
+                contentContainerStyle={styles.modalBody}
+                showsVerticalScrollIndicator={true}
+                scrollEnabled={true}
+                bounces={true}
+                alwaysBounceVertical={false}
+              >
+                {/* Imagen de la empresa */}
+                {selectedCompany.image_url ? (
+                  <View style={styles.modalImageContainer}>
+                    <Image
+                      source={{ uri: selectedCompany.image_url }}
+                      style={styles.modalImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : (
+                  <View style={styles.modalImagePlaceholder}>
+                    <Ionicons name="business" size={64} color="#9ca3af" />
+                  </View>
+                )}
+
+                {/* Información básica */}
+                <View style={styles.modalSection}>
+                  <View style={styles.modalInfoRow}>
+                    <View style={styles.modalInfoIcon}>
+                      <Ionicons name="business" size={20} color="#6366f1" />
+                    </View>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Nombre de la Empresa</Text>
+                      <Text style={styles.modalInfoValue}>{selectedCompany.name}</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalInfoRow}>
+                    <View style={styles.modalInfoIcon}>
+                      <Ionicons name="briefcase" size={20} color="#6366f1" />
+                    </View>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Industria</Text>
+                      <Text style={styles.modalInfoValue}>{selectedCompany.industry || 'No especificada'}</Text>
+                    </View>
+                  </View>
+
+                  {selectedCompany.address && (
+                    <View style={styles.modalInfoRow}>
+                      <View style={styles.modalInfoIcon}>
+                        <Ionicons name="location" size={20} color="#6366f1" />
+                      </View>
+                      <View style={styles.modalInfoContent}>
+                        <Text style={styles.modalInfoLabel}>Dirección</Text>
+                        <Text style={styles.modalInfoValue}>{selectedCompany.address}</Text>
+                      </View>
+                    </View>
+                  )}
+                </View>
+
+                {/* Información de contacto */}
+                {(selectedCompany.contactPerson || selectedCompany.email || selectedCompany.phone) && (
+                  <View style={styles.modalSection}>
+                    <Text style={styles.modalSectionTitle}>Información de Contacto</Text>
+                    
+                    {selectedCompany.contactPerson && (
+                      <View style={styles.modalInfoRow}>
+                        <View style={styles.modalInfoIcon}>
+                          <Ionicons name="person" size={20} color="#6366f1" />
+                        </View>
+                        <View style={styles.modalInfoContent}>
+                          <Text style={styles.modalInfoLabel}>Persona de Contacto</Text>
+                          <Text style={styles.modalInfoValue}>{selectedCompany.contactPerson}</Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedCompany.email && (
+                      <View style={styles.modalInfoRow}>
+                        <View style={styles.modalInfoIcon}>
+                          <Ionicons name="mail" size={20} color="#6366f1" />
+                        </View>
+                        <View style={styles.modalInfoContent}>
+                          <Text style={styles.modalInfoLabel}>Email</Text>
+                          <Text style={styles.modalInfoValue}>{selectedCompany.email}</Text>
+                        </View>
+                      </View>
+                    )}
+
+                    {selectedCompany.phone && (
+                      <View style={styles.modalInfoRow}>
+                        <View style={styles.modalInfoIcon}>
+                          <Ionicons name="call" size={20} color="#6366f1" />
+                        </View>
+                        <View style={styles.modalInfoContent}>
+                          <Text style={styles.modalInfoLabel}>Teléfono</Text>
+                          <Text style={styles.modalInfoValue}>{selectedCompany.phone}</Text>
+                        </View>
+                      </View>
+                    )}
+                  </View>
+                )}
+
+                {/* Estadísticas */}
+                <View style={styles.modalSection}>
+                  <Text style={styles.modalSectionTitle}>Estadísticas</Text>
+                  
+                  <View style={styles.modalInfoRow}>
+                    <View style={styles.modalInfoIcon}>
+                      <Ionicons name="document-text" size={20} color="#6366f1" />
+                    </View>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Formularios</Text>
+                      <Text style={styles.modalInfoValue}>{selectedCompany.formCount} formularios</Text>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalInfoRow}>
+                    <View style={styles.modalInfoIcon}>
+                      <Ionicons name="time" size={20} color="#6366f1" />
+                    </View>
+                    <View style={styles.modalInfoContent}>
+                      <Text style={styles.modalInfoLabel}>Última Actividad</Text>
+                      <Text style={styles.modalInfoValue}>{selectedCompany.lastActivity}</Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Botón de editar (solo para managers) */}
+                {user?.role === 'manager' && (
+                  <TouchableOpacity
+                    style={styles.modalEditButton}
+                    onPress={() => {
+                      setShowCompanyModal(false);
+                      router.push({
+                        pathname: '/edit-company',
+                        params: { companyId: selectedCompany.id }
+                      });
+                    }}
+                  >
+                    <Ionicons name="pencil" size={20} color="#fff" />
+                    <Text style={styles.modalEditButtonText}>Editar Empresa</Text>
+                  </TouchableOpacity>
+                )}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -553,6 +739,26 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginLeft: 8,
   },
+  editButton: {
+    position: 'absolute',
+    top: 12,
+    right: 52,
+    backgroundColor: '#6366f1',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 3,
+    zIndex: 10,
+  },
   deleteButton: {
     position: 'absolute',
     top: 12,
@@ -592,5 +798,145 @@ const styles = StyleSheet.create({
   },
   bottomSpacing: {
     height: 120,
+  },
+  // Estilos del modal
+  modalOverlay: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  modalOverlayBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 600,
+    maxHeight: '85%',
+    minHeight: 400,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 12,
+    elevation: 10,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+    zIndex: 1,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 24,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+    backgroundColor: '#fff',
+    flexShrink: 0,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1f2937',
+  },
+  modalCloseButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#f3f4f6',
+  },
+  modalBodyScroll: {
+    flex: 1,
+  },
+  modalBody: {
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 20,
+  },
+  modalImageContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  modalImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 12,
+  },
+  modalImagePlaceholder: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    backgroundColor: '#f9fafb',
+    borderRadius: 12,
+    marginTop: 20,
+  },
+  modalSection: {
+    marginTop: 24,
+  },
+  modalSectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: 16,
+  },
+  modalInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 16,
+    backgroundColor: '#f9fafb',
+    padding: 12,
+    borderRadius: 8,
+  },
+  modalInfoIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  modalInfoContent: {
+    flex: 1,
+  },
+  modalInfoLabel: {
+    fontSize: 12,
+    color: '#6b7280',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  modalInfoValue: {
+    fontSize: 16,
+    color: '#1f2937',
+    fontWeight: '400',
+  },
+  modalEditButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366f1',
+    paddingVertical: 16,
+    borderRadius: 12,
+    marginTop: 24,
+    gap: 8,
+  },
+  modalEditButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });

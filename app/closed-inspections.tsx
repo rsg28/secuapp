@@ -35,6 +35,21 @@ interface Category {
   color: string;
 }
 
+type QuestionType = 'text' | 'single_choice' | 'multiple_choice';
+
+interface CategoryQuestion {
+  id: string;
+  text: string;
+}
+
+interface CategoryGroup {
+  id: string;
+  name: string;
+  question_type: QuestionType;
+  questions: CategoryQuestion[];
+  options: string[];
+}
+
 export default function ClosedInspectionsScreen() {
   const { user } = useAuth();
   const { templates, createTemplate, deleteTemplate, getTemplatesByUserId, updateTemplate } = useClosedInspectionTemplates();
@@ -43,17 +58,26 @@ export default function ClosedInspectionsScreen() {
   const [formTemplates, setFormTemplates] = useState<FormTemplate[]>([]);
   const [dynamicCategories, setDynamicCategories] = useState<Category[]>([]);
   
+  // Helpers for template creation UI
+  const generateId = () => Math.random().toString(36).slice(2, 9);
+  const createEmptyQuestion = (): CategoryQuestion => ({
+    id: generateId(),
+    text: '',
+  });
+  const createEmptyCategoryGroup = (questionType: QuestionType = 'text'): CategoryGroup => ({
+    id: generateId(),
+    name: '',
+    question_type: questionType,
+    questions: [createEmptyQuestion()],
+    options: questionType === 'text' ? [] : ['', ''],
+  });
+
   // States for creating new template
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newTemplateTitle, setNewTemplateTitle] = useState('');
   const [newTemplateDescription, setNewTemplateDescription] = useState('');
   const [newTemplateCategory, setNewTemplateCategory] = useState('');
-  const [newTemplateItems, setNewTemplateItems] = useState<Array<{
-    text: string, 
-    category: string, 
-    question_type: 'text' | 'single_choice' | 'multiple_choice',
-    options: string[]
-  }>>([{text: '', category: '', question_type: 'text', options: []}]);
+  const [newCategoryGroups, setNewCategoryGroups] = useState<CategoryGroup[]>([createEmptyCategoryGroup()]);
   const [isCreatingTemplate, setIsCreatingTemplate] = useState(false);
   
   // States for viewing items
@@ -330,7 +354,7 @@ export default function ClosedInspectionsScreen() {
     setNewTemplateTitle('');
     setNewTemplateDescription('');
     setNewTemplateCategory('');
-    setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
+    setNewCategoryGroups([createEmptyCategoryGroup()]);
     setIsCreatingTemplate(false);
     setShowCreateModal(true);
   };
@@ -341,32 +365,49 @@ export default function ClosedInspectionsScreen() {
     }
     // Validate inputs
     if (!newTemplateTitle.trim()) {
-      Alert.alert('Error', 'El título es requerido');
+      Alert.alert('Error', 'El nombre de inspección es requerido');
       return;
     }
     if (!newTemplateCategory.trim()) {
-      Alert.alert('Error', 'La categoría es requerida');
+      Alert.alert('Error', 'El tipo de inspección es requerido');
       return;
     }
     if (!newTemplateDescription.trim()) {
       Alert.alert('Error', 'La descripción es requerida');
       return;
     }
-    const trimmedItems = newTemplateItems.map((item) => ({
-      text: item.text.trim(),
-      category: item.category.trim(),
-      question_type: item.question_type || 'text',
-      options: item.options || []
-    }));
-    const hasEmptyItem = trimmedItems.some(item => !item.text || !item.category);
-    if (trimmedItems.length === 0 || hasEmptyItem) {
-      Alert.alert('Error', 'Completa todos los items con categoría y texto.');
+    if (newCategoryGroups.length === 0) {
+      Alert.alert('Error', 'Agrega al menos una categoría de preguntas.');
+      return;
+    }
+
+    const hasEmptyCategoryName = newCategoryGroups.some(group => !group.name.trim());
+    if (hasEmptyCategoryName) {
+      Alert.alert('Error', 'Todas las categorías deben tener un nombre.');
+      return;
+    }
+
+    const trimmedItems = newCategoryGroups.flatMap((group) =>
+      group.questions.map((question) => ({
+        text: question.text.trim(),
+        category: group.name.trim(),
+        question_type: group.question_type,
+        options: group.question_type === 'text' ? [] : (group.options || [])
+      }))
+    );
+
+    const hasEmptyQuestion = newCategoryGroups.some(group =>
+      group.questions.some(question => !question.text.trim())
+    );
+    if (trimmedItems.length === 0 || hasEmptyQuestion) {
+      Alert.alert('Error', 'Completa todas las preguntas con texto.');
       return;
     }
     // Validate options for choice questions
-    const hasInvalidChoice = trimmedItems.some(item => {
-      if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
-        return !item.options || item.options.length < 2 || item.options.some(opt => !opt.trim());
+    const hasInvalidChoice = newCategoryGroups.some(group => {
+      if (group.question_type === 'single_choice' || group.question_type === 'multiple_choice') {
+        const options = group.options || [];
+        return options.length < 2 || options.some(opt => !opt.trim());
       }
       return false;
     });
@@ -387,6 +428,7 @@ export default function ClosedInspectionsScreen() {
     }
     
     setIsCreatingTemplate(true);
+    let createdTemplate: any = null;
     try {
       // Get user info for created_by
       const userId = user?.id;
@@ -404,17 +446,16 @@ export default function ClosedInspectionsScreen() {
         user_id: userId // Templates created by users are only visible to that user by default
       };
       
-      const newTemplate = await createTemplate(templateData);
+      createdTemplate = await createTemplate(templateData);
       
-      // Filter valid items (with both text and category)
-      // Create items for the template if there are any
+      // Create items for the template
       if (trimmedItems.length > 0) {
         for (let i = 0; i < trimmedItems.length; i++) {
           const item = trimmedItems[i];
           const itemData: any = {
-            template_id: newTemplate.id,
+            template_id: createdTemplate.id,
             category: item.category,
-            question_index: i + 1,
+            question_index: (i + 1).toString(),
             text: item.text,
             question_type: item.question_type,
             sort_order: i + 1
@@ -423,7 +464,21 @@ export default function ClosedInspectionsScreen() {
           if (item.question_type === 'single_choice' || item.question_type === 'multiple_choice') {
             itemData.options = item.options.filter(opt => opt.trim());
           }
-          await createItem(itemData);
+          try {
+            await createItem(itemData);
+          } catch (itemError: any) {
+            console.error(`Error creando item ${i + 1}:`, itemError);
+            // Continue with next item even if one fails
+            // But if template creation failed, try to clean up
+            if (createdTemplate?.id) {
+              try {
+                await deleteTemplate(createdTemplate.id);
+              } catch (deleteError) {
+                console.error('Error al limpiar template después de error:', deleteError);
+              }
+            }
+            throw itemError;
+          }
         }
       }
       
@@ -437,68 +492,133 @@ export default function ClosedInspectionsScreen() {
       setNewTemplateTitle('');
       setNewTemplateDescription('');
       setNewTemplateCategory('');
-      setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
+      setNewCategoryGroups([createEmptyCategoryGroup()]);
       
       Alert.alert('Éxito', 'Template creado correctamente');
     } catch (error: any) {
+      // If template creation failed, try to clean up
+      if (createdTemplate?.id) {
+        try {
+          await deleteTemplate(createdTemplate.id);
+        } catch (deleteError) {
+          console.error('Error al limpiar template después de error:', deleteError);
+        }
+      }
+      
       const errorMessage = error?.message || 'No se pudo crear el template';
+      console.error('Error creando template:', error);
       Alert.alert('Error', errorMessage);
     } finally {
       setIsCreatingTemplate(false);
     }
   };
-  
-  const addNewItem = () => {
-    setNewTemplateItems([...newTemplateItems, {text: '', category: '', question_type: 'text', options: []}]);
+
+  const addCategoryGroup = () => {
+    setNewCategoryGroups((prev) => [...prev, createEmptyCategoryGroup()]);
   };
-  
-  const updateNewItem = (index: number, field: 'text' | 'category' | 'question_type', value: string | 'text' | 'single_choice' | 'multiple_choice') => {
-    const updatedItems = [...newTemplateItems];
-    if (field === 'question_type') {
-      updatedItems[index].question_type = value as 'text' | 'single_choice' | 'multiple_choice';
-      // Reset options when changing to text
-      if (value === 'text') {
-        updatedItems[index].options = [];
-      } else if (updatedItems[index].options.length === 0) {
-        // Initialize with 2 empty options for choice types
-        updatedItems[index].options = ['', ''];
+
+  const updateCategoryGroupName = (groupId: string, name: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) =>
+        group.id === groupId ? { ...group, name } : group
+      )
+    );
+  };
+
+  const updateCategoryQuestionType = (groupId: string, questionType: QuestionType) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== groupId) return group;
+        return {
+          ...group,
+          question_type: questionType,
+          questions: group.questions.length > 0 ? group.questions : [createEmptyQuestion()],
+          options: questionType === 'text'
+            ? []
+            : (group.options && group.options.length >= 2 ? group.options : ['', '']),
+        };
+      })
+    );
+  };
+
+  const addQuestionToGroup = (groupId: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) =>
+        group.id === groupId
+          ? { ...group, questions: [...group.questions, createEmptyQuestion()] }
+          : group
+      )
+    );
+  };
+
+  const updateQuestionText = (groupId: string, questionId: string, text: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== groupId) return group;
+        return {
+          ...group,
+          questions: group.questions.map((question) =>
+            question.id === questionId ? { ...question, text } : question
+          ),
+        };
+      })
+    );
+  };
+
+  const removeQuestionFromGroup = (groupId: string, questionId: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== groupId) return group;
+        if (group.questions.length === 1) return group;
+        return {
+          ...group,
+          questions: group.questions.filter((question) => question.id !== questionId),
+        };
+      })
+    );
+  };
+
+  const removeCategoryGroup = (groupId: string) => {
+    setNewCategoryGroups((prev) => {
+      if (prev.length === 1) {
+        return prev;
       }
-    } else {
-      (updatedItems[index] as any)[field] = value;
-    }
-    setNewTemplateItems(updatedItems);
+      return prev.filter((group) => group.id !== groupId);
+    });
   };
 
-  const updateNewItemOption = (itemIndex: number, optionIndex: number, value: string) => {
-    const updatedItems = [...newTemplateItems];
-    if (!updatedItems[itemIndex].options) {
-      updatedItems[itemIndex].options = [];
-    }
-    updatedItems[itemIndex].options[optionIndex] = value;
-    setNewTemplateItems(updatedItems);
+  const updateGroupOption = (groupId: string, optionIndex: number, value: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== groupId) return group;
+        const options = [...(group.options || [])];
+        options[optionIndex] = value;
+        return { ...group, options };
+      })
+    );
   };
 
-  const addNewItemOption = (itemIndex: number) => {
-    const updatedItems = [...newTemplateItems];
-    if (!updatedItems[itemIndex].options) {
-      updatedItems[itemIndex].options = [];
-    }
-    updatedItems[itemIndex].options.push('');
-    setNewTemplateItems(updatedItems);
+  const addGroupOption = (groupId: string) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) =>
+        group.id === groupId
+          ? { ...group, options: [...(group.options || []), ''] }
+          : group
+      )
+    );
   };
 
-  const removeNewItemOption = (itemIndex: number, optionIndex: number) => {
-    const updatedItems = [...newTemplateItems];
-    if (updatedItems[itemIndex].options && updatedItems[itemIndex].options.length > 2) {
-      updatedItems[itemIndex].options = updatedItems[itemIndex].options.filter((_, i) => i !== optionIndex);
-      setNewTemplateItems(updatedItems);
-    }
-  };
-  
-  const removeNewItem = (index: number) => {
-    if (newTemplateItems.length > 1) {
-      setNewTemplateItems(newTemplateItems.filter((_, i) => i !== index));
-    }
+  const removeGroupOption = (groupId: string, optionIndex: number) => {
+    setNewCategoryGroups((prev) =>
+      prev.map((group) => {
+        if (group.id !== groupId) return group;
+        if (!group.options || group.options.length <= 2) return group;
+        return {
+          ...group,
+          options: group.options.filter((_, idx) => idx !== optionIndex),
+        };
+      })
+    );
   };
   
   const addEditItem = () => {
@@ -958,14 +1078,14 @@ export default function ClosedInspectionsScreen() {
                 style={styles.renameInput}
                 value={newTemplateTitle}
                 onChangeText={setNewTemplateTitle}
-                placeholder="Título del template"
+                placeholder="Nombre de Inspección"
               />
               
               <TextInput
                 style={styles.renameInput}
                 value={newTemplateCategory}
                 onChangeText={setNewTemplateCategory}
-                placeholder="Categoría"
+                placeholder="Tipo de Inspección"
               />
               
               <TextInput
@@ -976,108 +1096,114 @@ export default function ClosedInspectionsScreen() {
                 multiline={true}
               />
               
-              <Text style={{fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8}}>Preguntas/Items:</Text>
+              <Text style={{fontSize: 16, fontWeight: '600', marginTop: 16, marginBottom: 8}}>Categorías y Preguntas:</Text>
               
-              {newTemplateItems.map((item, index) => (
-                <View key={index} style={{marginBottom: 12, backgroundColor: '#f9fafb', padding: 12, borderRadius: 8}}>
-                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Item {index + 1}</Text>
-                  <TextInput
-                    style={[styles.renameInput, {marginBottom: 8}]}
-                    value={item.category}
-                    onChangeText={(value) => updateNewItem(index, 'category', value)}
-                    placeholder="Categoría del item"
-                  />
-                  <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4, marginTop: 8}}>Tipo de pregunta</Text>
-                  <View style={{flexDirection: 'row', marginBottom: 8, gap: 8}}>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        padding: 10,
-                        borderRadius: 8,
-                        backgroundColor: item.question_type === 'text' ? '#6366f1' : '#e5e7eb',
-                        alignItems: 'center'
-                      }}
-                      onPress={() => updateNewItem(index, 'question_type', 'text')}
-                    >
-                      <Text style={{color: item.question_type === 'text' ? '#fff' : '#374151', fontWeight: '600'}}>Texto</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        padding: 10,
-                        borderRadius: 8,
-                        backgroundColor: item.question_type === 'single_choice' ? '#6366f1' : '#e5e7eb',
-                        alignItems: 'center'
-                      }}
-                      onPress={() => updateNewItem(index, 'question_type', 'single_choice')}
-                    >
-                      <Text style={{color: item.question_type === 'single_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Opción Única</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={{
-                        flex: 1,
-                        padding: 10,
-                        borderRadius: 8,
-                        backgroundColor: item.question_type === 'multiple_choice' ? '#6366f1' : '#e5e7eb',
-                        alignItems: 'center'
-                      }}
-                      onPress={() => updateNewItem(index, 'question_type', 'multiple_choice')}
-                    >
-                      <Text style={{color: item.question_type === 'multiple_choice' ? '#fff' : '#374151', fontWeight: '600'}}>Múltiple</Text>
-                    </TouchableOpacity>
+              {newCategoryGroups.map((group, groupIndex) => (
+                <View key={group.id} style={styles.categoryGroupCard}>
+                  <View style={styles.categoryGroupHeader}>
+                    <Text style={styles.categoryBadge}>Categoría {groupIndex + 1}</Text>
+                    {newCategoryGroups.length > 1 && (
+                      <TouchableOpacity onPress={() => removeCategoryGroup(group.id)}>
+                        <Ionicons name="trash-outline" size={18} color="#dc2626" />
+                      </TouchableOpacity>
+                    )}
                   </View>
-                  {(item.question_type === 'single_choice' || item.question_type === 'multiple_choice') && (
-                    <View style={{marginBottom: 8}}>
-                      <Text style={{fontSize: 12, color: '#6b7280', marginBottom: 4}}>Opciones</Text>
-                      {item.options.map((option, optIndex) => (
-                        <View key={optIndex} style={{flexDirection: 'row', marginBottom: 4, alignItems: 'center'}}>
+                  <TextInput
+                    style={[styles.renameInput, {marginBottom: 10}]}
+                    value={group.name}
+                    onChangeText={(value) => updateCategoryGroupName(group.id, value)}
+                    placeholder="Nombre de la categoría"
+                  />
+                  <Text style={styles.categoryLabel}>Tipo de pregunta</Text>
+                  <View style={styles.typeSelectorRow}>
+                    {(['text', 'single_choice', 'multiple_choice'] as QuestionType[]).map((type) => (
+                      <TouchableOpacity
+                        key={type}
+                        style={[
+                          styles.typeSelectorButton,
+                          group.question_type === type && styles.typeSelectorButtonActive
+                        ]}
+                        onPress={() => updateCategoryQuestionType(group.id, type)}
+                      >
+                        <Text
+                          style={[
+                            styles.typeSelectorText,
+                            group.question_type === type && styles.typeSelectorTextActive
+                          ]}
+                        >
+                          {type === 'text' ? 'Texto' : type === 'single_choice' ? 'Opción única' : 'Múltiple'}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {(group.question_type === 'single_choice' || group.question_type === 'multiple_choice') && (
+                    <View style={styles.categoryOptionsWrapper}>
+                      <Text style={styles.categoryLabel}>Opciones (se aplican a todas las preguntas)</Text>
+                      {group.options.map((option, optionIndex) => (
+                        <View key={`${group.id}-option-${optionIndex}`} style={styles.optionRow}>
                           <TextInput
                             style={[styles.renameInput, {flex: 1, marginBottom: 0}]}
                             value={option}
-                            onChangeText={(value) => updateNewItemOption(index, optIndex, value)}
-                            placeholder={`Opción ${optIndex + 1}`}
+                            onChangeText={(value) => updateGroupOption(group.id, optionIndex, value)}
+                            placeholder={`Opción ${optionIndex + 1}`}
                           />
-                          {item.options.length > 2 && (
+                          {group.options.length > 2 && (
                             <TouchableOpacity
-                              style={{marginLeft: 8, padding: 8}}
-                              onPress={() => removeNewItemOption(index, optIndex)}
+                              style={styles.removeOptionButton}
+                              onPress={() => removeGroupOption(group.id, optionIndex)}
                             >
-                              <Ionicons name="close-circle" size={20} color="#ef4444" />
+                              <Ionicons name="close-circle" size={20} color="#dc2626" />
                             </TouchableOpacity>
                           )}
                         </View>
                       ))}
                       <TouchableOpacity
-                        style={{alignSelf: 'flex-start', marginTop: 4}}
-                        onPress={() => addNewItemOption(index)}
+                        style={styles.addOptionButton}
+                        onPress={() => addGroupOption(group.id)}
                       >
-                        <Text style={{color: '#6366f1', fontSize: 12}}>+ Agregar opción</Text>
+                        <Ionicons name="add-circle-outline" size={18} color="#2563eb" />
+                        <Text style={styles.addOptionText}>Agregar opción</Text>
                       </TouchableOpacity>
                     </View>
                   )}
-                  <TextInput
-                    style={[styles.renameInput, {minHeight: 60, marginTop: 8}]}
-                    value={item.text}
-                    onChangeText={(value) => updateNewItem(index, 'text', value)}
-                    placeholder="Texto de la pregunta"
-                    multiline={true}
-                  />
-                  {newTemplateItems.length > 1 && (
-                    <TouchableOpacity 
-                      style={{alignSelf: 'flex-end', marginTop: 8}}
-                      onPress={() => removeNewItem(index)}
-                    >
-                      <Text style={{color: '#ef4444', fontSize: 14}}>Eliminar</Text>
-                    </TouchableOpacity>
-                  )}
+
+                  {group.questions.map((question, questionIndex) => (
+                    <View key={question.id} style={styles.questionCard}>
+                      <View style={styles.questionHeader}>
+                        <Text style={styles.categoryLabel}>Pregunta {questionIndex + 1}</Text>
+                        {group.questions.length > 1 && (
+                          <TouchableOpacity onPress={() => removeQuestionFromGroup(group.id, question.id)}>
+                            <Ionicons name="trash-outline" size={16} color="#dc2626" />
+                          </TouchableOpacity>
+                        )}
+                      </View>
+                      <TextInput
+                        style={[styles.renameInput, {marginBottom: 8}]}
+                        value={question.text}
+                        onChangeText={(value) => updateQuestionText(group.id, question.id, value)}
+                        placeholder="Escribe la pregunta"
+                        multiline
+                      />
+                    </View>
+                  ))}
+
+                  <TouchableOpacity
+                    style={styles.addQuestionButton}
+                    onPress={() => addQuestionToGroup(group.id)}
+                  >
+                    <Ionicons name="add-circle-outline" size={18} color="#2563eb" />
+                    <Text style={styles.addQuestionText}>Agregar pregunta</Text>
+                  </TouchableOpacity>
                 </View>
               ))}
-              
+
               <TouchableOpacity 
-                style={{backgroundColor: '#e5e7eb', padding: 12, borderRadius: 8, alignItems: 'center', marginBottom: 16}}
-                onPress={addNewItem}
+                style={styles.addCategoryButton}
+                onPress={addCategoryGroup}
               >
-                <Text style={{color: '#374151', fontWeight: '600'}}>+ Agregar Item</Text>
+                <Ionicons name="add" size={16} color="#0f172a" />
+                <Text style={styles.addCategoryText}>Agregar categoría</Text>
               </TouchableOpacity>
             </ScrollView>
             
@@ -1089,7 +1215,7 @@ export default function ClosedInspectionsScreen() {
                   setNewTemplateTitle('');
                   setNewTemplateDescription('');
                   setNewTemplateCategory('');
-                  setNewTemplateItems([{text: '', category: '', question_type: 'text', options: []}]);
+                  setNewCategoryGroups([createEmptyCategoryGroup()]);
                 }}
               >
                 <Text style={styles.renameCancelText}>Cancelar</Text>
@@ -1142,60 +1268,6 @@ export default function ClosedInspectionsScreen() {
             </TouchableOpacity>
             </View>
 
-            {/* Selector de Categoría */}
-            {selectedTemplateItems.length > 0 && (
-              <View style={styles.itemsCategorySelectorContainer}>
-                <TouchableOpacity
-                  style={styles.itemsCategorySelector}
-                  onPress={() => setShowCategoryDropdown(!showCategoryDropdown)}
-                >
-                  <Ionicons name="folder" size={20} color="#6366f1" />
-                  <Text style={styles.itemsCategorySelectorText}>
-                    {selectedCategoryInModal || 'Seleccionar categoría'}
-                  </Text>
-                  <Ionicons 
-                    name={showCategoryDropdown ? "chevron-up" : "chevron-down"} 
-                    size={20} 
-                    color="#6b7280" 
-                  />
-                </TouchableOpacity>
-
-                {/* Dropdown de Categorías */}
-                {showCategoryDropdown && (
-                  <ScrollView 
-                    style={styles.itemsCategoryDropdown}
-                    nestedScrollEnabled={true}
-                  >
-                    {selectedTemplateItems.map((categoryGroup, idx) => (
-                      <TouchableOpacity
-                        key={idx}
-                        style={[
-                          styles.itemsCategoryDropdownItem,
-                          selectedCategoryInModal === categoryGroup.category && styles.itemsCategoryDropdownItemActive
-                        ]}
-                        onPress={() => {
-                          setSelectedCategoryInModal(categoryGroup.category);
-                          setShowCategoryDropdown(false);
-                        }}
-                      >
-                        <Text style={[
-                          styles.itemsCategoryDropdownItemText,
-                          selectedCategoryInModal === categoryGroup.category && styles.itemsCategoryDropdownItemTextActive
-                        ]}>
-                          {categoryGroup.category}
-                        </Text>
-                        <View style={styles.itemsCategoryBadge}>
-                          <Text style={styles.itemsCategoryBadgeText}>
-                            {categoryGroup.items.length}
-                          </Text>
-                        </View>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
-              </View>
-            )}
-
             <ScrollView 
               style={styles.itemsModalScrollView}
               showsVerticalScrollIndicator={true}
@@ -1204,42 +1276,38 @@ export default function ClosedInspectionsScreen() {
               bounces={true}
               scrollEnabled={true}
               keyboardShouldPersistTaps="handled"
-              onStartShouldSetResponder={() => false}
-              onMoveShouldSetResponder={() => false}
             >
-              {selectedTemplateItems.length > 0 && selectedCategoryInModal ? (
-                (() => {
-                  const selectedCategoryGroup = selectedTemplateItems.find(
-                    group => group.category === selectedCategoryInModal
-                  );
-                  return selectedCategoryGroup ? (
-                    <View style={styles.itemsListContainer}>
-                      {selectedCategoryGroup.items.map((item: any, itemIdx: number) => (
+              {selectedTemplateItems.length > 0 ? (
+                <View style={styles.itemsListContainer}>
+                  {selectedTemplateItems.map((categoryGroup, categoryIdx) => (
+                    <View key={categoryIdx} style={styles.itemsCategorySection}>
+                      <Text style={styles.itemsCategoryTitle}>
+                        {categoryGroup.category}
+                      </Text>
+                      {categoryGroup.items.map((item: any, itemIdx: number) => (
                         <View key={itemIdx} style={styles.itemsQuestionCard}>
-                          {item.question_index && (
-                            <View style={styles.itemsQuestionHeader}>
+                          <View style={styles.itemsQuestionHeader}>
+                            {item.question_index && (
                               <View style={styles.itemsQuestionIndex}>
                                 <Text style={styles.itemsQuestionIndexText}>
                                   {item.question_index}
                                 </Text>
                               </View>
-                            </View>
-                          )}
-                          <Text style={styles.itemsQuestionText}>
-                            {item.text}
-                          </Text>
+                            )}
+                            <Text style={styles.itemsQuestionText}>
+                              {item.text}
+                            </Text>
+                          </View>
                         </View>
                       ))}
                     </View>
-                  ) : null;
-                })()
+                  ))}
+                </View>
               ) : (
                 <View style={styles.itemsEmptyContainer}>
                   <Ionicons name="document-text-outline" size={48} color="#d1d5db" />
                   <Text style={styles.itemsEmptyText}>
-                    {selectedTemplateItems.length === 0 
-                      ? 'Este template no tiene preguntas asignadas aún.'
-                      : 'Selecciona una categoría para ver las preguntas.'}
+                    Este template no tiene preguntas asignadas aún.
                   </Text>
                 </View>
               )}
@@ -1824,8 +1892,8 @@ const styles = StyleSheet.create({
   itemsCategoryDropdown: {
     position: 'absolute',
     top: '100%',
-    left: 0,
-    right: 0,
+    left: 24,
+    right: 24,
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 1,
@@ -1883,6 +1951,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: '#e5e7eb',
   },
+  itemsCategorySection: {
+    marginBottom: 32,
+  },
   itemsCategoryTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -1909,8 +1980,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 18,
     marginBottom: 16,
-    borderLeftWidth: 4,
-    borderLeftColor: '#6366f1',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1923,7 +1992,6 @@ const styles = StyleSheet.create({
   itemsQuestionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
     gap: 8,
   },
   itemsQuestionIndex: {
@@ -1956,7 +2024,7 @@ const styles = StyleSheet.create({
     color: '#374151',
     lineHeight: 26,
     fontWeight: '500',
-    marginTop: 4,
+    flex: 1,
   },
   itemsEmptyContainer: {
     padding: 60,
@@ -1969,6 +2037,131 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 16,
     fontWeight: '500',
+  },
+  categoryGroupCard: {
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  categoryGroupHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  categoryBadge: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#334155',
+    textTransform: 'uppercase',
+  },
+  categoryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  typeSelectorRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12,
+  },
+  typeSelectorButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+  },
+  typeSelectorButtonActive: {
+    backgroundColor: '#dbeafe',
+    borderColor: '#2563eb',
+  },
+  typeSelectorText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    textAlign: 'center',
+  },
+  typeSelectorTextActive: {
+    color: '#1d4ed8',
+  },
+  questionCard: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 12,
+  },
+  questionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  optionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+    gap: 8,
+  },
+  removeOptionButton: {
+    padding: 4,
+  },
+  addOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  addOptionText: {
+    color: '#2563eb',
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  categoryOptionsWrapper: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    padding: 12,
+    marginBottom: 12,
+  },
+  addQuestionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    marginTop: 4,
+    borderRadius: 8,
+    backgroundColor: '#e0f2fe',
+    gap: 6,
+  },
+  addQuestionText: {
+    color: '#0369a1',
+    fontWeight: '600',
+  },
+  addCategoryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#cbd5f5',
+    backgroundColor: '#f1f5f9',
+    marginBottom: 16,
+    gap: 8,
+  },
+  addCategoryText: {
+    color: '#0f172a',
+    fontWeight: '600',
   },
 });
 

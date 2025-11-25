@@ -207,7 +207,7 @@ export default function EditExistingResponseScreen() {
     }
   }, [responseId, type, loading]);
 
-  // Intercept navigation to save automatically before leaving
+  // Intercept navigation to ask for confirmation before leaving
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (isSavingRef.current) {
@@ -218,8 +218,26 @@ export default function EditExistingResponseScreen() {
       // Prevent default behavior of leaving the screen
       e.preventDefault();
 
-      // Save changes before leaving
-      handleSave(e.data.action);
+      // Always ask for confirmation before leaving
+      Alert.alert(
+        '¿Cancelar acción?',
+        '¿Estás seguro que deseas cancelar esta acción?',
+        [
+          {
+            text: 'No',
+            style: 'cancel',
+            onPress: () => {}
+          },
+          {
+            text: 'Sí, cancelar',
+            style: 'destructive',
+            onPress: async () => {
+              // Save changes before leaving
+              await handleSave(e.data.action);
+            }
+          }
+        ]
+      );
     });
 
     return unsubscribe;
@@ -1184,17 +1202,58 @@ export default function EditExistingResponseScreen() {
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity 
+          style={styles.backButton} 
+          onPress={() => {
+            // Always ask for confirmation before leaving
+            Alert.alert(
+              '¿Cancelar acción?',
+              '¿Estás seguro que deseas cancelar esta acción?',
+              [
+                {
+                  text: 'No',
+                  style: 'cancel',
+                  onPress: () => {}
+                },
+                {
+                  text: 'Sí, cancelar',
+                  style: 'destructive',
+                  onPress: async () => {
+                    // Save changes before leaving
+                    await handleSave();
+                    router.back();
+                  }
+                }
+              ]
+            );
+          }}
+        >
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Editar Respuesta</Text>
           <Text style={styles.headerSubtitle}>{templateTitle}</Text>
         </View>
+        <TouchableOpacity 
+          style={styles.checkButton} 
+          onPress={async () => {
+            try {
+              await handleSave();
+              // Navigate to history after saving successfully
+              router.push('/(tabs)/history');
+            } catch (error) {
+              // Error is already handled in handleSave, don't navigate
+              console.error('Error saving before navigation:', error);
+            }
+          }}
+          disabled={saving || (type === 'closed' && !isTeamComplete())}
+        >
+          <Ionicons name="checkmark" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -1217,7 +1276,13 @@ export default function EditExistingResponseScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {activeTab === 'preguntas' && (
           <>
         {/* Company Selector */}
@@ -1909,6 +1974,10 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
   },
+  checkButton: {
+    marginLeft: 16,
+    padding: 4,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -1930,6 +1999,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   section: {
     backgroundColor: '#fff',

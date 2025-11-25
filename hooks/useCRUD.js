@@ -130,7 +130,19 @@ export const useCRUD = (endpoint) => {
       }
 
       const result = await response.json();
-      return result.data[endpoint.slice(0, -1)] || result.data.item || result.data;
+      
+      // Mapeo de endpoints a sus nombres singulares correctos
+      const singularMap = {
+        'companies': 'company',
+        'users': 'user',
+        'services': 'service',
+      };
+      
+      // Obtener el nombre singular correcto
+      const singularName = singularMap[endpoint] || endpoint.slice(0, -1);
+      
+      // Intentar extraer el dato del resultado
+      return result.data[singularName] || result.data.item || result.data;
     } catch (err) {
       setError(err.message);
       throw err;

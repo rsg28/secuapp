@@ -665,10 +665,14 @@ export default function EditResponseScreen() {
 
       // Show success message only if not auto-saving
       if (!navigationAction) {
-        if (createdItems.length === 0) {
+        // Check if all questions were answered
+        if (createdItems.length > 0 && areAllQuestionsAnswered()) {
+          // Show completion alert with send/download options
+          setShowCompletionAlert(true);
+        } else {
           showAlert(
-            'Respuesta creada',
-            'La respuesta se creó exitosamente, pero no se guardaron items porque no hay preguntas respondidas. Puedes editar la respuesta más tarde para agregar respuestas.',
+            'Respuesta Creada',
+            'La respuesta fue creada exitosamente. Puedes revisarla en el tab de Historial.',
             [
               {
                 text: 'OK',
@@ -683,30 +687,6 @@ export default function EditResponseScreen() {
               }
             ]
           );
-        } else {
-          // Check if all questions were answered
-          if (areAllQuestionsAnswered()) {
-            // Show completion alert with send/download options
-            setShowCompletionAlert(true);
-          } else {
-            showAlert(
-              'Éxito',
-              `Respuesta creada exitosamente con ${createdItems.length} pregunta(s) respondida(s)`,
-              [
-                {
-                  text: 'OK',
-                  onPress: () => {
-                    // Navigate to correct page based on type
-                    if (type === 'open') {
-                      router.push('/open-inspections');
-                    } else {
-                      router.push('/closed-inspections');
-                    }
-                  }
-                }
-              ]
-            );
-          }
         }
       } else {
         // Auto-save completed, allow navigation
@@ -874,7 +854,7 @@ export default function EditResponseScreen() {
     }
   };
 
-  // Intercept navigation to save automatically before leaving
+  // Intercept navigation to ask for confirmation before leaving
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
       if (isSavingRef.current) {
@@ -887,41 +867,38 @@ export default function EditResponseScreen() {
         return;
       }
 
-      if (!hasUnsavedChanges) {
-        // No unsaved changes, allow navigation
-        return;
-      }
-
       // Prevent default behavior of leaving the screen
       e.preventDefault();
 
-      // Check if title exists
-      if (!responseTitle.trim()) {
-        showAlert(
-          'Cambios no guardados',
-          'Los cambios no se guardarán a menos que ingreses un título. ¿Deseas salir sin guardar?',
-          [
-            {
-              text: 'Cancelar',
-              style: 'cancel',
-              onPress: () => {}
-            },
-            {
-              text: 'Salir sin guardar',
-              style: 'destructive',
-              onPress: () => navigation.dispatch(e.data.action)
+      // Always ask for confirmation before leaving
+      showAlert(
+        '¿Cancelar acción?',
+        '¿Estás seguro que deseas cancelar esta acción?',
+        [
+          {
+            text: 'No',
+            style: 'cancel',
+            onPress: () => {}
+          },
+          {
+            text: 'Sí, cancelar',
+            style: 'destructive',
+            onPress: async () => {
+              // If title exists, save before leaving
+              if (responseTitle.trim() && selectedCompany) {
+                await handleAutoSave(e.data.action);
+              } else {
+                // Just leave without saving
+                navigation.dispatch(e.data.action);
+              }
             }
-          ]
-        );
-        return;
-      } else {
-        // Auto-save before leaving
-        handleAutoSave(e.data.action);
-      }
+          }
+        ]
+      );
     });
 
     return unsubscribe;
-  }, [navigation, hasUnsavedChanges, responseTitle, closedResponses, openResponses, notes, selectedCompany, templateId, type, handleAutoSave, responseAlreadySaved, showAlert]);
+  }, [navigation, responseTitle, selectedCompany, handleAutoSave, responseAlreadySaved, showAlert]);
 
   const groupedItems = templateItems.reduce((acc, item) => {
     const category = item.category || 'Sin categoría';
@@ -956,15 +933,43 @@ export default function EditResponseScreen() {
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={() => {
-            // Navigation will be intercepted by beforeRemove listener
-            router.back();
+            // Ask for confirmation before leaving
+            if (responseAlreadySaved) {
+              router.back();
+              return;
+            }
+            showAlert(
+              '¿Cancelar acción?',
+              '¿Estás seguro que deseas cancelar esta acción?',
+              [
+                {
+                  text: 'No',
+                  style: 'cancel',
+                  onPress: () => {}
+                },
+                {
+                  text: 'Sí, cancelar',
+                  style: 'destructive',
+                  onPress: async () => {
+                    // If title exists, save before leaving
+                    if (responseTitle.trim() && selectedCompany) {
+                      await handleAutoSave();
+                    } else {
+                      // Just leave without saving
+                      router.back();
+                    }
+                  }
+                }
+              ]
+            );
           }}
         >
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -973,6 +978,24 @@ export default function EditResponseScreen() {
           <Text style={styles.headerTitle}>Nueva Respuesta</Text>
           <Text style={styles.headerSubtitle}>{templateTitle}</Text>
         </View>
+        <TouchableOpacity 
+          style={styles.checkButton} 
+          onPress={async () => {
+            // Same behavior as navigating back - auto-save if title exists
+            if (!responseTitle.trim()) {
+              showAlert(
+                'Título requerido',
+                'Por favor ingresa un título para guardar la respuesta.',
+                [{ text: 'OK', onPress: () => {} }]
+              );
+              return;
+            }
+            await handleAutoSave();
+          }}
+          disabled={saving}
+        >
+          <Ionicons name="checkmark" size={24} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       {/* Tabs */}
@@ -995,7 +1018,13 @@ export default function EditResponseScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={styles.content} 
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+      >
         {activeTab === 'preguntas' && (
           <>
         {/* Company Selector */}
@@ -1073,10 +1102,10 @@ export default function EditResponseScreen() {
 
         {/* Title Input */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información General</Text>
+          <Text style={styles.sectionTitle}>Ubicación</Text>
           <TextInput
             style={styles.titleInput}
-            placeholder="Título de la respuesta"
+            placeholder="Ej: dentro del peru, Lima"
             value={responseTitle}
             onChangeText={setResponseTitle}
             placeholderTextColor="#9ca3af"
@@ -1750,6 +1779,10 @@ const styles = StyleSheet.create({
   headerContent: {
     flex: 1,
   },
+  checkButton: {
+    marginLeft: 16,
+    padding: 4,
+  },
   headerTitle: {
     fontSize: 20,
     fontWeight: 'bold',
@@ -1771,6 +1804,10 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: 20,
   },
   section: {
     backgroundColor: '#fff',

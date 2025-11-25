@@ -73,9 +73,11 @@ export default function CustomAlert({
           <View style={styles.header}>
             <Text style={styles.title}>{title}</Text>
           </View>
-          <View style={styles.content}>
-            <Text style={styles.message}>{message}</Text>
-          </View>
+          {message && message.trim() && (
+            <View style={styles.content}>
+              <Text style={styles.message}>{message}</Text>
+            </View>
+          )}
           <View style={styles.buttonContainer}>
             {buttons.map((button, index) => (
               <TouchableOpacity

@@ -20,10 +20,10 @@ export default function RootLayout() {
 
   return (
     <AuthProvider>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-        <Stack>
+    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <Stack>
           <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="create-form" options={{ headerShown: false }} />
           <Stack.Screen name="create-company" options={{ headerShown: false }} />
           <Stack.Screen name="inspection-types" options={{ headerShown: false }} />
@@ -44,10 +44,10 @@ export default function RootLayout() {
         <Stack.Screen name="vibraciones-monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="dosimetria-ruido-monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="employees" options={{ headerShown: false }} />
-          <Stack.Screen name="+not-found" />
-        </Stack>
-        <StatusBar style="auto" />
-      </ThemeProvider>
+        <Stack.Screen name="+not-found" />
+      </Stack>
+      <StatusBar style="auto" />
+    </ThemeProvider>
     </AuthProvider>
   );
 }

@@ -177,7 +177,7 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView 
       style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       <StatusBar style="light" />
       
@@ -300,10 +300,13 @@ export default function LoginScreen() {
             {
               paddingHorizontal: responsive.scrollPaddingHorizontal,
               paddingTop: responsive.scrollPaddingTop,
-              paddingBottom: responsive.formMarginBottom
+              paddingBottom: responsive.formMarginBottom,
+              flexGrow: 1
             }
           ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
 
             {/* Login Form */}
@@ -435,10 +438,13 @@ export default function LoginScreen() {
             {
               paddingHorizontal: responsive.scrollPaddingHorizontal,
               paddingTop: responsive.scrollPaddingTop,
-              paddingBottom: responsive.formMarginBottom
+              paddingBottom: responsive.formMarginBottom,
+              flexGrow: 1
             }
           ]}
           showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
 
           {/* Register Form */}

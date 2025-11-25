@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`users` (
   `last_name` VARCHAR(100) NOT NULL,
   `role` ENUM('manager', 'employee') NOT NULL DEFAULT 'employee',
   `phone` VARCHAR(20) NULL DEFAULT NULL,
+  `profile_image_url` VARCHAR(500) NULL DEFAULT NULL,
   `is_active` TINYINT(1) NULL DEFAULT '1',
   `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -35,7 +36,8 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`users` (
   UNIQUE INDEX `email` (`email` ASC) VISIBLE,
   INDEX `idx_email` (`email` ASC) VISIBLE,
   INDEX `idx_role` (`role` ASC) VISIBLE,
-  INDEX `idx_active` (`is_active` ASC) VISIBLE)
+  INDEX `idx_active` (`is_active` ASC) VISIBLE,
+  INDEX `idx_profile_image_url` (`profile_image_url` ASC) VISIBLE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4
 COLLATE = utf8mb4_0900_ai_ci;
@@ -184,6 +186,31 @@ CREATE TABLE IF NOT EXISTS `aws-secu`.`closed_inspection_response_items` (
   CONSTRAINT `fk_response_item_template_item`
     FOREIGN KEY (`item_id`)
     REFERENCES `aws-secu`.`closed_template_items` (`id`)
+    ON DELETE CASCADE)
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb4
+COLLATE = utf8mb4_0900_ai_ci;
+
+
+-- -----------------------------------------------------
+-- Table `aws-secu`.`inspection_team`
+-- -----------------------------------------------------
+CREATE TABLE IF NOT EXISTS `aws-secu`.`inspection_team` (
+  `id` VARCHAR(36) NOT NULL,
+  `response_id` VARCHAR(36) NOT NULL,
+  `cargo` VARCHAR(255) NOT NULL,
+  `empresa` VARCHAR(255) NULL DEFAULT NULL,
+  `nombre` VARCHAR(255) NULL DEFAULT NULL,
+  `firma_url` VARCHAR(500) NULL DEFAULT NULL,
+  `sort_order` INT NULL DEFAULT '0',
+  `created_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  INDEX `idx_response_id` (`response_id` ASC) VISIBLE,
+  INDEX `idx_sort_order` (`sort_order` ASC) VISIBLE,
+  CONSTRAINT `inspection_team_ibfk_1`
+    FOREIGN KEY (`response_id`)
+    REFERENCES `aws-secu`.`closed_inspection_responses` (`id`)
     ON DELETE CASCADE)
 ENGINE = InnoDB
 DEFAULT CHARACTER SET = utf8mb4

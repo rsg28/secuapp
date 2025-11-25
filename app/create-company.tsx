@@ -1,5 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import React, { useState, useEffect } from 'react';
 import {
     Alert,
@@ -51,7 +51,12 @@ export default function CreateCompanyScreen() {
 
   // Si no es manager, no renderizar nada
   if (!user || user.role !== 'manager') {
-    return null;
+    return (
+      <>
+        <Stack.Screen options={{ headerShown: false }} />
+        {null}
+      </>
+    );
   }
   
   const [companyData, setCompanyData] = useState<CompanyData>({
@@ -147,16 +152,6 @@ export default function CreateCompanyScreen() {
       return;
     }
 
-    if (!companyData.industry.trim()) {
-      Alert.alert('Error', 'Por favor selecciona una industria');
-      return;
-    }
-
-    if (!companyData.contactPerson.trim()) {
-      Alert.alert('Error', 'Por favor ingresa el nombre del contacto');
-      return;
-    }
-
     // La imagen es requerida (solo managers pueden crear empresas)
     if (!companyImage) {
       Alert.alert('Error', 'Por favor sube una insignia de la empresa');
@@ -174,12 +169,12 @@ export default function CreateCompanyScreen() {
         // Pero mejor: subimos la imagen después de crear la empresa
         // Necesitamos el company_id, así que creamos primero sin imagen, luego actualizamos
         const tempCompany = await createCompany({
-          name: companyData.name,
-          industry: companyData.industry,
-          contact_person: companyData.contactPerson,
-          contact_email: companyData.email || null,
-          contact_phone: companyData.phone || null,
-          address: companyData.address || null,
+          name: companyData.name.trim(),
+          industry: companyData.industry.trim() || null,
+          contact_person: companyData.contactPerson.trim() || null,
+          contact_email: companyData.email.trim() || null,
+          contact_phone: companyData.phone.trim() || null,
+          address: companyData.address.trim() || null,
           image_url: null,
           created_by: user?.id || null,
         });
@@ -198,12 +193,12 @@ export default function CreateCompanyScreen() {
       } else {
         // Crear empresa sin imagen (solo si no es manager)
         await createCompany({
-          name: companyData.name,
-          industry: companyData.industry,
-          contact_person: companyData.contactPerson,
-          contact_email: companyData.email || null,
-          contact_phone: companyData.phone || null,
-          address: companyData.address || null,
+          name: companyData.name.trim(),
+          industry: companyData.industry.trim() || null,
+          contact_person: companyData.contactPerson.trim() || null,
+          contact_email: companyData.email.trim() || null,
+          contact_phone: companyData.phone.trim() || null,
+          address: companyData.address.trim() || null,
           image_url: null,
           created_by: user?.id || null,
         });
@@ -228,11 +223,13 @@ export default function CreateCompanyScreen() {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
-      {/* Header */}
+    <>
+      <Stack.Screen options={{ headerShown: false }} />
+      <KeyboardAvoidingView 
+        style={styles.container} 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
@@ -247,7 +244,7 @@ export default function CreateCompanyScreen() {
             ((!companyData.name || !companyData.industry || !companyData.contactPerson || !companyImage) || saving || uploadingImage) && styles.saveButtonDisabled
           ]} 
           onPress={handleSaveCompany}
-          disabled={(!companyData.name || !companyData.industry || !companyData.contactPerson || !companyImage) || saving || uploadingImage}
+          disabled={(!companyData.name || !companyImage) || saving || uploadingImage}
         >
           {saving ? (
             <ActivityIndicator size="small" color="#fff" />
@@ -273,7 +270,7 @@ export default function CreateCompanyScreen() {
           </View>
 
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Industria *</Text>
+            <Text style={styles.inputLabel}>Industria</Text>
             
             {/* Selector de industria */}
             <TouchableOpacity 
@@ -404,7 +401,7 @@ export default function CreateCompanyScreen() {
           <Text style={styles.sectionTitle}>Información de Contacto</Text>
           
           <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Persona de Contacto *</Text>
+            <Text style={styles.inputLabel}>Persona de Contacto</Text>
             <TextInput
               style={styles.textInput}
               value={companyData.contactPerson}
@@ -454,6 +451,7 @@ export default function CreateCompanyScreen() {
         <View style={styles.bottomSpacing} />
       </ScrollView>
     </KeyboardAvoidingView>
+    </>
   );
 }
 
