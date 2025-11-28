@@ -1071,7 +1071,7 @@ export default function ClosedInspectionsScreen() {
       >
         <View style={styles.renameModalOverlay}>
           <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
-            <Text style={styles.renameModalTitle}>Crear Nuevo Template</Text>
+            <Text style={styles.renameModalTitle}>Crear Nueva Inspección</Text>
             
             <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
               <TextInput

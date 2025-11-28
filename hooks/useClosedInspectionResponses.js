@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { validateColumns } from './utils/tableColumns';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -73,11 +74,8 @@ export const useClosedInspectionResponses = () => {
       setLoading(true);
       setError(null);
       
-      // Clean undefined values before stringify
-      const cleanData = Object.keys(responseData).reduce((acc, key) => {
-        acc[key] = responseData[key] === undefined ? null : responseData[key];
-        return acc;
-      }, {});
+      // Validate and clean data using tableColumns
+      const validatedData = validateColumns('closed_inspection_responses', responseData);
       
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-responses`, {
@@ -86,7 +84,7 @@ export const useClosedInspectionResponses = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(cleanData)
+        body: JSON.stringify(validatedData)
       });
 
       const data = await response.json();
@@ -129,11 +127,8 @@ export const useClosedInspectionResponses = () => {
       setLoading(true);
       setError(null);
       
-      // Clean undefined values before stringify
-      const cleanData = Object.keys(responseData).reduce((acc, key) => {
-        acc[key] = responseData[key] === undefined ? null : responseData[key];
-        return acc;
-      }, {});
+      // Validate and clean data using tableColumns
+      const validatedData = validateColumns('closed_inspection_responses', responseData);
       
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-responses/${id}`, {
@@ -142,7 +137,7 @@ export const useClosedInspectionResponses = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(cleanData)
+        body: JSON.stringify(validatedData)
       });
 
       if (!response.ok) {

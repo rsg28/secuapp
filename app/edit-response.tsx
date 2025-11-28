@@ -108,6 +108,9 @@ export default function EditResponseScreen() {
   
   const [responseTitle, setResponseTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [area, setArea] = useState('');
+  const [turno, setTurno] = useState('');
+  const [cantidadPersonal, setCantidadPersonal] = useState('');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const navigation = useNavigation();
   const isSavingRef = useRef(false);
@@ -144,8 +147,11 @@ export default function EditResponseScreen() {
     const hasOpenResponses = type === 'open' && Object.values(openResponses).some(r => r.response && r.response.trim() !== '');
     const hasTitle = responseTitle.trim() !== '';
     const hasNotes = type === 'open' && notes.trim() !== '';
+    const hasArea = area.trim() !== '';
+    const hasTurno = type === 'open' && turno.trim() !== '';
+    const hasCantidadPersonal = type === 'closed' && cantidadPersonal.trim() !== '';
     
-    setHasUnsavedChanges(hasClosedResponses || hasOpenResponses || hasTitle || hasNotes);
+    setHasUnsavedChanges(hasClosedResponses || hasOpenResponses || hasTitle || hasNotes || hasArea || hasTurno || hasCantidadPersonal);
   }, [closedResponses, openResponses, responseTitle, notes, type]);
 
   // Check if all questions are answered
@@ -289,23 +295,41 @@ export default function EditResponseScreen() {
   };
 
   const handleClosedResponseChange = (itemId: string, response: string) => {
-    setClosedResponses(prev => ({
-      ...prev,
-      [itemId]: {
-        ...prev[itemId],
-        response
-      }
-    }));
+    setClosedResponses(prev => {
+      // Find the template item to get item_id and question_index
+      const templateItem = templateItems.find(item => item.id === itemId);
+      const existingData = prev[itemId];
+      
+      return {
+        ...prev,
+        [itemId]: {
+          item_id: existingData?.item_id || templateItem?.id || itemId,
+          question_index: existingData?.question_index || templateItem?.question_index || '',
+          response: response,
+          explanation: existingData?.explanation || '',
+          image_url: existingData?.image_url
+        }
+      };
+    });
   };
 
   const handleClosedExplanationChange = (itemId: string, explanation: string) => {
-    setClosedResponses(prev => ({
-      ...prev,
-      [itemId]: {
-        ...prev[itemId],
-        explanation
-      }
-    }));
+    setClosedResponses(prev => {
+      // Find the template item to get item_id and question_index
+      const templateItem = templateItems.find(item => item.id === itemId);
+      const existingData = prev[itemId];
+      
+      return {
+        ...prev,
+        [itemId]: {
+          item_id: existingData?.item_id || templateItem?.id || itemId,
+          question_index: existingData?.question_index || templateItem?.question_index || '',
+          response: existingData?.response || '',
+          explanation: explanation,
+          image_url: existingData?.image_url
+        }
+      };
+    });
   };
 
   const handleOpenResponseChange = (itemId: string, response: string) => {
@@ -433,8 +457,22 @@ export default function EditResponseScreen() {
       const today = new Date().toISOString().split('T')[0];
       responseData.inspection_date = `${today}T00:00:00.000Z`; // ISO8601 format
       
-      if (type === 'open' && notes.trim()) {
-        responseData.notes = notes.trim();
+      // Add Area field (common for both types)
+      if (area.trim()) {
+        responseData.Area = area.trim();
+      }
+      
+      if (type === 'open') {
+        if (notes.trim()) {
+          responseData.notes = notes.trim();
+        }
+        if (turno.trim()) {
+          responseData.Turno = turno.trim();
+        }
+      } else if (type === 'closed') {
+        if (cantidadPersonal.trim()) {
+          responseData.Cantidad_de_Personal = parseInt(cantidadPersonal.trim()) || null;
+        }
       }
 
       let createdResponse;
@@ -449,21 +487,24 @@ export default function EditResponseScreen() {
       // Save responseId for later use (e.g., sending email)
       setSavedResponseId(responseId);
 
-      // Save inspection team members (only for closed inspections)
-      if (type === 'closed' && teamMembers.length > 0) {
+      // Save inspection team members (for both open and closed inspections)
+      if ((type === 'closed' || type === 'open') && teamMembers.length > 0) {
         for (const member of teamMembers) {
           // Only save members that have all required fields
-          if (member.cargo.trim() && member.empresa.trim() && member.nombre.trim()) {
+          const cargo = (member.cargo || '').trim();
+          const empresa = (member.empresa || '').trim();
+          const nombre = (member.nombre || '').trim();
+          
+          if (cargo && empresa && nombre) {
             try {
               await createTeamMember({
                 response_id: responseId,
-                cargo: member.cargo.trim(),
-                empresa: member.empresa.trim(),
-                nombre: member.nombre.trim(),
+                cargo: cargo,
+                empresa: empresa,
+                nombre: nombre,
                 sort_order: member.sort_order || 0
               });
             } catch (error: any) {
-              console.error('Error saving team member:', error);
               // Continue with other members even if one fails
             }
           }
@@ -534,61 +575,80 @@ export default function EditResponseScreen() {
       const createdItems = [];
       
       if (type === 'closed') {
-        // Process closed responses - only create items with valid responses
-        for (const itemData of Object.values(closedResponses)) {
-          const closedItem = itemData as ClosedResponseData;
+        // Process closed responses - iterate by templateItems to ensure all items are processed
+        // Use templateItems as source of truth to ensure we don't miss any items
+        for (const templateItem of templateItems) {
+          const closedItem = closedResponses[templateItem.id];
           
           // Skip items without response
-          if (!closedItem.response || closedItem.response.trim() === '') {
+          if (!closedItem || !closedItem.response || closedItem.response.trim() === '') {
             continue;
           }
           
-          // Find the template item to validate response
-          const templateItem = templateItems.find(ti => ti.id === closedItem.item_id);
-          if (templateItem) {
-            // If item has options, validate against them
-            if (templateItem.question_type === 'single_choice' || templateItem.question_type === 'multiple_choice') {
-              if (templateItem.options && templateItem.options.length > 0) {
-                if (!templateItem.options.includes(closedItem.response)) {
-                  console.warn('Skipping item with invalid response option:', closedItem);
-                  continue;
-                }
+          // Validate response based on question type
+          let isValidResponse = false;
+          
+          if (templateItem.question_type === 'single_choice' || templateItem.question_type === 'multiple_choice') {
+            // For single/multiple choice, validate against options if they exist
+            const options = templateItem.options && Array.isArray(templateItem.options) ? templateItem.options : [];
+            if (options.length > 0) {
+              // For multiple choice, check if response contains valid options (comma-separated)
+              if (templateItem.question_type === 'multiple_choice') {
+                const responses = closedItem.response.split(',').map(r => r.trim()).filter(r => r);
+                isValidResponse = responses.every(r => options.includes(r));
+              } else {
+                // Single choice - exact match
+                isValidResponse = options.includes(closedItem.response);
               }
             } else {
-              // For text or default, validate against default options
-              if (!['C', 'CP', 'NC', 'NA'].includes(closedItem.response)) {
-                console.warn('Skipping item with invalid default response:', closedItem);
-                continue;
-              }
+              // No options defined, accept any response
+              isValidResponse = true;
             }
+          } else if (templateItem.question_type === 'text') {
+            // For text questions, accept any non-empty response
+            isValidResponse = closedItem.response.trim().length > 0;
           } else {
-            // Fallback validation for backward compatibility
-            if (!['C', 'CP', 'NC', 'NA'].includes(closedItem.response)) {
-              console.warn('Skipping item with invalid response:', closedItem);
-              continue;
-            }
+            // Default/backward compatibility: validate against C, CP, NC, NA
+            isValidResponse = ['C', 'CP', 'NC', 'NA'].includes(closedItem.response);
           }
           
-          // Validate required fields
-          if (!closedItem.item_id || !closedItem.question_index) {
-            console.warn('Skipping item with missing required fields:', closedItem);
+          if (!isValidResponse) {
+            console.warn('Skipping item with invalid response:', {
+              itemId: templateItem.id,
+              questionIndex: templateItem.question_index,
+              response: closedItem.response,
+              questionType: templateItem.question_type,
+              options: templateItem.options
+            });
+            continue;
+          }
+          
+          // Validate required fields - use templateItem as source of truth
+          const itemId = closedItem.item_id || templateItem.id;
+          const questionIndex = closedItem.question_index || templateItem.question_index;
+          
+          if (!itemId || !questionIndex) {
+            console.warn('Skipping item with missing required fields:', {
+              templateItemId: templateItem.id,
+              closedItem: closedItem
+            });
             continue;
           }
           
           // Ensure all values are explicitly set (no undefined)
           const responseItemData: any = {};
           responseItemData.response_id = responseId || null;
-          responseItemData.item_id = closedItem.item_id || null;
-          responseItemData.question_index = closedItem.question_index || null;
-          responseItemData.response = closedItem.response || null;
+          responseItemData.item_id = itemId;
+          responseItemData.question_index = questionIndex;
+          responseItemData.response = closedItem.response.trim();
           responseItemData.explanation = closedItem.explanation?.trim() || null;
           // Prioritize imageUploads (from just-uploaded images) over state image_url
-          responseItemData.image_url = imageUploads[closedItem.item_id] || closedItem.image_url || null;
+          responseItemData.image_url = imageUploads[templateItem.id] || imageUploads[itemId] || closedItem.image_url || null;
           
           // Final validation - ensure no undefined values
           if (Object.values(responseItemData).some(v => v === undefined)) {
             console.error('[handleSave] Found undefined in responseItemData:', responseItemData);
-            throw new Error(`Valores undefined encontrados en item: ${closedItem.question_index}`);
+            throw new Error(`Valores undefined encontrados en item: ${questionIndex}`);
           }
           
           if (!responseItemData.response_id || !responseItemData.item_id || 
@@ -600,9 +660,11 @@ export default function EditResponseScreen() {
           try {
             const createdItem = await createClosedResponseItem(responseItemData);
             createdItems.push(createdItem);
+            console.log(`Successfully created response item for question ${questionIndex}:`, createdItem.id);
           } catch (error: any) {
             console.error('Error creating closed response item:', error);
-            throw new Error(`Error al crear respuesta para pregunta ${closedItem.question_index}: ${error.message}`);
+            console.error('Item data that failed:', responseItemData);
+            throw new Error(`Error al crear respuesta para pregunta ${questionIndex}: ${error.message}`);
           }
         }
       } else {
@@ -718,7 +780,7 @@ export default function EditResponseScreen() {
       setSaving(false);
       isSavingRef.current = false;
     }
-  }, [selectedCompany, responseTitle, type, notes, closedResponses, openResponses, templateId, createClosedResponse, createOpenResponse, createClosedResponseItem, createOpenResponseItem, navigation, showAlert, areAllQuestionsAnswered]);
+  }, [selectedCompany, responseTitle, type, notes, area, turno, cantidadPersonal, closedResponses, openResponses, templateId, createClosedResponse, createOpenResponse, createClosedResponseItem, createOpenResponseItem, navigation, showAlert, areAllQuestionsAnswered]);
 
   const handleSave = async () => {
     await handleAutoSave();
@@ -958,14 +1020,9 @@ export default function EditResponseScreen() {
                 {
                   text: 'Sí, cancelar',
                   style: 'destructive',
-                  onPress: async () => {
-                    // If title exists, save before leaving
-                    if (responseTitle.trim() && selectedCompany) {
-                      await handleAutoSave();
-                    } else {
-                      // Just leave without saving
-                      router.back();
-                    }
+                  onPress: () => {
+                    // Cancel without saving - just go back
+                    router.back();
                   }
                 }
               ]
@@ -1099,6 +1156,47 @@ export default function EditResponseScreen() {
             </View>
           </TouchableOpacity>
         </Modal>
+
+        {/* Area Input */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Área</Text>
+          <TextInput
+            style={styles.titleInput}
+            placeholder="Ej: Producción, Almacén, Oficinas"
+            value={area}
+            onChangeText={setArea}
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+
+        {/* Turno Input (only for open inspections) */}
+        {type === 'open' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Turno</Text>
+            <TextInput
+              style={styles.titleInput}
+              placeholder="Ej: Mañana, Tarde, Noche"
+              value={turno}
+              onChangeText={setTurno}
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        )}
+
+        {/* Cantidad de Personal Input (only for closed inspections) */}
+        {type === 'closed' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cantidad de Personal</Text>
+            <TextInput
+              style={styles.titleInput}
+              placeholder="Ej: 10, 25, 50"
+              value={cantidadPersonal}
+              onChangeText={setCantidadPersonal}
+              keyboardType="numeric"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        )}
 
         {/* Title Input */}
         <View style={styles.section}>

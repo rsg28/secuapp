@@ -13,9 +13,10 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#ffffff"
       },
+      "icon": "./assets/images/icon.png",
       "edgeToEdgeEnabled": true,
       "package": "com.zakro.SecuApp"
     },

@@ -114,6 +114,8 @@ export const TABLE_COLUMNS = {
     'inspection_date',
     'completion_date',
     'notes',
+    'Area',
+    'Cantidad_de_Personal',
     'created_at',
     'updated_at'
   ],
@@ -141,6 +143,8 @@ export const TABLE_COLUMNS = {
     'inspection_date',
     'completion_date',
     'notes',
+    'Area',
+    'Turno',
     'created_at',
     'updated_at'
   ],

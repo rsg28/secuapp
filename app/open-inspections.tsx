@@ -953,7 +953,7 @@ export default function OpenInspectionsScreen() {
       >
         <View style={styles.renameModalOverlay}>
           <View style={[styles.renameModalContent, {maxHeight: '90%', width: '95%'}]}>
-            <Text style={styles.renameModalTitle}>Crear Nuevo Template</Text>
+            <Text style={styles.renameModalTitle}>Crear Nueva Inspección</Text>
             
             <ScrollView style={{maxHeight: 500}} showsVerticalScrollIndicator={true}>
               <TextInput
@@ -1961,7 +1961,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: '#e5e7eb',
   },
-  itemsCategoryTitle: {
+  itemsCategoryHeaderTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: '#1f2937',

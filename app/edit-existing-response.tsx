@@ -178,6 +178,9 @@ export default function EditExistingResponseScreen() {
   
   const [responseTitle, setResponseTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [area, setArea] = useState('');
+  const [turno, setTurno] = useState('');
+  const [cantidadPersonal, setCantidadPersonal] = useState('');
   
   // Store existing response items IDs to track which ones to delete
   const [existingResponseItems, setExistingResponseItems] = useState<Record<string, string>>({});
@@ -195,14 +198,16 @@ export default function EditExistingResponseScreen() {
   // Navigation and auto-save
   const navigation = useNavigation();
   const isSavingRef = useRef(false);
+  const hasLoadedTeamMembers = useRef<string | null>(null);
 
   useEffect(() => {
     loadData();
   }, [responseId, templateId, type]);
 
-  // Load team members after data is loaded
+  // Load team members after data is loaded (only once per responseId)
   useEffect(() => {
-    if (responseId && type === 'closed' && !loading) {
+    if (responseId && (type === 'closed' || type === 'open') && !loading && hasLoadedTeamMembers.current !== responseId) {
+      hasLoadedTeamMembers.current = responseId;
       loadTeamMembers();
     }
   }, [responseId, type, loading]);
@@ -241,7 +246,7 @@ export default function EditExistingResponseScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, closedResponses, openResponses, responseTitle, notes, selectedCompany, type, templateItems, existingResponseItems, originalResponseItems, localImages]);
+  }, [navigation, closedResponses, openResponses, responseTitle, notes, area, turno, cantidadPersonal, selectedCompany, type, templateItems, existingResponseItems, originalResponseItems, localImages]);
 
   const loadData = async () => {
     try {
@@ -282,6 +287,12 @@ export default function EditExistingResponseScreen() {
       if (response) {
         setResponseTitle(response.title || '');
         setNotes(response.notes || '');
+        setArea(response.Area || '');
+        if (type === 'open') {
+          setTurno(response.Turno || '');
+        } else if (type === 'closed') {
+          setCantidadPersonal(response.Cantidad_de_Personal?.toString() || '');
+        }
         
         // Set company from response
         if (response.company_id) {
@@ -505,7 +516,7 @@ export default function EditExistingResponseScreen() {
       try {
         await deleteTeamMember(member.id);
       } catch (error) {
-        console.error('Error deleting team member:', error);
+        // Silently continue if deletion fails
       }
     }
     setTeamMembers(prev => prev.filter((_, i) => i !== index));
@@ -521,7 +532,7 @@ export default function EditExistingResponseScreen() {
   };
 
   const loadTeamMembers = async () => {
-    if (!responseId || type !== 'closed') return;
+    if (!responseId || (type !== 'closed' && type !== 'open')) return;
     
     try {
       setLoadingTeam(true);
@@ -529,8 +540,9 @@ export default function EditExistingResponseScreen() {
       if (members && members.length > 0) {
         setTeamMembers(members);
       }
+      // Don't reset state if no members found - user might have already started typing
     } catch (error) {
-      console.error('Error loading team members:', error);
+      // Silently continue if loading fails
     } finally {
       setLoadingTeam(false);
     }
@@ -730,10 +742,30 @@ export default function EditExistingResponseScreen() {
         title: responseTitle.trim()
       };
       
-      if (type === 'open' && notes.trim()) {
+      // Add Area field (common for both types)
+      if (area.trim()) {
+        responseData.Area = area.trim();
+      } else {
+        responseData.Area = null;
+      }
+      
+      if (type === 'open') {
+        if (notes.trim()) {
         responseData.notes = notes.trim();
-      } else if (type === 'open' && !notes.trim()) {
+        } else {
         responseData.notes = null;
+        }
+        if (turno.trim()) {
+          responseData.Turno = turno.trim();
+        } else {
+          responseData.Turno = null;
+        }
+      } else if (type === 'closed') {
+        if (cantidadPersonal.trim()) {
+          responseData.Cantidad_de_Personal = parseInt(cantidadPersonal.trim()) || null;
+        } else {
+          responseData.Cantidad_de_Personal = null;
+        }
       }
 
       if (type === 'closed') {
@@ -1084,35 +1116,94 @@ export default function EditExistingResponseScreen() {
         ? `Respuesta actualizada exitosamente. ${messageParts.join(', ')}.`
         : 'Respuesta actualizada exitosamente.';
       
-      // Save/update inspection team members (only for closed inspections)
-      if (type === 'closed' && teamMembers.length > 0) {
-        for (const member of teamMembers) {
-          // Only save members that have all required fields
-          if (member.cargo.trim() && member.empresa.trim() && member.nombre.trim()) {
-            try {
-              if (member.id) {
-                // Update existing member
-                await updateTeamMember(member.id, {
-                  cargo: member.cargo.trim(),
-                  empresa: member.empresa.trim(),
-                  nombre: member.nombre.trim(),
-                  sort_order: member.sort_order || 0
-                });
-              } else {
-                // Create new member
-                const created = await createTeamMember({
-                  response_id: responseId,
-                  cargo: member.cargo.trim(),
-                  empresa: member.empresa.trim(),
-                  nombre: member.nombre.trim(),
-                  sort_order: member.sort_order || 0
-                });
-                // Update member with ID from DB
-                member.id = created.id;
+      // Save/update inspection team members (for both open and closed inspections)
+      if (type === 'closed' || type === 'open') {
+        // First, get all existing team members from DB to identify which ones to delete
+        let existingTeamMemberIds: string[] = [];
+        try {
+          const existingMembers = await getTeamMembersByResponseId(responseId);
+          existingTeamMemberIds = existingMembers.map(m => m.id).filter(Boolean) as string[];
+        } catch (error) {
+          // Silently continue if we can't load existing members
+        }
+        
+        if (teamMembers.length > 0) {
+          const updatedTeamMembers = [...teamMembers];
+          const teamErrors: string[] = [];
+          const savedMemberIds: string[] = [];
+          
+          for (let i = 0; i < updatedTeamMembers.length; i++) {
+            const member = updatedTeamMembers[i];
+            // Only save members that have all required fields
+            const cargo = (member.cargo || '').trim();
+            const empresa = (member.empresa || '').trim();
+            const nombre = (member.nombre || '').trim();
+            
+            if (cargo && empresa && nombre) {
+              try {
+                if (member.id) {
+                  // Update existing member
+                  await updateTeamMember(member.id, {
+                    cargo: cargo,
+                    empresa: empresa,
+                    nombre: nombre,
+                    sort_order: member.sort_order || 0
+                  });
+                  savedMemberIds.push(member.id);
+                } else {
+                  // Create new member
+                  const created = await createTeamMember({
+                    response_id: responseId,
+                    cargo: cargo,
+                    empresa: empresa,
+                    nombre: nombre,
+                    sort_order: member.sort_order || 0
+                  });
+                  // Update member with ID from DB in the array copy
+                  updatedTeamMembers[i] = { ...member, id: created.id };
+                  savedMemberIds.push(created.id);
+                }
+              } catch (error: any) {
+                const errorMsg = error?.message || error?.toString() || 'Error desconocido al guardar miembro del equipo';
+                teamErrors.push(`Error al guardar ${cargo}: ${errorMsg}`);
+                // Continue with other members even if one fails
               }
-            } catch (error: any) {
-              console.error('Error saving team member:', error);
-              // Continue with other members even if one fails
+            }
+          }
+          
+          // Delete team members that are no longer in the array
+          const membersToDelete = existingTeamMemberIds.filter(id => !savedMemberIds.includes(id));
+          if (membersToDelete.length > 0) {
+            for (const memberId of membersToDelete) {
+              try {
+                await deleteTeamMember(memberId);
+              } catch (error: any) {
+                teamErrors.push(`Error al eliminar miembro del equipo: ${error?.message || 'Error desconocido'}`);
+              }
+            }
+          }
+          
+          // Update state with members that now have IDs
+          setTeamMembers(updatedTeamMembers);
+          
+          // If there were errors, show them to the user
+          if (teamErrors.length > 0) {
+            if (!navigationAction) {
+              Alert.alert(
+                'Advertencia', 
+                `La respuesta se guardó, pero hubo problemas al guardar algunos miembros del equipo:\n\n${teamErrors.join('\n')}`
+              );
+            }
+          }
+        } else {
+          // If no team members in state, delete all existing members
+          if (existingTeamMemberIds.length > 0) {
+            for (const memberId of existingTeamMemberIds) {
+              try {
+                await deleteTeamMember(memberId);
+              } catch (error: any) {
+                // Silently continue if deletion fails
+              }
             }
           }
         }
@@ -1222,9 +1313,8 @@ export default function EditExistingResponseScreen() {
                 {
                   text: 'Sí, cancelar',
                   style: 'destructive',
-                  onPress: async () => {
-                    // Save changes before leaving
-                    await handleSave();
+                  onPress: () => {
+                    // Cancel without saving
                     router.back();
                   }
                 }
@@ -1250,7 +1340,7 @@ export default function EditExistingResponseScreen() {
               console.error('Error saving before navigation:', error);
             }
           }}
-          disabled={saving || (type === 'closed' && !isTeamComplete())}
+          disabled={saving}
         >
           <Ionicons name="checkmark" size={24} color="#fff" />
         </TouchableOpacity>
@@ -1358,9 +1448,50 @@ export default function EditExistingResponseScreen() {
           </TouchableOpacity>
         </Modal>
 
+        {/* Area Input */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Área</Text>
+          <TextInput
+            style={styles.titleInput}
+            placeholder="Ej: Producción, Almacén, Oficinas"
+            value={area}
+            onChangeText={setArea}
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+
+        {/* Turno Input (only for open inspections) */}
+        {type === 'open' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Turno</Text>
+            <TextInput
+              style={styles.titleInput}
+              placeholder="Ej: Mañana, Tarde, Noche"
+              value={turno}
+              onChangeText={setTurno}
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        )}
+
+        {/* Cantidad de Personal Input (only for closed inspections) */}
+        {type === 'closed' && (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Cantidad de Personal</Text>
+            <TextInput
+              style={styles.titleInput}
+              placeholder="Ej: 10, 25, 50"
+              value={cantidadPersonal}
+              onChangeText={setCantidadPersonal}
+              keyboardType="numeric"
+              placeholderTextColor="#9ca3af"
+            />
+          </View>
+        )}
+
         {/* Title Input */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Información General</Text>
+          <Text style={styles.sectionTitle}>Ubicación</Text>
           <TextInput
             style={styles.titleInput}
             placeholder="Título de la respuesta"
@@ -1839,27 +1970,6 @@ export default function EditExistingResponseScreen() {
             />
           </View>
         )}
-
-        {/* Done Button */}
-        <TouchableOpacity 
-          style={[styles.saveButton, (saving || (type === 'closed' && !isTeamComplete())) && styles.saveButtonDisabled]} 
-          onPress={async () => {
-            try {
-              await handleSave();
-              // Navigate to history after saving successfully
-              router.push('/(tabs)/history');
-            } catch (error) {
-              // Error is already handled in handleSave, don't navigate
-              console.error('Error saving before navigation:', error);
-            }
-          }}
-          disabled={saving || (type === 'closed' && !isTeamComplete())}
-        >
-          <Ionicons name="checkmark-circle" size={24} color="#fff" />
-          <Text style={styles.saveButtonText}>
-            {saving ? 'Guardando...' : 'Listo'}
-          </Text>
-        </TouchableOpacity>
 
         {/* Bottom spacing */}
         <View style={styles.bottomSpacing} />
