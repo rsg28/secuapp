@@ -53,11 +53,27 @@ export const useOpenInspectionResponseItems = () => {
     });
 
     if (!response.ok) {
-      throw new Error('Error al obtener items de respuesta');
+      let errorMessage = 'Error al obtener items de respuesta';
+      try {
+        const errorData = await response.json();
+        if (errorData.message) {
+          errorMessage = errorData.message;
+        }
+      } catch (e) {
+        // Si no se puede parsear el error, usar el mensaje por defecto
+      }
+      
+      // Si es 404 o 400, retornar array vacío en lugar de lanzar error
+      if (response.status === 404 || response.status === 400) {
+        console.warn(`No se encontraron items para responseId: ${responseId}`);
+        return [];
+      }
+      
+      throw new Error(errorMessage);
     }
 
     const data = await response.json();
-    return data.data.items;
+    return data.data?.items || [];
   };
 
   return {

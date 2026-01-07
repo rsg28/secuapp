@@ -202,14 +202,36 @@ export const useClosedInspectionResponseItems = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Error al obtener items de respuesta');
+        let errorMessage = 'Error al obtener items de respuesta';
+        try {
+          const errorData = await response.json();
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch (e) {
+          // Si no se puede parsear el error, usar el mensaje por defecto
+        }
+        
+        // Si es 404 o 400, retornar array vacío en lugar de lanzar error
+        if (response.status === 404 || response.status === 400) {
+          console.warn(`No se encontraron items para responseId: ${responseId}`);
+          return [];
+        }
+        
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      setItems(data.data.items);
-      return data.data.items;
+      const items = data.data?.items || [];
+      setItems(items);
+      return items;
     } catch (err) {
+      console.error('Error en getItemsByResponseId:', err);
       setError(err.message);
+      // Si es un error de red o similar, retornar array vacío para evitar bloquear la UI
+      if (err.message.includes('Network') || err.message.includes('Failed to fetch')) {
+        return [];
+      }
       throw err;
     } finally {
       setLoading(false);

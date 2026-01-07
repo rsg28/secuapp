@@ -1,4 +1,6 @@
-import React, { createContext, ReactNode, useContext, useEffect, useState } from 'react';
+import React, { createContext, ReactNode, useContext, useEffect, useState, useRef, useCallback } from 'react';
+import { AppState, AppStateStatus } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContextType, User } from '../types/auth';
 import { initializeCompanies } from '../utils/initialData';
 import { storage } from '../utils/storage';
@@ -25,11 +27,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentCompany, setCurrentCompany] = useState<any | null>(null);
   
   const authHook = useAuthHook();
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
-    loadUserSession();
-    loadUserCompanies();
+    // Al iniciar la app, primero verificar si fue cerrada completamente
+    // (esto debe ejecutarse antes de cargar la sesión)
+    const initialize = async () => {
+      await checkIfAppWasClosed();
+      await loadUserSession();
+      await loadUserCompanies();
+    };
+    initialize();
   }, []);
+
+  const checkIfAppWasClosed = async () => {
+    try {
+      const backgroundFlag = await AsyncStorage.getItem('appInBackground');
+      const session = await storage.getUserSession();
+      
+      // Si hay un flag de background al iniciar, significa que la app fue cerrada completamente
+      // (si solo hubiera sido minimizada, el flag se habría eliminado cuando volvió a active)
+      if (session && backgroundFlag) {
+        // Cerrar sesión
+        await authHook.logout();
+        await storage.clearUserSession();
+        setUser(null);
+        setUserCompanies([]);
+        setCurrentCompany(null);
+        // Eliminar el flag después de cerrar sesión
+        await AsyncStorage.removeItem('appInBackground');
+      }
+    } catch (error) {
+      // Silenciar errores
+    }
+  };
 
   const loadUserSession = async () => {
     try {
@@ -119,6 +150,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.error('Error during logout:', error);
     }
   };
+
+  const handleAppStateChange = useCallback(async (nextAppState: AppStateStatus) => {
+    // Cuando la app pasa a background, guardamos un flag en AsyncStorage
+    if (appState.current.match(/active/) && nextAppState.match(/inactive|background/)) {
+      try {
+        await AsyncStorage.setItem('appInBackground', 'true');
+      } catch (error) {
+        // Silenciar errores
+      }
+    }
+    
+    // Cuando la app vuelve a active, eliminamos el flag (solo fue minimizada)
+    if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
+      try {
+        await AsyncStorage.removeItem('appInBackground');
+      } catch (error) {
+        // Silenciar errores
+      }
+    }
+    
+    appState.current = nextAppState;
+  }, []);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleAppStateChange]);
 
   const loadUserCompanies = async () => {
     try {

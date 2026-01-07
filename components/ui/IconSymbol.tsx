@@ -26,6 +26,8 @@ const MAPPING = {
   'plus.circle.fill': 'add-circle',
   'camera.fill': 'camera-alt',
   'document.fill': 'description',
+  'document-text': 'description',
+  'doc.text.fill': 'description',
   'list.clipboard': 'assignment',
   'checkmark': 'check',
   'exclamationmark.triangle': 'warning',
@@ -43,6 +45,8 @@ const MAPPING = {
   'cube': 'inventory',
   'shield-checkmark': 'verified-user',
   'ellipsis': 'more-horiz',
+  'magnifyingglass': 'search',
+  'people.fill': 'people',
 } as IconMapping;
 
 /**

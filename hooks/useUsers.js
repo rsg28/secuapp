@@ -1,48 +1,87 @@
-/**
- * Hook para manejar usuarios (users)
- * 
- * Este hook proporciona funcionalidades específicas para la gestión de usuarios,
- * incluyendo validación automática de columnas y operaciones CRUD completas.
- * 
- * Funciones incluidas:
- * - getAllUsers: Obtener todos los usuarios con paginación
- * - getUserById: Obtener usuario específico por ID
- * - createUser: Crear nuevo usuario (requiere email, password, first_name, last_name)
- * - updateUser: Actualizar usuario existente
- * - deleteUser: Eliminar usuario
- * 
- * Columnas válidas: id, email, password_hash, first_name, last_name, role, 
- * phone, profile_image_url, is_active, created_at, updated_at
- * 
- * @returns {object} Objeto con funciones y estados para gestión de usuarios
- */
-import { useCRUD } from './useCRUD';
-import { validateColumns } from './utils/tableColumns';
+import { useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Hook para manejar usuarios
+const API_BASE_URL = 'https://www.securg.xyz/api/v1';
+
+const getAuthToken = async () => {
+  try {
+    const token = await AsyncStorage.getItem('authToken');
+    return token;
+  } catch (error) {
+    console.error('Error getting auth token:', error);
+    return null;
+  }
+};
+
 export const useUsers = () => {
-  const crud = useCRUD('users');
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
-  // Crear usuario con validación de columnas
-  const createUser = async (userData) => {
-    const validatedData = validateColumns('users', userData);
-    return await crud.create(validatedData);
+  // Obtener usuarios sin rol de manager
+  const getNonManagerUsers = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/users/non-managers`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al obtener usuarios');
+      }
+
+      const data = await response.json();
+      setUsers(data.data.users || []);
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Actualizar usuario con validación de columnas
-  const updateUser = async (id, userData) => {
-    const validatedData = validateColumns('users', userData);
-    return await crud.update(id, validatedData);
+  // Obtener todas las inspecciones de un inspector
+  const getInspectorInspections = async (inspectorId) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const token = await getAuthToken();
+      const response = await fetch(`${API_BASE_URL}/users/${inspectorId}/inspections`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al obtener inspecciones del inspector');
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (err) {
+      setError(err.message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
   };
 
   return {
-    users: crud.data,
-    loading: crud.loading,
-    error: crud.error,
-    getAllUsers: crud.getAll,
-    getUserById: crud.getById,
-    createUser,
-    updateUser,
-    deleteUser: crud.remove
+    users,
+    loading,
+    error,
+    getNonManagerUsers,
+    getInspectorInspections
   };
 };

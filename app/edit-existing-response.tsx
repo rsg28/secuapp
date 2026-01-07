@@ -181,6 +181,7 @@ export default function EditExistingResponseScreen() {
   const [area, setArea] = useState('');
   const [turno, setTurno] = useState('');
   const [cantidadPersonal, setCantidadPersonal] = useState('');
+  const [showLocationDropdown, setShowLocationDropdown] = useState(false);
   
   // Store existing response items IDs to track which ones to delete
   const [existingResponseItems, setExistingResponseItems] = useState<Record<string, string>>({});
@@ -190,6 +191,53 @@ export default function EditExistingResponseScreen() {
   
   // Estados para tabs y equipo
   const [activeTab, setActiveTab] = useState<'preguntas' | 'equipo'>('preguntas');
+
+  // Lista de distritos de Lima
+  const limaDistricts = [
+    'Ancón',
+    'Ate',
+    'Barranco',
+    'Breña',
+    'Carabayllo',
+    'Cieneguilla',
+    'Chaclacayo',
+    'Chorrillos',
+    'Cercado de Lima',
+    'El Agustino',
+    'Independencia',
+    'Jesús María',
+    'La Molina',
+    'La Victoria',
+    'Lima',
+    'Lince',
+    'Los Olivos',
+    'Lurigancho',
+    'Lurín',
+    'Magdalena del Mar',
+    'Miraflores',
+    'Pachacámac',
+    'Pucusana',
+    'Pueblo Libre',
+    'Puente Piedra',
+    'Punta Hermosa',
+    'Punta Negra',
+    'Rímac',
+    'San Bartolo',
+    'San Borja',
+    'San Isidro',
+    'San Juan de Lurigancho',
+    'San Juan de Miraflores',
+    'San Luis',
+    'San Martín de Porres',
+    'San Miguel',
+    'Santa Anita',
+    'Santa María del Mar',
+    'Santa Rosa',
+    'Santiago de Surco',
+    'Surquillo',
+    'Villa El Salvador',
+    'Villa María del Triunfo'
+  ];
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
     { cargo: '', empresa: '', nombre: '', sort_order: 0 }
   ]);
@@ -339,16 +387,25 @@ export default function EditExistingResponseScreen() {
         itemsMap[item.item_id] = item;
         existingItemsMap[item.item_id] = item.id; // Store the response item ID
         // Store original data for comparison
+        // Handle image_url: preserve it if it exists and is not empty, otherwise use null
+        let imageUrl = null;
+        if (item.image_url) {
+          const urlValue = item.image_url;
+          if (typeof urlValue === 'string' && urlValue.trim() !== '') {
+            imageUrl = urlValue;
+          }
+        }
+        
         if (type === 'closed') {
           originalItemsMap[item.item_id] = {
             response: item.response,
             explanation: item.explanation || null,
-            image_url: item.image_url || null
+            image_url: imageUrl
           };
         } else {
           originalItemsMap[item.item_id] = {
             response: item.response,
-            image_url: item.image_url || null
+            image_url: imageUrl
           };
         }
       });
@@ -364,7 +421,15 @@ export default function EditExistingResponseScreen() {
           const templateItemId = templateItem.id;
           const existingItem = itemsMap[templateItemId];
           
-          const imageUrl = existingItem?.image_url ?? undefined;
+          // Handle image_url: use the value if it exists and is not empty, otherwise use undefined
+          let imageUrl = undefined;
+          if (existingItem?.image_url) {
+            const urlValue = existingItem.image_url;
+            // Only assign if it's a non-empty string
+            if (typeof urlValue === 'string' && urlValue.trim() !== '') {
+              imageUrl = urlValue;
+            }
+          }
           
           preFilledResponses[templateItem.id] = {
             item_id: templateItemId,
@@ -383,7 +448,15 @@ export default function EditExistingResponseScreen() {
           const templateItemId = templateItem.id;
           const existingItem = itemsMap[templateItemId];
           
-          const imageUrl = existingItem?.image_url ?? null;
+          // Handle image_url: use the value if it exists and is not empty, otherwise use null
+          let imageUrl = null;
+          if (existingItem?.image_url) {
+            const urlValue = existingItem.image_url;
+            // Only assign if it's a non-empty string
+            if (typeof urlValue === 'string' && urlValue.trim() !== '') {
+              imageUrl = urlValue;
+            }
+          }
           
           preFilledResponses[templateItem.id] = {
             item_id: templateItemId,
@@ -728,7 +801,7 @@ export default function EditExistingResponseScreen() {
         // If navigating, just allow it without saving
         navigation.dispatch(navigationAction);
       } else {
-        Alert.alert('Error', 'Por favor ingresa un título para la respuesta');
+        Alert.alert('Ubicación requerida', 'Por favor ingresa una ubicación para guardar la respuesta.');
       }
       return;
     }
@@ -832,8 +905,10 @@ export default function EditExistingResponseScreen() {
             const responseChanged = originalItem?.response !== trimmedResponse;
             const explanationChanged = originalExplanation !== currentExplanation;
             // Prioritize localImages (recently uploaded) over responseData.image_url
-            // If image was deleted, responseData.image_url will be null
-            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url ?? null);
+            // Check both localImages and responseData.image_url (in case image was already uploaded)
+            // IMPORTANT: Also check closedResponses state directly as it may have the latest image_url
+            const stateImageUrl = closedResponses[templateItem.id]?.image_url;
+            const currentImageUrl = localImages[itemIdKey] || stateImageUrl || (responseData.image_url !== undefined ? responseData.image_url : null);
             const originalImageUrl = originalItem?.image_url ?? null;
             const imageUrlChanged = originalImageUrl !== currentImageUrl;
             
@@ -860,7 +935,7 @@ export default function EditExistingResponseScreen() {
                 item_id: itemIdKey,
                 response: responseData.response,
                 explanation: currentExplanation,
-                image_url: responseData.image_url,
+                image_url: currentImageUrl, // Use currentImageUrl which includes the uploaded image URL
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
@@ -896,13 +971,16 @@ export default function EditExistingResponseScreen() {
             }
           } else {
             // Item doesn't exist - create it
+            // Check both localImages and responseData.image_url for the image URL
+            const imageUrlToSave = localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
+            
             const createData: any = {
               response_id: responseId,
               item_id: itemIdKey,
               question_index: responseData.question_index,
               response: trimmedResponse,
               explanation: responseData.explanation?.trim() || null,
-              image_url: responseData.image_url ?? null
+              image_url: imageUrlToSave
             };
             
             // Ensure no undefined values
@@ -920,14 +998,14 @@ export default function EditExistingResponseScreen() {
               ...responseData,
               item_id: itemIdKey,
               response: trimmedResponse,
-              image_url: responseData.image_url,
+              image_url: imageUrlToSave, // Use imageUrlToSave instead of responseData.image_url
               response_item_id: created.id
             };
             updatedExistingResponseItemsState[itemIdKey] = created.id;
             updatedOriginalResponseItemsState[itemIdKey] = {
               response: trimmedResponse,
               explanation: responseData.explanation?.trim() || null,
-              image_url: responseData.image_url ?? null
+              image_url: imageUrlToSave ?? null // Use imageUrlToSave to ensure we have the correct URL
             };
           }
         }
@@ -985,7 +1063,8 @@ export default function EditExistingResponseScreen() {
             const originalItem = updatedOriginalResponseItemsState[itemIdKey] || originalResponseItems[itemIdKey];
             const responseChanged = originalItem?.response !== trimmedResponse;
             // Prioritize localImages (recently uploaded) over responseData.image_url
-            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url ?? null);
+            // Check both localImages and responseData.image_url (in case image was already uploaded)
+            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
             const originalImageUrl = originalItem?.image_url ?? null;
             const imageUrlChanged = originalImageUrl !== currentImageUrl;
             
@@ -1010,7 +1089,7 @@ export default function EditExistingResponseScreen() {
                 ...responseData,
                 response: trimmedResponse,
                 item_id: itemIdKey,
-                image_url: currentImageUrl || undefined,
+                image_url: currentImageUrl !== null ? currentImageUrl : undefined,
                 response_item_id: existingResponseItemId
               };
               updatedExistingResponseItemsState[itemIdKey] = existingResponseItemId;
@@ -1043,8 +1122,12 @@ export default function EditExistingResponseScreen() {
           } else {
             // Item doesn't exist - create it
             const itemIdKey = responseData.item_id ?? templateItem.id;
+            
             // Prioritize localImages (recently uploaded) over responseData.image_url
-            const imageUrlToSave = localImages[itemIdKey] || (responseData.image_url ?? null);
+            // IMPORTANT: Also check openResponses state directly as it may have the latest image_url
+            const stateImageUrl = openResponses[templateItem.id]?.image_url;
+            const imageUrlToSave = localImages[itemIdKey] || stateImageUrl || (responseData.image_url ?? null);
+            
             const createData: any = {
               response_id: responseId,
               item_id: itemIdKey,
@@ -1122,7 +1205,7 @@ export default function EditExistingResponseScreen() {
         let existingTeamMemberIds: string[] = [];
         try {
           const existingMembers = await getTeamMembersByResponseId(responseId);
-          existingTeamMemberIds = existingMembers.map(m => m.id).filter(Boolean) as string[];
+          existingTeamMemberIds = existingMembers.map((m: TeamMember) => m.id).filter(Boolean) as string[];
         } catch (error) {
           // Silently continue if we can't load existing members
         }
@@ -1210,8 +1293,13 @@ export default function EditExistingResponseScreen() {
       }
 
       if (!navigationAction) {
-        // If called from "Listo" button, don't show alert, just return success
-        // Navigation will be handled by the button's onPress
+        // If called from "Listo" button, reload data to show latest changes including images
+        try {
+          const loadedItems = await loadTemplateItems();
+          await loadResponseItems(loadedItems);
+        } catch (error: any) {
+          console.error('[handleSave] Error reloading data after save:', error);
+        }
         return;
       } else {
         // Auto-save completed, allow navigation
@@ -1342,7 +1430,11 @@ export default function EditExistingResponseScreen() {
           }}
           disabled={saving}
         >
-          <Ionicons name="checkmark" size={24} color="#fff" />
+          {saving ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Ionicons name="checkmark" size={24} color="#fff" />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -1489,17 +1581,76 @@ export default function EditExistingResponseScreen() {
           </View>
         )}
 
-        {/* Title Input */}
+        {/* Location Dropdown */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Ubicación</Text>
-          <TextInput
-            style={styles.titleInput}
-            placeholder="Título de la respuesta"
-            value={responseTitle}
-            onChangeText={setResponseTitle}
-            placeholderTextColor="#9ca3af"
-          />
+          <View style={styles.dropdownContainer}>
+            <TouchableOpacity
+              style={styles.dropdownButton}
+              onPress={() => setShowLocationDropdown(true)}
+            >
+              <Text style={[
+                styles.dropdownButtonText,
+                !responseTitle && { color: '#9ca3af' }
+              ]}>
+                {responseTitle || 'Seleccionar distrito'}
+              </Text>
+              <Ionicons
+                name="chevron-down"
+                size={20}
+                color="#6b7280"
+              />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        {/* Location Dropdown Modal */}
+        <Modal
+          visible={showLocationDropdown}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowLocationDropdown(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowLocationDropdown(false)}
+          >
+            <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>Seleccionar Distrito</Text>
+                <TouchableOpacity
+                  onPress={() => setShowLocationDropdown(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.dropdownModalScroll}>
+                {limaDistricts.map((district) => (
+                  <TouchableOpacity
+                    key={district}
+                    style={[
+                      styles.dropdownModalItem,
+                      responseTitle === district && styles.dropdownModalItemSelected
+                    ]}
+                    onPress={() => {
+                      setResponseTitle(district);
+                      setShowLocationDropdown(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.dropdownModalItemText,
+                      responseTitle === district && styles.dropdownModalItemTextSelected
+                    ]}>
+                      {district}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
 
         {/* Category Selector */}
         {categories.length > 0 && (
@@ -1586,14 +1737,61 @@ export default function EditExistingResponseScreen() {
                   <View style={styles.closedResponseContainer}>
                     {/* Response Options/Input - In the middle */}
                     {item.question_type === 'text' ? (
-                      <TextInput
-                        style={styles.openResponseInput}
-                        placeholder="Escribe tu respuesta aquí..."
-                        value={closedResponses[item.id]?.response || ''}
-                        onChangeText={(text) => handleClosedResponseChange(item.id, text)}
-                        multiline
-                        placeholderTextColor="#9ca3af"
-                      />
+                      <View style={styles.textInputWithIconContainer}>
+                        {(() => {
+                          const responseData = closedResponses[item.id];
+                          const hasImage = localImages[item.id] || (responseData?.image_url && typeof responseData.image_url === 'string' && responseData.image_url.trim() !== '');
+                          return (
+                            <TouchableOpacity
+                              style={styles.imageIconButton}
+                              onPress={() => {
+                                Alert.alert(
+                                  hasImage ? 'Cambiar imagen' : 'Agregar imagen',
+                                  '¿Cómo deseas ' + (hasImage ? 'cambiar' : 'agregar') + ' la imagen?',
+                                  [
+                                    {
+                                      text: 'Tomar foto',
+                                      onPress: () => handleTakePhoto(item.id)
+                                    },
+                                    {
+                                      text: 'Galería',
+                                      onPress: () => handlePickImage(item.id)
+                                    },
+                                    ...(hasImage ? [{
+                                      text: 'Eliminar',
+                                      style: 'destructive' as const,
+                                      onPress: () => handleDeleteImage(item.id)
+                                    }] : []),
+                                    {
+                                      text: 'Cancelar',
+                                      style: 'cancel' as const
+                                    }
+                                  ]
+                                );
+                              }}
+                              disabled={uploadingImage}
+                            >
+                              {uploadingImage && localImages[item.id] ? (
+                                <ActivityIndicator size="small" color="#3b82f6" />
+                              ) : (
+                                <Ionicons 
+                                  name="image" 
+                                  size={20} 
+                                  color={hasImage ? "#3b82f6" : "#9ca3af"} 
+                                />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })()}
+                        <TextInput
+                          style={styles.textInputWithIcon}
+                          placeholder="Escribe tu respuesta aquí..."
+                          value={closedResponses[item.id]?.response || ''}
+                          onChangeText={(text) => handleClosedResponseChange(item.id, text)}
+                          multiline
+                          placeholderTextColor="#9ca3af"
+                        />
+                      </View>
                     ) : item.question_type === 'single_choice' || item.question_type === 'multiple_choice' ? (
                       <View style={styles.responseButtonsContainer}>
                         {(item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA']).map((option) => {
@@ -1664,125 +1862,64 @@ export default function EditExistingResponseScreen() {
                       </View>
                     )}
                     
-                    {/* Explanation - After options */}
-                    <TextInput
-                      style={styles.explanationInput}
-                      placeholder="Explicación (opcional)"
-                      value={closedResponses[item.id]?.explanation || ''}
-                      onChangeText={(text) => handleClosedExplanationChange(item.id, text)}
-                      multiline
-                      placeholderTextColor="#9ca3af"
-                    />
-                    
-                    {/* Image Section - At the bottom */}
-                    <View style={styles.imageSection}>
-                      {(() => {
-                        const responseData = closedResponses[item.id];
-                        // Prioritize localImages (recently uploaded), then image_url from database, then null
-                        // If image_url is explicitly null, it means it was deleted
-                        const imageUrl = localImages[item.id] 
-                          || (responseData?.image_url !== null && responseData?.image_url !== undefined 
-                            ? responseData.image_url 
-                            : null);
-                        return (
-                          <View style={styles.imageContainer}>
-                            {imageUrl ? (
-                              <Image 
-                                source={{ uri: imageUrl }} 
-                                style={styles.previewImage}
-                                resizeMode="contain"
-                              />
-                            ) : (
-                              <View style={styles.imagePlaceholder}>
-                                <Ionicons name="image-outline" size={40} color="#9ca3af" />
-                                <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
-                              </View>
-                            )}
-                            {imageUrl ? (
-                              <View style={styles.imageActionButtons}>
-                                <TouchableOpacity 
-                                  style={styles.imageActionButton}
-                                  onPress={() => {
-                                    Alert.alert(
-                                      'Cambiar imagen',
-                                      '¿Cómo deseas cambiar la imagen?',
-                                      [
-                                        {
-                                          text: 'Tomar foto',
-                                          onPress: () => handleTakePhoto(item.id)
-                                        },
-                                        {
-                                          text: 'Galería',
-                                          onPress: () => handlePickImage(item.id)
-                                        },
-                                        {
-                                          text: 'Cancelar',
-                                          style: 'cancel'
-                                        }
-                                      ]
-                                    );
-                                  }}
-                                  disabled={uploadingImage}
-                                >
-                                  {uploadingImage && localImages[item.id] ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                  ) : (
-                                    <Ionicons name="swap-horizontal" size={18} color="#fff" />
-                                  )}
-                                </TouchableOpacity>
-                                <TouchableOpacity 
-                                  style={[styles.imageActionButton, styles.imageDeleteButton]}
-                                  onPress={() => {
-                                    Alert.alert(
-                                      'Eliminar imagen',
-                                      '¿Estás seguro de que deseas eliminar esta imagen?',
-                                      [
-                                        {
-                                          text: 'Cancelar',
-                                          style: 'cancel'
-                                        },
-                                        {
-                                          text: 'Eliminar',
-                                          style: 'destructive',
-                                          onPress: () => handleDeleteImage(item.id)
-                                        }
-                                      ]
-                                    );
-                                  }}
-                                >
-                                  <Ionicons name="trash" size={18} color="#fff" />
-                                </TouchableOpacity>
-                              </View>
-                            ) : (
-                              <View style={styles.imageActionButtons}>
-                                <TouchableOpacity 
-                                  style={styles.imageActionButton}
-                                  onPress={() => handleTakePhoto(item.id)}
-                                  disabled={uploadingImage}
-                                >
-                                  {uploadingImage && localImages[item.id] ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                  ) : (
-                                    <Ionicons name="camera" size={18} color="#fff" />
-                                  )}
-                                </TouchableOpacity>
-                                <TouchableOpacity 
-                                  style={styles.imageActionButton}
-                                  onPress={() => handlePickImage(item.id)}
-                                  disabled={uploadingImage}
-                                >
-                                  {uploadingImage && localImages[item.id] ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                  ) : (
-                                    <Ionicons name="image" size={18} color="#fff" />
-                                  )}
-                                </TouchableOpacity>
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })()}
-                    </View>
+                    {/* Explanation - After options (only if not text type) */}
+                    {item.question_type !== 'text' && (
+                      <View style={styles.explanationInputWithIconContainer}>
+                        {(() => {
+                          const responseData = closedResponses[item.id];
+                          const hasImage = localImages[item.id] || (responseData?.image_url && typeof responseData.image_url === 'string' && responseData.image_url.trim() !== '');
+                          return (
+                            <TouchableOpacity
+                              style={styles.imageIconButton}
+                              onPress={() => {
+                                Alert.alert(
+                                  hasImage ? 'Cambiar imagen' : 'Agregar imagen',
+                                  '¿Cómo deseas ' + (hasImage ? 'cambiar' : 'agregar') + ' la imagen?',
+                                  [
+                                    {
+                                      text: 'Tomar foto',
+                                      onPress: () => handleTakePhoto(item.id)
+                                    },
+                                    {
+                                      text: 'Galería',
+                                      onPress: () => handlePickImage(item.id)
+                                    },
+                                    ...(hasImage ? [{
+                                      text: 'Eliminar',
+                                      style: 'destructive' as const,
+                                      onPress: () => handleDeleteImage(item.id)
+                                    }] : []),
+                                    {
+                                      text: 'Cancelar',
+                                      style: 'cancel' as const
+                                    }
+                                  ]
+                                );
+                              }}
+                              disabled={uploadingImage}
+                            >
+                              {uploadingImage && localImages[item.id] ? (
+                                <ActivityIndicator size="small" color="#3b82f6" />
+                              ) : (
+                                <Ionicons 
+                                  name="image" 
+                                  size={20} 
+                                  color={hasImage ? "#3b82f6" : "#9ca3af"} 
+                                />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })()}
+                        <TextInput
+                          style={styles.explanationInputWithIcon}
+                          placeholder="Explicación (opcional)"
+                          value={closedResponses[item.id]?.explanation || ''}
+                          onChangeText={(text) => handleClosedExplanationChange(item.id, text)}
+                          multiline
+                          placeholderTextColor="#9ca3af"
+                        />
+                      </View>
+                    )}
                   </View>
                 ) : (
                   // Open inspections
@@ -1828,127 +1965,62 @@ export default function EditExistingResponseScreen() {
                         })}
                       </View>
                     ) : (
-                      <TextInput
-                        style={styles.openResponseInput}
-                        placeholder="Escribe tu respuesta aquí..."
-                        value={openResponses[item.id]?.response || ''}
-                        onChangeText={(text) => handleOpenResponseChange(item.id, text)}
-                        multiline
-                        placeholderTextColor="#9ca3af"
-                      />
-                    )}
-                    
-                    {/* Image Section - At the bottom */}
-                    <View style={styles.imageSection}>
-                  {(() => {
-                    const responseData = openResponses[item.id];
-                    // Prioritize localImages (recently uploaded), then image_url from database, then null
-                    // If image_url is explicitly null, it means it was deleted
-                    const imageUrl = localImages[item.id] 
-                      || (responseData?.image_url !== null && responseData?.image_url !== undefined 
-                        ? responseData.image_url 
-                        : null);
-                    return (
-                      <View style={styles.imageContainer}>
-                        {imageUrl ? (
-                          <Image 
-                            source={{ uri: imageUrl }} 
-                            style={styles.previewImage}
-                            resizeMode="contain"
-                          />
-                        ) : (
-                          <View style={styles.imagePlaceholder}>
-                            <Ionicons name="image-outline" size={40} color="#9ca3af" />
-                            <Text style={styles.imagePlaceholderText}>Sin imagen</Text>
-                          </View>
-                        )}
-                        <View style={styles.imageActionButtons}>
-                          {imageUrl ? (
-                            <>
-                              <TouchableOpacity 
-                                style={styles.imageActionButton}
-                                onPress={() => {
-                                  Alert.alert(
-                                    'Cambiar imagen',
-                                    '¿Cómo deseas cambiar la imagen?',
-                                    [
-                                      {
-                                        text: 'Tomar foto',
-                                        onPress: () => handleTakePhoto(item.id)
-                                      },
-                                      {
-                                        text: 'Galería',
-                                        onPress: () => handlePickImage(item.id)
-                                      },
-                                      {
-                                        text: 'Cancelar',
-                                        style: 'cancel'
-                                      }
-                                    ]
-                                  );
-                                }}
-                                disabled={uploadingImage}
-                              >
-                                {uploadingImage && localImages[item.id] ? (
-                                  <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                  <Ionicons name="swap-horizontal" size={18} color="#fff" />
-                                )}
-                              </TouchableOpacity>
-                              <TouchableOpacity 
-                                style={[styles.imageActionButton, styles.imageDeleteButton]}
-                                onPress={() => {
-                                  Alert.alert(
-                                    'Eliminar imagen',
-                                    '¿Estás seguro de que deseas eliminar esta imagen?',
-                                    [
-                                      {
-                                        text: 'Cancelar',
-                                        style: 'cancel'
-                                      },
-                                        {
-                                          text: 'Eliminar',
-                                          style: 'destructive',
-                                          onPress: () => handleDeleteImage(item.id)
-                                        }
-                                    ]
-                                  );
-                                }}
-                              >
-                                <Ionicons name="trash" size={18} color="#fff" />
-                              </TouchableOpacity>
-                            </>
-                          ) : (
-                            <>
-                              <TouchableOpacity 
-                                style={styles.imageActionButton}
-                                onPress={() => handleTakePhoto(item.id)}
-                                disabled={uploadingImage}
-                              >
-                                {uploadingImage && localImages[item.id] ? (
-                                  <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                  <Ionicons name="camera" size={18} color="#fff" />
-                                )}
-                              </TouchableOpacity>
-                              <TouchableOpacity 
-                                style={styles.imageActionButton}
-                                onPress={() => handlePickImage(item.id)}
-                                disabled={uploadingImage}
-                              >
-                                {uploadingImage && localImages[item.id] ? (
-                                  <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                  <Ionicons name="image" size={18} color="#fff" />
-                                )}
-                              </TouchableOpacity>
-                            </>
-                          )}
-                        </View>
+                      <View style={styles.textInputWithIconContainer}>
+                        {(() => {
+                          const responseData = openResponses[item.id];
+                          const hasImage = localImages[item.id] || (responseData?.image_url && typeof responseData.image_url === 'string' && responseData.image_url.trim() !== '');
+                          return (
+                            <TouchableOpacity
+                              style={styles.imageIconButton}
+                              onPress={() => {
+                                Alert.alert(
+                                  hasImage ? 'Cambiar imagen' : 'Agregar imagen',
+                                  '¿Cómo deseas ' + (hasImage ? 'cambiar' : 'agregar') + ' la imagen?',
+                                  [
+                                    {
+                                      text: 'Tomar foto',
+                                      onPress: () => handleTakePhoto(item.id)
+                                    },
+                                    {
+                                      text: 'Galería',
+                                      onPress: () => handlePickImage(item.id)
+                                    },
+                                    ...(hasImage ? [{
+                                      text: 'Eliminar',
+                                      style: 'destructive' as const,
+                                      onPress: () => handleDeleteImage(item.id)
+                                    }] : []),
+                                    {
+                                      text: 'Cancelar',
+                                      style: 'cancel' as const
+                                    }
+                                  ]
+                                );
+                              }}
+                              disabled={uploadingImage}
+                            >
+                              {uploadingImage && localImages[item.id] ? (
+                                <ActivityIndicator size="small" color="#3b82f6" />
+                              ) : (
+                                <Ionicons 
+                                  name="image" 
+                                  size={20} 
+                                  color={hasImage ? "#3b82f6" : "#9ca3af"} 
+                                />
+                              )}
+                            </TouchableOpacity>
+                          );
+                        })()}
+                        <TextInput
+                          style={styles.textInputWithIcon}
+                          placeholder="Escribe tu respuesta aquí..."
+                          value={openResponses[item.id]?.response || ''}
+                          onChangeText={(text) => handleOpenResponseChange(item.id, text)}
+                          multiline
+                          placeholderTextColor="#9ca3af"
+                        />
                       </View>
-                    );
-                  })()}
-                    </View>
+                    )}
                   </>
                 )}
               </View>
@@ -2087,6 +2159,8 @@ const styles = StyleSheet.create({
   checkButton: {
     marginLeft: 16,
     padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   headerTitle: {
     fontSize: 20,
@@ -2280,6 +2354,48 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     minHeight: 60,
     textAlignVertical: 'top',
+  },
+  explanationInputWithIcon: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1f2937',
+    padding: 12,
+    paddingLeft: 4,
+    textAlignVertical: 'top',
+    minHeight: 60,
+  },
+  textInputWithIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    minHeight: 80,
+  },
+  imageIconButton: {
+    padding: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingRight: 4,
+  },
+  textInputWithIcon: {
+    flex: 1,
+    fontSize: 14,
+    color: '#1f2937',
+    padding: 12,
+    paddingLeft: 4,
+    textAlignVertical: 'top',
+    minHeight: 80,
+  },
+  explanationInputWithIconContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    minHeight: 60,
   },
   openResponseInput: {
     borderWidth: 1,

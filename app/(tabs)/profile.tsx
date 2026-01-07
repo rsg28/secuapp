@@ -6,16 +6,20 @@ import {
     ScrollView,
     StyleSheet,
     Text,
+    TextInput,
     TouchableOpacity,
     View,
     Image,
     ActivityIndicator,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
 import { useImageUpload } from '../../hooks/useImageUpload';
+
+const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
 export default function ProfileScreen() {
   const { user, logout, refreshProfile, updateProfile } = useAuth();
@@ -24,6 +28,8 @@ export default function ProfileScreen() {
   const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
   const [formCount, setFormCount] = useState<number | null>(null);
   const [updatingProfile, setUpdatingProfile] = useState(false);
+  const [comment, setComment] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
 
   useEffect(() => {
     const loadFormCounts = async () => {
@@ -189,6 +195,55 @@ export default function ProfileScreen() {
     Alert.alert('Ayuda', 'Para soporte técnico contacta al administrador del sistema');
   };
 
+  const handleSubmitComment = async () => {
+    if (!comment.trim()) {
+      Alert.alert('Error', 'Por favor escribe un comentario');
+      return;
+    }
+
+    if (comment.trim().length < 5) {
+      Alert.alert('Error', 'El comentario debe tener al menos 5 caracteres');
+      return;
+    }
+
+    try {
+      setSendingComment(true);
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) {
+        throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
+      }
+
+      const response = await fetch(`${API_BASE_URL}/comments`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          comment: comment.trim()
+        })
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data?.message || 'No se pudo enviar el comentario');
+      }
+
+      Alert.alert(
+        '✅ Comentario Enviado',
+        'Tu comentario ha sido enviado exitosamente. ¡Gracias por ayudarnos a mejorar!\n\nTu feedback es muy valioso para nosotros.',
+        [{ text: 'De nada', style: 'default' }]
+      );
+      setComment('');
+    } catch (error: any) {
+      console.error('Error sending comment:', error);
+      Alert.alert('Error', error?.message || 'No se pudo enviar el comentario');
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
   if (!user) {
     return (
       <View style={styles.container}>
@@ -260,24 +315,61 @@ export default function ProfileScreen() {
         </View>
       </View>
 
-      {/* Statistics */}
+      {/* Statistics Button */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Estadísticas del Mes</Text>
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <IconSymbol name="checkmark.circle.fill" size={24} color="#22c55e" />
-            <Text style={styles.statNumber}>{formCount === null ? '...' : formCount}</Text>
-            <Text style={styles.statLabel}>Formularios en Proceso</Text>
+        <TouchableOpacity 
+          style={styles.statsButton}
+          onPress={() => router.push('/statistics')}
+        >
+          <View style={styles.statsButtonContent}>
+            <IconSymbol name="chart.bar.fill" size={24} color="#fff" />
+            <View style={styles.statsButtonTextContainer}>
+              <Text style={styles.statsButtonTitle}>Ver Estadísticas</Text>
+              <Text style={styles.statsButtonSubtitle}>
+                Inspecciones y actividad detallada
+              </Text>
+            </View>
           </View>
-          <View style={styles.statItem}>
-            <IconSymbol name="camera.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>Pronto</Text>
-            <Text style={styles.statLabel}>Fotos Tomadas (Trabajando en ello)</Text>
-          </View>
-          <View style={styles.statItem}>
-            <IconSymbol name="exclamationmark.triangle.fill" size={24} color="#f59e0b" />
-            <Text style={styles.statNumber}>Pronto</Text>
-            <Text style={styles.statLabel}>Incidentes Reportados (Trabajando en ello)</Text>
+          <IconSymbol name="chevron.right" size={20} color="#fff" />
+        </TouchableOpacity>
+      </View>
+
+      {/* Comments Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Comentarios y Sugerencias</Text>
+        <View style={styles.commentCard}>
+          <Text style={styles.commentLabel}>
+            Comparte tus comentarios, sugerencias o recomendaciones
+          </Text>
+          <TextInput
+            style={styles.commentInput}
+            placeholder="Escribe tu comentario aquí..."
+            placeholderTextColor="#9ca3af"
+            value={comment}
+            onChangeText={setComment}
+            multiline
+            numberOfLines={6}
+            textAlignVertical="top"
+            maxLength={2000}
+          />
+          <View style={styles.commentFooter}>
+            <Text style={styles.commentCounter}>
+              {comment.length}/2000 caracteres
+            </Text>
+            <TouchableOpacity
+              style={[styles.submitButton, sendingComment && styles.submitButtonDisabled]}
+              onPress={handleSubmitComment}
+              disabled={sendingComment || !comment.trim()}
+            >
+              {sendingComment ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <IconSymbol name="paperplane.fill" size={16} color="#fff" />
+                  <Text style={styles.submitButtonText}>Enviar</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -317,9 +409,14 @@ export default function ProfileScreen() {
             </View>
             <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
           </TouchableOpacity>
-          
-          {/* Botón de Gestión de Empleados solo para managers */}
-          {user.role === 'manager' && (
+        </View>
+      </View>
+
+      {/* Gestión de Manager - Solo visible para managers */}
+      {user.role === 'manager' && (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Gestión</Text>
+          <View style={styles.settingsCard}>
             <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/employees')}>
               <View style={styles.settingLeft}>
                 <IconSymbol name="people.fill" size={20} color="#1e40af" />
@@ -327,9 +424,17 @@ export default function ProfileScreen() {
               </View>
               <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
             </TouchableOpacity>
-          )}
+            
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/search-inspections')}>
+              <View style={styles.settingLeft}>
+                <IconSymbol name="magnifyingglass" size={20} color="#1e40af" />
+                <Text style={styles.settingText}>Búsqueda de Inspecciones</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      )}
 
       {/* Logout Button */}
       <View style={styles.section}>
@@ -452,38 +557,6 @@ const styles = StyleSheet.create({
     color: '#1f2937',
     fontWeight: '500',
   },
-  statsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  statItem: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statNumber: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: '#6b7280',
-    textAlign: 'center',
-  },
   settingsCard: {
     backgroundColor: '#fff',
     borderRadius: 12,
@@ -549,5 +622,95 @@ const styles = StyleSheet.create({
   copyrightText: {
     fontSize: 12,
     color: '#9ca3af',
+  },
+  commentCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  commentLabel: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 12,
+  },
+  commentInput: {
+    backgroundColor: '#f9fafb',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    color: '#1f2937',
+    minHeight: 120,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    marginBottom: 12,
+  },
+  commentFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  commentCounter: {
+    fontSize: 12,
+    color: '#9ca3af',
+  },
+  submitButton: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  submitButtonDisabled: {
+    backgroundColor: '#9ca3af',
+  },
+  submitButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statsButton: {
+    backgroundColor: '#3b82f6',
+    borderRadius: 12,
+    padding: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    shadowColor: '#3b82f6',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  statsButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  statsButtonTextContainer: {
+    marginLeft: 16,
+    flex: 1,
+  },
+  statsButtonTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  statsButtonSubtitle: {
+    color: '#dbeafe',
+    fontSize: 14,
   },
 });

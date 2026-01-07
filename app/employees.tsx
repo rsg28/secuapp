@@ -2,34 +2,32 @@ import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
+    ActivityIndicator,
     ScrollView,
     StyleSheet,
     Text,
-    TextInput,
     TouchableOpacity,
     View,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
-import { Employee } from '../types/auth';
-import { storage } from '../utils/storage';
+import { useUsers } from '../hooks/useUsers';
+
+interface Employee {
+  id: string;
+  email: string;
+  first_name: string;
+  last_name: string;
+  role: string;
+  phone?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 export default function EmployeesScreen() {
   const { user } = useAuth();
+  const { users, loading, error, getNonManagerUsers } = useUsers();
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
-  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
-  const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
-  const [newEmployee, setNewEmployee] = useState({
-    fullName: '',
-    email: '',
-    position: '',
-    department: '',
-    phone: '',
-  });
 
   useEffect(() => {
     loadEmployees();
@@ -37,154 +35,36 @@ export default function EmployeesScreen() {
 
   const loadEmployees = async () => {
     try {
-      const loadedEmployees = await storage.loadEmployees();
-      if (loadedEmployees.length === 0) {
-        // Crear empleados de ejemplo si no hay ninguno
-        const sampleEmployees: Employee[] = [
-          {
-            id: 'emp-001',
-            fullName: 'Juan Pérez',
-            email: 'juan.perez@secuapp.com',
-            position: 'Técnico de Seguridad',
-            department: 'Seguridad Industrial',
-            phone: '+51 999 123 456',
-            status: 'active',
-            joinDate: '2024-01-15'
-          },
-          {
-            id: 'emp-002',
-            fullName: 'María García',
-            email: 'maria.garcia@secuapp.com',
-            position: 'Supervisor de Campo',
-            department: 'Operaciones',
-            phone: '+51 999 234 567',
-            status: 'active',
-            joinDate: '2024-02-01'
-          },
-          {
-            id: 'emp-003',
-            fullName: 'Carlos López',
-            email: 'carlos.lopez@secuapp.com',
-            position: 'Inspector de Calidad',
-            department: 'Calidad',
-            phone: '+51 999 345 678',
-            status: 'inactive',
-            joinDate: '2023-11-20'
-          }
-        ];
-        await storage.saveEmployees(sampleEmployees);
-        setEmployees(sampleEmployees);
-      } else {
-        setEmployees(loadedEmployees);
-      }
+      const data = await getNonManagerUsers();
+      setEmployees(data.data.users || []);
     } catch (error) {
       console.error('Error loading employees:', error);
     }
   };
 
-  const handleAddEmployee = async () => {
-    if (!newEmployee.fullName.trim() || !newEmployee.email.trim()) {
-      Alert.alert('Error', 'Nombre y email son obligatorios');
-      return;
-    }
-
-    try {
-      const employee: Employee = {
-        id: `emp-${Date.now()}`,
-        ...newEmployee,
-        status: 'active',
-        joinDate: new Date().toISOString().split('T')[0]
-      };
-
-      await storage.addEmployee(employee);
-      setEmployees([...employees, employee]);
-      setNewEmployee({
-        fullName: '',
-        email: '',
-        position: '',
-        department: '',
-        phone: '',
-      });
-      setIsAddModalVisible(false);
-      Alert.alert('Éxito', 'Empleado agregado correctamente');
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo agregar el empleado');
-    }
+  const handleEmployeePress = (employee: Employee) => {
+    router.push({
+      pathname: '/employee-inspections' as any,
+      params: {
+        employeeId: employee.id,
+        employeeName: `${employee.first_name} ${employee.last_name}`,
+        employeeEmail: employee.email
+      }
+    });
   };
 
-  const handleEditEmployee = async () => {
-    if (!editingEmployee) return;
-
-    try {
-      await storage.updateEmployee(editingEmployee);
-      setEmployees(employees.map(emp => 
-        emp.id === editingEmployee.id ? editingEmployee : emp
-      ));
-      setIsEditModalVisible(false);
-      setEditingEmployee(null);
-      Alert.alert('Éxito', 'Empleado actualizado correctamente');
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo actualizar el empleado');
-    }
-  };
-
-  const handleDeleteEmployee = async (employeeId: string) => {
-    Alert.alert(
-      'Confirmar eliminación',
-      '¿Estás seguro de que quieres eliminar este empleado?',
-      [
-        { text: 'Cancelar', style: 'cancel' },
-        {
-          text: 'Eliminar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await storage.deleteEmployee(employeeId);
-              setEmployees(employees.filter(emp => emp.id !== employeeId));
-              Alert.alert('Éxito', 'Empleado eliminado correctamente');
-            } catch (error) {
-              Alert.alert('Error', 'No se pudo eliminar el empleado');
-            }
-          }
-        }
-      ]
-    );
-  };
-
-  const toggleEmployeeStatus = async (employee: Employee) => {
-    const updatedEmployee: Employee = {
-      ...employee,
-      status: employee.status === 'active' ? 'inactive' : 'active'
-    };
-    
-    try {
-      await storage.updateEmployee(updatedEmployee);
-      setEmployees(employees.map(emp => 
-        emp.id === employee.id ? updatedEmployee : emp
-      ));
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo cambiar el estado del empleado');
-    }
-  };
-
-  const openEditModal = (employee: Employee) => {
-    setEditingEmployee({ ...employee });
-    setIsEditModalVisible(true);
-  };
-
-  const getStatusColor = (status: string) => {
-    return status === 'active' ? '#22c55e' : '#ef4444';
-  };
-
-  const getStatusText = (status: string) => {
-    return status === 'active' ? 'Activo' : 'Inactivo';
+  const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
+    });
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container} 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-    >
+    <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -195,189 +75,79 @@ export default function EmployeesScreen() {
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Gestión de Empleados</Text>
-          <Text style={styles.headerSubtitle}>Administra tu equipo de trabajo</Text>
+          <Text style={styles.headerSubtitle}>Lista de empleados</Text>
         </View>
       </View>
 
-
-
-      {/* Add Employee Button */}
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={() => setIsAddModalVisible(true)}
-      >
-        <Ionicons name="add" size={24} color="#fff" />
-        <Text style={styles.addButtonText}>Agregar Empleado</Text>
-      </TouchableOpacity>
-
       {/* Employees List */}
-      <ScrollView style={styles.employeesList} showsVerticalScrollIndicator={false}>
-        {employees.map((employee) => (
-          <View key={employee.id} style={styles.employeeCard}>
-            <View style={styles.employeeInfo}>
-              <View style={styles.employeeHeader}>
-                <Text style={styles.employeeName}>{employee.fullName}</Text>
-              </View>
-              
-              <Text style={styles.employeeEmail}>{employee.email}</Text>
-              <Text style={styles.employeePosition}>{employee.position}</Text>
-              <Text style={styles.employeeDepartment}>{employee.department}</Text>
-              <Text style={styles.employeePhone}>{employee.phone}</Text>
-              <Text style={styles.employeeJoinDate}>
-                Fecha de ingreso: {employee.joinDate}
-              </Text>
-            </View>
-
-            <View style={styles.employeeActions}>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.editButton]}
-                onPress={() => openEditModal(employee)}
-              >
-                <Ionicons name="create" size={20} color="#3b82f6" />
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[styles.actionButton, styles.deleteButton]}
-                onPress={() => handleDeleteEmployee(employee.id)}
-              >
-                <Ionicons name="trash" size={20} color="#ef4444" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        ))}
-        
-        {/* Espacio adicional para evitar que los tabs tapen el contenido */}
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-
-      {/* Add Employee Modal */}
-      <Modal
-        visible={isAddModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsAddModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Agregar Nuevo Empleado</Text>
-              <TouchableOpacity
-                onPress={() => setIsAddModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            <TextInput
-              style={styles.input}
-              placeholder="Nombre completo"
-              value={newEmployee.fullName}
-              onChangeText={(text) => setNewEmployee(prev => ({ ...prev, fullName: text }))}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              value={newEmployee.email}
-              onChangeText={(text) => setNewEmployee(prev => ({ ...prev, email: text }))}
-              keyboardType="email-address"
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Cargo"
-              value={newEmployee.position}
-              onChangeText={(text) => setNewEmployee(prev => ({ ...prev, position: text }))}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Departamento"
-              value={newEmployee.department}
-              onChangeText={(text) => setNewEmployee(prev => ({ ...prev, department: text }))}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Teléfono"
-              value={newEmployee.phone}
-              onChangeText={(text) => setNewEmployee(prev => ({ ...prev, phone: text }))}
-              keyboardType="phone-pad"
-            />
-
+      {loading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Cargando empleados...</Text>
+        </View>
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="alert-circle" size={48} color="#ef4444" />
+          <Text style={styles.errorText}>Error al cargar empleados</Text>
+          <Text style={styles.errorSubtext}>{error}</Text>
+          <TouchableOpacity
+            style={styles.retryButton}
+            onPress={loadEmployees}
+          >
+            <Text style={styles.retryButtonText}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      ) : employees.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Ionicons name="people-outline" size={64} color="#9ca3af" />
+          <Text style={styles.emptyText}>No hay empleados registrados</Text>
+        </View>
+      ) : (
+        <ScrollView style={styles.employeesList} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+          {employees.map((employee) => (
             <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleAddEmployee}
+              key={employee.id}
+              style={styles.employeeCard}
+              onPress={() => handleEmployeePress(employee)}
+              activeOpacity={0.7}
             >
-              <Text style={styles.saveButtonText}>Agregar Empleado</Text>
+              <View style={styles.employeeInfo}>
+                <View style={styles.employeeHeader}>
+                  <Text style={styles.employeeName}>
+                    {employee.first_name} {employee.last_name}
+                  </Text>
+                  {employee.is_active ? (
+                    <View style={[styles.statusBadge, styles.activeBadge]}>
+                      <Text style={[styles.statusText, { color: '#166534' }]}>Activo</Text>
+                    </View>
+                  ) : (
+                    <View style={[styles.statusBadge, styles.inactiveBadge]}>
+                      <Text style={[styles.statusText, { color: '#991b1b' }]}>Inactivo</Text>
+                    </View>
+                  )}
+                </View>
+                
+                <Text style={styles.employeeEmail}>{employee.email}</Text>
+                <Text style={styles.employeeRole}>Rol: {employee.role || 'employee'}</Text>
+                {employee.phone && (
+                  <Text style={styles.employeePhone}>{employee.phone}</Text>
+                )}
+                <Text style={styles.employeeJoinDate}>
+                  Registrado: {formatDate(employee.created_at)}
+                </Text>
+              </View>
+
+              <View style={styles.arrowContainer}>
+                <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+              </View>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Edit Employee Modal */}
-      <Modal
-        visible={isEditModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setIsEditModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Editar Empleado</Text>
-              <TouchableOpacity
-                onPress={() => setIsEditModalVisible(false)}
-                style={styles.closeButton}
-              >
-                <Ionicons name="close" size={24} color="#6b7280" />
-              </TouchableOpacity>
-            </View>
-
-            {editingEmployee && (
-              <>
-                <TextInput
-                  style={styles.input}
-                  placeholder="Nombre completo"
-                  value={editingEmployee.fullName}
-                  onChangeText={(text) => setEditingEmployee(prev => prev ? { ...prev, fullName: text } : null)}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Email"
-                  value={editingEmployee.email}
-                  onChangeText={(text) => setEditingEmployee(prev => prev ? { ...prev, email: text } : null)}
-                  keyboardType="email-address"
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Cargo"
-                  value={editingEmployee.position}
-                  onChangeText={(text) => setEditingEmployee(prev => prev ? { ...prev, position: text } : null)}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Departamento"
-                  value={editingEmployee.department}
-                  onChangeText={(text) => setEditingEmployee(prev => prev ? { ...prev, department: text } : null)}
-                />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Teléfono"
-                  value={editingEmployee.phone}
-                  onChangeText={(text) => setEditingEmployee(prev => prev ? { ...prev, phone: text } : null)}
-                  keyboardType="phone-pad"
-                />
-
-                <TouchableOpacity
-                  style={styles.saveButton}
-                  onPress={handleEditEmployee}
-                >
-                  <Text style={styles.saveButtonText}>Guardar Cambios</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-        </View>
-      </Modal>
-    </KeyboardAvoidingView>
+          ))}
+          
+          {/* Espacio adicional para evitar que los tabs tapen el contenido */}
+          <View style={styles.bottomSpacer} />
+        </ScrollView>
+      )}
+    </View>
   );
 }
 
@@ -417,74 +187,69 @@ const styles = StyleSheet.create({
     color: '#e2e8f0',
     textAlign: 'center',
   },
-  statsContainer: {
-    flexDirection: 'row',
+  loadingContainer: {
+    flex: 1,
     justifyContent: 'center',
-    paddingHorizontal: 20,
-    marginTop: -15,
-    marginBottom: 30,
+    alignItems: 'center',
   },
-  statCard: {
-    backgroundColor: '#ffffff',
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6b7280',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
-    borderRadius: 12,
-    alignItems: 'center',
-    minWidth: 200,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
   },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1e293b',
+  errorText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#ef4444',
+  },
+  errorSubtext: {
     marginTop: 8,
-  },
-  statLabel: {
-    fontSize: 12,
-    color: '#64748b',
+    fontSize: 14,
+    color: '#6b7280',
     textAlign: 'center',
-    marginTop: 4,
   },
-  addButton: {
-    backgroundColor: '#22c55e',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 16,
-    marginHorizontal: 20,
-    borderRadius: 12,
-    marginBottom: 30,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+  retryButton: {
+    marginTop: 24,
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
   },
-  addButtonText: {
+  retryButtonText: {
     color: '#ffffff',
     fontSize: 16,
     fontWeight: '600',
-    marginLeft: 8,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#9ca3af',
   },
   employeesList: {
     flex: 1,
     paddingHorizontal: 20,
-    paddingBottom: 200,
+  },
+  scrollContent: {
+    paddingBottom: 100,
   },
   employeeCard: {
     backgroundColor: '#ffffff',
     borderRadius: 12,
     padding: 20,
-    marginBottom: 20,
+    marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -493,6 +258,8 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 3.84,
     elevation: 5,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   employeeInfo: {
     flex: 1,
@@ -501,7 +268,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   employeeName: {
     fontSize: 18,
@@ -511,8 +278,15 @@ const styles = StyleSheet.create({
   },
   statusBadge: {
     paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  activeBadge: {
+    backgroundColor: '#d1fae5',
+  },
+  inactiveBadge: {
+    backgroundColor: '#fee2e2',
   },
   statusText: {
     fontSize: 12,
@@ -523,16 +297,11 @@ const styles = StyleSheet.create({
     color: '#3b82f6',
     marginBottom: 4,
   },
-  employeePosition: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: 4,
-  },
-  employeeDepartment: {
+  employeeRole: {
     fontSize: 14,
     color: '#6b7280',
     marginBottom: 4,
+    textTransform: 'capitalize',
   },
   employeePhone: {
     fontSize: 14,
@@ -543,78 +312,11 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9ca3af',
   },
-  employeeActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    marginTop: 16,
-    gap: 8,
-  },
-  actionButton: {
-    padding: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  editButton: {
-    borderColor: '#3b82f6',
-    backgroundColor: '#eff6ff',
-  },
-  toggleButton: {
-    borderColor: '#f59e0b',
-    backgroundColor: '#fffbeb',
-  },
-  deleteButton: {
-    borderColor: '#ef4444',
-    backgroundColor: '#fef2f2',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: '#ffffff',
-    borderRadius: 20,
-    padding: 20,
-    width: '90%',
-    maxHeight: '80%',
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: '#1e293b',
-  },
-  closeButton: {
-    padding: 4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: '#ffffff',
-  },
-  saveButton: {
-    backgroundColor: '#22c55e',
-    padding: 16,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '600',
+  arrowContainer: {
+    marginLeft: 12,
   },
   bottomSpacer: {
-    height: 150,
+    height: 100,
     width: '100%',
   },
 });

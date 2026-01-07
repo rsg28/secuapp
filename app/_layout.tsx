@@ -32,6 +32,9 @@ export default function RootLayout() {
           <Stack.Screen name="create-open-inspection" options={{ headerShown: false }} />
           <Stack.Screen name="edit-response" options={{ headerShown: false }} />
           <Stack.Screen name="edit-existing-response" options={{ headerShown: false }} />
+          <Stack.Screen name="statistics" options={{ headerShown: false }} />
+          <Stack.Screen name="search-inspections" options={{ headerShown: false }} />
+          <Stack.Screen name="search-results" options={{ headerShown: false }} />
         <Stack.Screen name="ccm2l-inspection" options={{ headerShown: false }} />
         <Stack.Screen name="monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="sonometria-monitoring" options={{ headerShown: false }} />
@@ -44,6 +47,8 @@ export default function RootLayout() {
         <Stack.Screen name="vibraciones-monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="dosimetria-ruido-monitoring" options={{ headerShown: false }} />
         <Stack.Screen name="employees" options={{ headerShown: false }} />
+        <Stack.Screen name="employee-inspections" options={{ headerShown: false }} />
+        <Stack.Screen name="employee-statistics" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

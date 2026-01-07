@@ -636,8 +636,19 @@ export default function HistoryScreen() {
               >
                 <View style={styles.historyCardHeader}>
                   <View style={styles.historyInfo}>
-                    <Text style={[styles.detailsHeading, { fontSize: Math.max(16, width * 0.048) }]}>{item.details}</Text>
-                    <Text style={[styles.serviceName, { fontSize: responsive.smallText }]}>{item.service}</Text>
+                    <View style={styles.titleRow}>
+                      <Text 
+                        style={[styles.detailsHeading, { fontSize: Math.max(16, width * 0.048) }]}
+                        numberOfLines={2}
+                        ellipsizeMode="tail"
+                      >
+                        {item.details}
+                      </Text>
+                      <View style={[
+                        styles.statusCircle,
+                        { backgroundColor: item.status === 'completed' ? '#22c55e' : '#f59e0b' }
+                      ]} />
+                    </View>
                   </View>
                   <View style={styles.historyActions}>
                     <TouchableOpacity
@@ -683,19 +694,8 @@ export default function HistoryScreen() {
                       <Ionicons name="time" size={14} color="#6b7280" />
                       <Text style={[styles.timestampText, { fontSize: responsive.smallText }]}>{item.timestamp}</Text>
                     </View>
-                    <View style={[
-                      styles.statusBadge,
-                      { backgroundColor: getStatusColor(item.status) + '20' }
-                    ]}>
-                      <Text style={[
-                        styles.statusText,
-                        { fontSize: responsive.smallText },
-                        { color: getStatusColor(item.status) }
-                      ]}>
-                        {getStatusText(item.status)}
-                      </Text>
                     </View>
-                  </View>
+                  <Text style={[styles.idText, { fontSize: responsive.smallText }]} numberOfLines={1} ellipsizeMode="tail">ID: {item.id.slice(-8)}</Text>
                 </View>
               </TouchableOpacity>
             );
@@ -1036,9 +1036,17 @@ const styles = StyleSheet.create({
     flex: 1,
     marginRight: 12,
   },
-  serviceName: {
-    fontSize: 14,
-    color: '#6b7280',
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start', // Align to top so circle stays near first line when text wraps
+    gap: 8,
+    flex: 1,
+  },
+  statusCircle: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginTop: 2, // Slight offset to align with first line of text
   },
   actionText: {
     fontSize: 14,
@@ -1306,10 +1314,18 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   detailsHeading: {
+    flex: 1, // Allow text to take available space
     fontSize: 16,
     fontWeight: '600',
     color: '#1f2937',
     marginBottom: 4,
+  },
+  idText: {
+    fontSize: 12,
+    color: '#9ca3af',
+    marginTop: 8,
+    fontFamily: 'monospace',
+    flexShrink: 1,
   },
 });
  

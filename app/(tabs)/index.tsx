@@ -255,22 +255,6 @@ export default function DashboardScreen() {
         </View>
       </View>
 
-      {/* Recent Activities */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Actividad Reciente</Text>
-        <View style={styles.activityList}>
-          <View style={styles.activityItem}>
-            <View style={[styles.activityIcon, styles.grayBackground]}>
-              <IconSymbol name="hourglass" size={16} color="#fff" />
-            </View>
-            <View style={styles.activityContent}>
-              <Text style={styles.activityTitle}>Estamos trabajando en actividades recientes</Text>
-              <Text style={styles.activityTime}>Próximamente</Text>
-            </View>
-          </View>
-        </View>
-      </View>
-
       {/* Bottom spacing for tabs */}
       <View style={styles.bottomSpacing} />
 
@@ -519,51 +503,6 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
     marginTop: 8,
     textAlign: 'center',
-  },
-  activityList: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
-    overflow: 'hidden',
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
-  },
-  activityIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  greenBackground: {
-    backgroundColor: '#22c55e',
-  },
-  yellowBackground: {
-    backgroundColor: '#f59e0b',
-  },
-  blueBackground: {
-    backgroundColor: '#3b82f6',
-  },
-  activityContent: {
-    flex: 1,
-  },
-  activityTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  activityTime: {
-    fontSize: 12,
-    color: '#6b7280',
-    marginTop: 2,
-  },
-  grayBackground: {
-    backgroundColor: '#9ca3af',
   },
   bottomSpacing: {
     height: 100,

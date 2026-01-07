@@ -1,7 +1,7 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React from 'react';
+import { router, useNavigation } from 'expo-router';
+import React, { useEffect } from 'react';
 import {
     Dimensions,
     ScrollView,
@@ -14,6 +14,8 @@ import {
 const { width } = Dimensions.get('window');
 
 export default function InspectionTypesScreen() {
+  const navigation = useNavigation();
+
   const handleOpenInspections = () => {
     router.push('/open-inspections');
   };
@@ -23,8 +25,20 @@ export default function InspectionTypesScreen() {
   };
 
   const handleBack = () => {
-    router.back();
+    router.push('/(tabs)/explore');
   };
+
+  // Intercept back button to always go to services page
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // Prevent default behavior
+      e.preventDefault();
+      // Always redirect to services page
+      router.push('/(tabs)/explore');
+    });
+
+    return unsubscribe;
+  }, [navigation]);
 
   return (
     <View style={styles.container}>
@@ -65,7 +79,7 @@ export default function InspectionTypesScreen() {
               <Ionicons name="document-text" size={32} color="#22c55e" />
             </View>
             <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Inspecciones Cerradas</Text>
+              <Text style={styles.cardTitle}>Checklist</Text>
               <Text style={styles.cardDescription}>
                 Inspecciones completadas y archivadas
               </Text>

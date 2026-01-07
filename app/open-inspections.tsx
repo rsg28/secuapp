@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect, router } from 'expo-router';
+import { useNavigation } from '@react-navigation/native';
 import React, { useEffect, useState, useRef } from 'react';
 import {
   Alert,
@@ -51,6 +52,7 @@ interface CategoryGroup {
 
 export default function OpenInspectionsScreen() {
   const { user } = useAuth();
+  const navigation = useNavigation();
   const { templates, createTemplate, deleteTemplate, getTemplatesByUserId, getAllTemplates, updateTemplate } = useOpenInspectionTemplates();
   const { getItemsByTemplateId, createItem, deleteItem, updateItem } = useOpenTemplateItems();
   const [selectedCategory, setSelectedCategory] = useState('todos');
@@ -808,12 +810,46 @@ export default function OpenInspectionsScreen() {
 
   const filteredForms = getFilteredForms();
   const availableCategories = getAvailableCategories();
+  
+  // Ref to track if navigation is programmatic (to allow it to pass)
+  const isNavigatingProgrammatically = useRef(false);
+
+  // Intercept back button to always go to inspection types
+  // Only intercept hardware back button, not programmatic navigation
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // If we're navigating programmatically, allow it
+      if (isNavigatingProgrammatically.current) {
+        isNavigatingProgrammatically.current = false;
+        return; // Allow the navigation
+      }
+      
+      // Only intercept hardware back button (GO_BACK or POP)
+      // Allow all other navigation types (NAVIGATE, REPLACE, PUSH, etc.)
+      const action = e.data.action;
+      
+      // ONLY intercept if it's explicitly a GO_BACK or POP action
+      // This means it's the hardware back button, not programmatic navigation
+      if (action.type === 'GO_BACK' || action.type === 'POP') {
+        e.preventDefault();
+        router.push('/inspection-types');
+        return;
+      }
+      
+      // Allow ALL other navigation types to proceed (including REPLACE, NAVIGATE, PUSH, etc.)
+    });
+
+    return unsubscribe;
+  }, [navigation, router]);
 
   return (
     <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+        <TouchableOpacity style={styles.backButton} onPress={() => {
+          isNavigatingProgrammatically.current = true;
+          router.push('/inspection-types');
+        }}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View>

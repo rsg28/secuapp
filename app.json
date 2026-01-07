@@ -9,7 +9,13 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.zakro.SecuApp",
+      "buildNumber": "1.0.0",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Esta app necesita acceso a la cámara para tomar fotos en inspecciones.",
+        "NSPhotoLibraryUsageDescription": "Esta app necesita acceso a tus fotos para adjuntar imágenes a inspecciones."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -35,7 +41,8 @@
           "resizeMode": "contain",
           "backgroundColor": "#1a1a2e"
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "experiments": {
       "typedRoutes": true

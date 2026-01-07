@@ -280,15 +280,14 @@ export default function LoginScreen() {
             }
           ]} 
           onPress={() => {
-            if (currentStep === 2) {
-              Animated.timing(slideAnimation, {
-                toValue: 0,
-                duration: 600,
-                useNativeDriver: true,
-              }).start(() => {
-                setCurrentStep(1);
-              });
-            }
+            // Siempre volver a la pantalla de Bienvenido desde login
+            Animated.timing(slideAnimation, {
+              toValue: 0,
+              duration: 600,
+              useNativeDriver: true,
+            }).start(() => {
+              setCurrentStep(1);
+            });
           }}
         >
           <Ionicons name="arrow-back" size={responsive.nextButtonIconSize} color="#0ea5e9" />
@@ -420,6 +419,7 @@ export default function LoginScreen() {
             }
           ]} 
           onPress={() => {
+            // Siempre volver a login desde registro
             Animated.timing(registerAnimation, {
               toValue: 0,
               duration: 600,
