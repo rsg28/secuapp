@@ -93,6 +93,7 @@ export default function HistoryScreen() {
   const [selectedItemForSend, setSelectedItemForSend] = useState<HistoryItem | null>(null);
   const [sendEmail, setSendEmail] = useState('');
   const [sendingId, setSendingId] = useState<string | null>(null);
+  const [previousEmails, setPreviousEmails] = useState<string[]>([]);
   const [historyData, setHistoryData] = useState<HistoryItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -145,6 +146,45 @@ export default function HistoryScreen() {
     { id: 'linea-base', name: 'Línea de Base', icon: 'bar-chart', color: '#f59e0b' },
     { id: 'monitoreo', name: 'Monitoreo', icon: 'trending-up', color: '#ef4444' },
   ];
+
+  // Load previous emails from storage
+  useEffect(() => {
+    loadPreviousEmails();
+  }, []);
+
+  const loadPreviousEmails = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('previousInspectionEmails');
+      if (stored) {
+        const emails = JSON.parse(stored);
+        setPreviousEmails(emails);
+      }
+    } catch (error) {
+      console.error('Error loading previous emails:', error);
+    }
+  };
+
+  const saveEmailToHistory = async (email: string) => {
+    try {
+      const trimmedEmail = email.trim().toLowerCase();
+      if (!trimmedEmail) return;
+      
+      const stored = await AsyncStorage.getItem('previousInspectionEmails');
+      let emails: string[] = stored ? JSON.parse(stored) : [];
+      
+      // Remove if exists and add to the beginning
+      emails = emails.filter(e => e !== trimmedEmail);
+      emails.unshift(trimmedEmail);
+      
+      // Keep only last 3 emails (stack behavior - newest added, oldest removed)
+      emails = emails.slice(0, 3);
+      
+      await AsyncStorage.setItem('previousInspectionEmails', JSON.stringify(emails));
+      setPreviousEmails(emails);
+    } catch (error) {
+      console.error('Error saving email to history:', error);
+    }
+  };
 
   // Load inspections when component mounts or when service changes to "inspecciones"
   useFocusEffect(
@@ -450,7 +490,12 @@ export default function HistoryScreen() {
         throw new Error(data?.message || 'No se pudo procesar el envío');
       }
 
-      Alert.alert('Éxito', `El archivo se ha enviado a ${sendEmail.trim()}`);
+      const emailToSave = sendEmail.trim();
+      Alert.alert('Éxito', `El archivo se ha enviado a ${emailToSave}`);
+      
+      // Save email to history
+      await saveEmailToHistory(emailToSave);
+      
       setShowSendModal(false);
       setSendEmail('');
       setSelectedItemForSend(null);
@@ -824,6 +869,32 @@ export default function HistoryScreen() {
                 autoCorrect={false}
                 editable={!sendingId}
               />
+              
+              {previousEmails.length > 0 && (
+                <View style={styles.previousEmailsContainer}>
+                  <Text style={[styles.previousEmailsLabel, { fontSize: responsive.smallText }]}>
+                    Correos usados anteriormente:
+                  </Text>
+                  <ScrollView 
+                    horizontal 
+                    showsHorizontalScrollIndicator={false}
+                    style={styles.previousEmailsScroll}
+                  >
+                    {previousEmails.map((email, index) => (
+                      <TouchableOpacity
+                        key={index}
+                        style={styles.previousEmailChip}
+                        onPress={() => setSendEmail(email)}
+                        disabled={!!sendingId}
+                      >
+                        <Text style={[styles.previousEmailText, { fontSize: responsive.smallText }]}>
+                          {email}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </View>
+              )}
               
               {selectedItemForSend && (
                 <Text style={[styles.sendModalInfo, { fontSize: responsive.smallText }]}>
@@ -1251,6 +1322,29 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 12,
     fontStyle: 'italic',
+  },
+  previousEmailsContainer: {
+    marginTop: 16,
+  },
+  previousEmailsLabel: {
+    color: '#6b7280',
+    marginBottom: 8,
+    fontWeight: '500',
+  },
+  previousEmailsScroll: {
+    maxHeight: 50,
+  },
+  previousEmailChip: {
+    backgroundColor: '#f3f4f6',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  previousEmailText: {
+    color: '#374151',
   },
   sendModalActions: {
     flexDirection: 'row',

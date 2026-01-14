@@ -57,8 +57,8 @@ export default function SearchResultsScreen() {
       if (params.id) searchParams.append('id', params.id as string);
       if (params.title) searchParams.append('title', params.title as string);
       if (params.inspectorName) searchParams.append('inspectorName', params.inspectorName as string);
-      if (params.month) searchParams.append('month', params.month as string);
-      if (params.year) searchParams.append('year', params.year as string);
+      if (params.dateFrom) searchParams.append('dateFrom', params.dateFrom as string);
+      if (params.dateTo) searchParams.append('dateTo', params.dateTo as string);
       if (params.type && params.type !== 'both') searchParams.append('type', params.type as string);
 
       const response = await fetch(`${API_BASE_URL}/search/inspections?${searchParams.toString()}`, {

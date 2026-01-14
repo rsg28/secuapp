@@ -432,6 +432,14 @@ export default function ProfileScreen() {
               </View>
               <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
             </TouchableOpacity>
+            
+            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/generate-reports')}>
+              <View style={styles.settingLeft}>
+                <IconSymbol name="document-text" size={20} color="#1e40af" />
+                <Text style={styles.settingText}>Generar Reportes</Text>
+              </View>
+              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            </TouchableOpacity>
           </View>
         </View>
       )}

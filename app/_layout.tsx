@@ -49,6 +49,7 @@ export default function RootLayout() {
         <Stack.Screen name="employees" options={{ headerShown: false }} />
         <Stack.Screen name="employee-inspections" options={{ headerShown: false }} />
         <Stack.Screen name="employee-statistics" options={{ headerShown: false }} />
+        <Stack.Screen name="generate-reports" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />

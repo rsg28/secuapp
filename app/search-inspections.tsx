@@ -12,35 +12,27 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
   Platform,
+  Modal,
 } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 
 export default function SearchInspectionsScreen() {
   const { width } = useWindowDimensions();
   const [searchId, setSearchId] = useState('');
   const [searchTitle, setSearchTitle] = useState('');
   const [searchInspectorName, setSearchInspectorName] = useState('');
-  const [searchMonth, setSearchMonth] = useState('');
-  const [searchYear, setSearchYear] = useState('');
+  const [dateFrom, setDateFrom] = useState<Date | null>(null);
+  const [dateTo, setDateTo] = useState<Date | null>(null);
+  const [tempDateFrom, setTempDateFrom] = useState<Date>(new Date());
+  const [tempDateTo, setTempDateTo] = useState<Date>(new Date());
+  const [showDateFromPicker, setShowDateFromPicker] = useState(false);
+  const [showDateToPicker, setShowDateToPicker] = useState(false);
   const [searchType, setSearchType] = useState<'both' | 'closed' | 'open'>('both');
 
   const handleSearch = () => {
     // Validar que al menos un filtro esté presente
-    if (!searchId.trim() && !searchTitle.trim() && !searchInspectorName.trim() && !searchMonth && !searchYear) {
+    if (!searchId.trim() && !searchTitle.trim() && !searchInspectorName.trim() && !dateFrom && !dateTo) {
       Alert.alert('Error', 'Debes ingresar al menos un filtro de búsqueda');
-      return;
-    }
-
-    // Validar mes y año si se proporcionaron
-    if (searchMonth && (!searchYear || searchYear.length !== 4)) {
-      Alert.alert('Error', 'Debes ingresar un año válido (4 dígitos) si especificas un mes');
-      return;
-    }
-    if (searchYear && searchYear.length !== 4) {
-      Alert.alert('Error', 'El año debe tener 4 dígitos');
-      return;
-    }
-    if (searchMonth && (parseInt(searchMonth) < 1 || parseInt(searchMonth) > 12)) {
-      Alert.alert('Error', 'El mes debe estar entre 1 y 12');
       return;
     }
 
@@ -51,8 +43,8 @@ export default function SearchInspectionsScreen() {
         id: searchId.trim(),
         title: searchTitle.trim(),
         inspectorName: searchInspectorName.trim(),
-        month: searchMonth,
-        year: searchYear,
+        dateFrom: dateFrom ? dateFrom.toISOString().split('T')[0] : '',
+        dateTo: dateTo ? dateTo.toISOString().split('T')[0] : '',
         type: searchType,
       },
     });
@@ -62,8 +54,8 @@ export default function SearchInspectionsScreen() {
     setSearchId('');
     setSearchTitle('');
     setSearchInspectorName('');
-    setSearchMonth('');
-    setSearchYear('');
+    setDateFrom(null);
+    setDateTo(null);
     setSearchType('both');
   };
 
@@ -130,44 +122,51 @@ export default function SearchInspectionsScreen() {
             />
           </View>
 
-          {/* Mes y Año */}
+          {/* Rango de Fechas */}
           <View style={styles.inputContainer}>
-            <Text style={styles.label}>Mes y Año</Text>
-            <View style={styles.dateRowContainer}>
-              <View style={styles.dateInputWrapper}>
-                <Text style={styles.dateLabel}>Mes</Text>
-                <TextInput
+            <Text style={styles.label}>Rango de Fechas</Text>
+            <View style={styles.dateContainer}>
+              <View style={styles.dateInputContainer}>
+                <Text style={styles.dateLabel}>Desde</Text>
+                <TouchableOpacity
                   style={styles.dateInput}
-                  placeholder="MM"
-                  placeholderTextColor="#9ca3af"
-                  value={searchMonth}
-                  onChangeText={(text) => {
-                    // Solo permitir números y máximo 2 dígitos
-                    const numericValue = text.replace(/[^0-9]/g, '').slice(0, 2);
-                    setSearchMonth(numericValue);
+                  onPress={() => {
+                    setTempDateFrom(dateFrom || new Date());
+                    setShowDateFromPicker(true);
                   }}
-                  keyboardType="number-pad"
-                  maxLength={2}
-                />
+                >
+                  <Text style={[styles.dateInputText, !dateFrom && styles.dateInputPlaceholder]}>
+                    {dateFrom
+                      ? dateFrom.toLocaleDateString('es-ES', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        })
+                      : 'Seleccionar fecha'}
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <View style={styles.dateInputWrapper}>
-                <Text style={styles.dateLabel}>Año</Text>
-                <TextInput
+              <View style={styles.dateInputContainer}>
+                <Text style={styles.dateLabel}>Hasta</Text>
+                <TouchableOpacity
                   style={styles.dateInput}
-                  placeholder="YYYY"
-                  placeholderTextColor="#9ca3af"
-                  value={searchYear}
-                  onChangeText={(text) => {
-                    // Solo permitir números y máximo 4 dígitos
-                    const numericValue = text.replace(/[^0-9]/g, '').slice(0, 4);
-                    setSearchYear(numericValue);
+                  onPress={() => {
+                    setTempDateTo(dateTo || new Date());
+                    setShowDateToPicker(true);
                   }}
-                  keyboardType="number-pad"
-                  maxLength={4}
-                />
+                >
+                  <Text style={[styles.dateInputText, !dateTo && styles.dateInputPlaceholder]}>
+                    {dateTo
+                      ? dateTo.toLocaleDateString('es-ES', {
+                          year: 'numeric',
+                          month: '2-digit',
+                          day: '2-digit',
+                        })
+                      : 'Seleccionar fecha'}
+                  </Text>
+                </TouchableOpacity>
               </View>
             </View>
-            <Text style={styles.dateHint}>Deja vacío para buscar en todos los meses/años</Text>
           </View>
 
           {/* Tipo de Inspección */}
@@ -239,6 +238,139 @@ export default function SearchInspectionsScreen() {
           </View>
         </View>
       </ScrollView>
+
+      {/* Date Pickers */}
+      {Platform.OS === 'ios' ? (
+        <>
+          <Modal
+            visible={showDateFromPicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowDateFromPicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Seleccionar Fecha Desde</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowDateFromPicker(false)}
+                    style={styles.modalCloseButton}
+                  >
+                    <Ionicons name="close" size={24} color="#1f2937" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={tempDateFrom}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event: any, selectedDate?: Date) => {
+                    if (selectedDate) {
+                      setTempDateFrom(selectedDate);
+                    }
+                  }}
+                  locale="es-ES"
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => setShowDateFromPicker(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalConfirmButton}
+                    onPress={() => {
+                      setDateFrom(tempDateFrom);
+                      setShowDateFromPicker(false);
+                    }}
+                  >
+                    <Text style={styles.modalConfirmText}>Confirmar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+          <Modal
+            visible={showDateToPicker}
+            transparent={true}
+            animationType="slide"
+            onRequestClose={() => setShowDateToPicker(false)}
+          >
+            <View style={styles.modalOverlay}>
+              <View style={styles.modalContent}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Seleccionar Fecha Hasta</Text>
+                  <TouchableOpacity
+                    onPress={() => setShowDateToPicker(false)}
+                    style={styles.modalCloseButton}
+                  >
+                    <Ionicons name="close" size={24} color="#1f2937" />
+                  </TouchableOpacity>
+                </View>
+                <DateTimePicker
+                  value={tempDateTo}
+                  mode="date"
+                  display="spinner"
+                  onChange={(event: any, selectedDate?: Date) => {
+                    if (selectedDate) {
+                      setTempDateTo(selectedDate);
+                    }
+                  }}
+                  locale="es-ES"
+                />
+                <View style={styles.modalActions}>
+                  <TouchableOpacity
+                    style={styles.modalCancelButton}
+                    onPress={() => setShowDateToPicker(false)}
+                  >
+                    <Text style={styles.modalCancelText}>Cancelar</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.modalConfirmButton}
+                    onPress={() => {
+                      setDateTo(tempDateTo);
+                      setShowDateToPicker(false);
+                    }}
+                  >
+                    <Text style={styles.modalConfirmText}>Confirmar</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </View>
+          </Modal>
+        </>
+      ) : (
+        <>
+          {showDateFromPicker && (
+            <DateTimePicker
+              value={dateFrom || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event: any, selectedDate?: Date) => {
+                setShowDateFromPicker(false);
+                if (event.type === 'set' && selectedDate) {
+                  setDateFrom(selectedDate);
+                }
+              }}
+              locale="es-ES"
+            />
+          )}
+          {showDateToPicker && (
+            <DateTimePicker
+              value={dateTo || new Date()}
+              mode="date"
+              display="default"
+              onChange={(event: any, selectedDate?: Date) => {
+                setShowDateToPicker(false);
+                if (event.type === 'set' && selectedDate) {
+                  setDateTo(selectedDate);
+                }
+              }}
+              locale="es-ES"
+            />
+          )}
+        </>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -368,11 +500,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  dateRowContainer: {
+  dateContainer: {
     flexDirection: 'row',
     gap: 12,
   },
-  dateInputWrapper: {
+  dateInputContainer: {
     flex: 1,
   },
   dateLabel: {
@@ -385,17 +517,72 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     borderRadius: 8,
-    padding: 10,
+    padding: 12,
+    backgroundColor: '#fff',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  dateInputText: {
     fontSize: 14,
     color: '#1f2937',
-    backgroundColor: '#fff',
-    textAlign: 'center',
   },
-  dateHint: {
-    fontSize: 11,
+  dateInputPlaceholder: {
     color: '#9ca3af',
-    marginTop: 6,
-    fontStyle: 'italic',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'flex-end',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 40,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e5e7eb',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1f2937',
+  },
+  modalCloseButton: {
+    padding: 4,
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 12,
+    padding: 20,
+    paddingTop: 16,
+  },
+  modalCancelButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  modalCancelText: {
+    fontSize: 16,
+    color: '#6b7280',
+    fontWeight: '500',
+  },
+  modalConfirmButton: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#3b82f6',
+  },
+  modalConfirmText: {
+    fontSize: 16,
+    color: '#fff',
+    fontWeight: '600',
   },
 });
 
