@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
+import { useNetworkContext } from '../contexts/NetworkContext';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -35,6 +36,7 @@ export default function LoginScreen() {
   const [showRegisterConfirmPassword, setShowRegisterConfirmPassword] = useState(false);
   
   const { login, register } = useAuth();
+  const { isOffline } = useNetworkContext();
   const { width: viewportWidth, height: viewportHeight } = useWindowDimensions();
 
   const responsive = useMemo(() => {
@@ -95,6 +97,10 @@ export default function LoginScreen() {
   };
 
   const handleRegister = async () => {
+    if (isOffline) {
+      Alert.alert('Sin conexión', 'Se requiere conexión a internet para registrarse.');
+      return;
+    }
     if (!firstName.trim() || !lastName.trim() || !email.trim() || !password.trim() || !confirmPassword.trim() || !phone.trim()) {
       Alert.alert('Error', 'Por favor completa todos los campos');
       return;
@@ -130,6 +136,10 @@ export default function LoginScreen() {
   };
 
   const handleLogin = async () => {
+    if (isOffline) {
+      Alert.alert('Sin conexión', 'Se requiere conexión a internet para iniciar sesión.');
+      return;
+    }
     if (!email.trim() || !password.trim()) {
       Alert.alert('Campos Requeridos', 'Por favor ingresa tu email y contraseña para continuar');
       return;
@@ -320,6 +330,12 @@ export default function LoginScreen() {
               }
             ]}>
               <Text style={[styles.formTitle, { fontSize: responsive.formTitleSize }]}>Iniciar Sesión</Text>
+
+              {isOffline && (
+                <View style={styles.offlineBanner}>
+                  <Text style={styles.offlineBannerText}>Se requiere conexión a internet para iniciar sesión.</Text>
+                </View>
+              )}
               
               <View style={styles.inputContainer}>
                 <Text style={[styles.inputLabel, { fontSize: responsive.labelFontSize, marginBottom: responsive.inputPadding * 0.4 }]}>Email</Text>
@@ -368,13 +384,23 @@ export default function LoginScreen() {
                     paddingVertical: responsive.buttonPaddingVertical,
                     paddingHorizontal: responsive.formPaddingHorizontal * 0.8
                   },
-                  isLoading && styles.loginButtonDisabled
+                  (isLoading || isOffline) && styles.loginButtonDisabled
                 ]}
                 onPress={handleLogin}
-                disabled={isLoading}
+                disabled={isLoading || isOffline}
               >
                 <Text style={[styles.loginButtonText, { fontSize: responsive.buttonFontSize }]}>
                   {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.forgotPasswordLink, { marginTop: responsive.welcomeSpacing * 0.5 }]}
+                onPress={() => router.push('/forgot-password')}
+                disabled={isLoading || isOffline}
+              >
+                <Text style={[styles.forgotPasswordLinkText, { fontSize: responsive.smallTextSize }]}>
+                  ¿Olvidaste tu contraseña?
                 </Text>
               </TouchableOpacity>
 
@@ -459,6 +485,12 @@ export default function LoginScreen() {
               }
             ]}>
             <Text style={[styles.formTitle, { fontSize: responsive.formTitleSize }]}>Crear Cuenta</Text>
+
+            {isOffline && (
+              <View style={styles.offlineBanner}>
+                <Text style={styles.offlineBannerText}>Se requiere conexión a internet para registrarse.</Text>
+              </View>
+            )}
             
             <View style={styles.nameRow}>
               <View style={styles.nameInputWrapper}>
@@ -565,10 +597,10 @@ export default function LoginScreen() {
                   paddingVertical: responsive.buttonPaddingVertical,
                   paddingHorizontal: responsive.formPaddingHorizontal * 0.8
                 },
-                isLoading && styles.loginButtonDisabled
+                (isLoading || isOffline) && styles.loginButtonDisabled
               ]}
               onPress={handleRegister}
-              disabled={isLoading}
+              disabled={isLoading || isOffline}
             >
               <Text style={[styles.loginButtonText, { fontSize: responsive.buttonFontSize }]}>
                 {isLoading ? 'Creando cuenta...' : 'Crear Cuenta'}
@@ -865,6 +897,25 @@ const styles = StyleSheet.create({
     fontSize: 14,
     textAlign: 'center',
     marginTop: 12,
+  },
+  offlineBanner: {
+    backgroundColor: '#fef3c7',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  offlineBannerText: {
+    color: '#92400e',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  forgotPasswordLink: {
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  forgotPasswordLinkText: {
+    color: '#0ea5e9',
+    fontWeight: '600',
   },
   registerPrompt: {
     flexDirection: 'row',

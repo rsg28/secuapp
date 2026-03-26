@@ -18,6 +18,8 @@
  */
 import { useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getIsOffline } from '../utils/networkStore';
+import { storage } from '../utils/storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -186,6 +188,19 @@ export const useOpenInspectionTemplates = () => {
       setLoading(true);
       setError(null);
 
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+
+      if (getIsOffline()) {
+        const cached = await storage.loadOpenTemplatesForUser(userId);
+        if (cached && Array.isArray(cached)) {
+          setTemplates(cached);
+          return { data: { templates: cached } };
+        }
+        throw new Error('Sin conexión y sin templates en caché. Inicia sesión con internet para cargarlos.');
+      }
+
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/open-inspection-templates/user/${userId}?page=${page}&limit=${limit}`, {
         method: 'GET',
@@ -211,10 +226,10 @@ export const useOpenInspectionTemplates = () => {
         throw new Error(message);
       }
 
-      if (data && Array.isArray(data?.data?.templates)) {
-        setTemplates(data.data.templates);
-      } else {
-        setTemplates([]);
+      const list = data?.data?.templates ?? [];
+      setTemplates(Array.isArray(list) ? list : []);
+      if (Array.isArray(list)) {
+        await storage.saveOpenTemplatesForUser(userId, list);
       }
       return data;
     } catch (err) {

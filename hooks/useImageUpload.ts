@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getIsOffline } from '../utils/networkStore';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -17,6 +18,10 @@ export const useImageUpload = () => {
   const uploadImage = async (params: UploadImageParams): Promise<string | null> => {
     try {
       setUploading(true);
+
+      if (getIsOffline()) {
+        return params.imageUri;
+      }
       
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {
@@ -88,6 +93,12 @@ export const useImageUpload = () => {
   const deleteImage = async (imageUrl: string): Promise<boolean> => {
     try {
       setUploading(true);
+
+      if (getIsOffline()) {
+        const isLocalUri = imageUrl.startsWith('file://') || imageUrl.startsWith('content://');
+        if (isLocalUri) return true;
+        throw new Error('No se puede eliminar imágenes sin conexión');
+      }
       
       const token = await AsyncStorage.getItem('authToken');
       if (!token) {

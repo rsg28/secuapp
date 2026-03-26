@@ -49,24 +49,12 @@ export default function ProfileScreen() {
   }, [user?.id]);
 
   const handleLogout = async () => {
-    Alert.alert(
-      'Cerrar Sesión',
-      '¿Estás seguro de que deseas cerrar sesión?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
-        },
-        {
-          text: 'Cerrar Sesión',
-          style: 'destructive',
-          onPress: async () => {
-            await logout();
-            router.replace('/login');
-          },
-        },
-      ]
-    );
+    try {
+      await logout();
+      router.replace('/login');
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'No se pudo cerrar sesión');
+    }
   };
 
   const handleChangeProfileImage = () => {
@@ -253,7 +241,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.profileImageContainer}>
@@ -446,7 +434,11 @@ export default function ProfileScreen() {
 
       {/* Logout Button */}
       <View style={styles.section}>
-        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+        >
           <IconSymbol name="rectangle.portrait.and.arrow.right" size={24} color="#fff" />
           <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
         </TouchableOpacity>

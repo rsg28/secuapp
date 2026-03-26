@@ -3,10 +3,13 @@ import { Redirect, Tabs } from 'expo-router';
 import React, { useMemo } from 'react';
 import { ActivityIndicator, View, useWindowDimensions, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { OfflineBanner } from '../../components/OfflineBanner';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNetworkContext } from '../../contexts/NetworkContext';
 
 export default function TabLayout() {
   const { user, isLoading } = useAuth();
+  const { isOffline } = useNetworkContext();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -15,11 +18,14 @@ export default function TabLayout() {
     const isLargeDevice = width > 768;
     const baseHeight = Math.min(80, Math.max(58, width * 0.18));
     const paddingBottom = Math.max(insets.bottom || 0, isSmallDevice ? 10 : 14);
+    const extraBottom = -20;
+    const totalPaddingBottom = paddingBottom + extraBottom;
     const paddingTop = isSmallDevice ? 6 : 10;
     const horizontalMargin = isLargeDevice ? 24 : 0;
     const borderRadius = isLargeDevice ? 24 : 0;
     const paddingHorizontal = isLargeDevice ? Math.max(18, width * 0.04) : Math.max(12, width * 0.03);
     const iconSize = isSmallDevice ? 20 : Math.min(28, Math.max(22, width * 0.06));
+    const tabBarHeight = baseHeight + totalPaddingBottom;
 
     const tabBarStyle: ViewStyle = {
       position: 'absolute',
@@ -28,8 +34,8 @@ export default function TabLayout() {
       right: horizontalMargin,
       backgroundColor: '#f3f4f6',
       borderTopWidth: 0,
-      height: baseHeight + paddingBottom,
-      paddingBottom,
+      height: tabBarHeight,
+      paddingBottom: totalPaddingBottom,
       paddingTop,
       paddingHorizontal,
       borderRadius,
@@ -41,7 +47,8 @@ export default function TabLayout() {
 
     return {
       tabBarStyle,
-      iconSize
+      iconSize,
+      tabBarHeight,
     };
   }, [width, insets.bottom]);
 
@@ -58,7 +65,8 @@ export default function TabLayout() {
   }
 
   return (
-    <Tabs
+    <View style={{ flex: 1 }}>
+      <Tabs
       screenOptions={{
         tabBarActiveTintColor: '#1e40af', // Azul profesional
         tabBarInactiveTintColor: '#6b7280', // Gris más oscuro
@@ -119,5 +127,11 @@ export default function TabLayout() {
         }}
       />
     </Tabs>
+      {isOffline && (
+        <View style={{ position: 'absolute', left: 0, right: 0, bottom: tabMetrics.tabBarHeight }}>
+          <OfflineBanner />
+        </View>
+      )}
+    </View>
   );
 }

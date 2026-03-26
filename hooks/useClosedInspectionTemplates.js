@@ -18,6 +18,8 @@
  */
 import { useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getIsOffline } from '../utils/networkStore';
+import { storage } from '../utils/storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -194,18 +196,30 @@ export const useClosedInspectionTemplates = () => {
     }
   };
 
-  // Obtener templates por user_id
+  // Obtener templates por user_id (usa caché local si está offline)
   const getTemplatesByUserId = useCallback(async (userId, page = 1, limit = 10) => {
     try {
       setLoading(true);
       setError(null);
-      
+
+      if (!userId) {
+        throw new Error('User ID is required');
+      }
+
+      if (getIsOffline()) {
+        const cached = await storage.loadClosedTemplatesForUser(userId);
+        if (cached && Array.isArray(cached)) {
+          setTemplates(cached);
+          return { data: { templates: cached } };
+        }
+        throw new Error('Sin conexión y sin templates en caché. Inicia sesión con internet para cargarlos.');
+      }
+
       const token = await getAuthToken();
-      
       if (!token) {
         throw new Error('No authentication token found');
       }
-      
+
       const response = await fetch(`${API_BASE_URL}/closed-inspection-templates/user/${userId}?page=${page}&limit=${limit}`, {
         method: 'GET',
         headers: {
@@ -220,7 +234,9 @@ export const useClosedInspectionTemplates = () => {
         throw new Error(responseData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
 
-      setTemplates(responseData.data.templates);
+      const list = responseData.data?.templates ?? [];
+      setTemplates(list);
+      await storage.saveClosedTemplatesForUser(userId, list);
       return responseData;
     } catch (err) {
       const errorMessage = err.message || 'Unknown error occurred';

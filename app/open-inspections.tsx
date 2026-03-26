@@ -903,10 +903,7 @@ export default function OpenInspectionsScreen() {
 
           {filteredForms.map((form) => (
             <View key={form.id} style={styles.formCard}>
-            <TouchableOpacity 
-                style={styles.formCardContent}
-              onPress={() => handleFormPress(form)}
-            >
+            <View style={styles.formCardContent}>
               <View style={styles.formCardHeader}>
                 <View style={styles.formInfo}>
                   <View style={styles.formTitleRow}>
@@ -926,7 +923,7 @@ export default function OpenInspectionsScreen() {
                   {form.itemCount} elementos
                   </Text>
               </View>
-            </TouchableOpacity>
+            </View>
               
               {/* Botones de acción en esquina inferior derecha */}
               <TouchableOpacity 

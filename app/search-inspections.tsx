@@ -14,7 +14,7 @@ import {
   Platform,
   Modal,
 } from 'react-native';
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
 
 export default function SearchInspectionsScreen() {
   const { width } = useWindowDimensions();
@@ -28,6 +28,29 @@ export default function SearchInspectionsScreen() {
   const [showDateFromPicker, setShowDateFromPicker] = useState(false);
   const [showDateToPicker, setShowDateToPicker] = useState(false);
   const [searchType, setSearchType] = useState<'both' | 'closed' | 'open'>('both');
+  const [searchStatus, setSearchStatus] = useState<'all' | 'completed' | 'incomplete'>('all');
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
+
+  const typeLabelMap: Record<'both' | 'closed' | 'open', string> = {
+    both: 'Ambos',
+    closed: 'Checklist',
+    open: 'Abierta',
+  };
+
+  const statusLabelMap: Record<'all' | 'completed' | 'incomplete', string> = {
+    all: 'Todas',
+    completed: 'Completadas',
+    incomplete: 'Incompletas',
+  };
+
+  // Evita desfase por zona horaria (toISOString usa UTC y puede cambiar el día)
+  const formatLocalDateForQuery = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  };
 
   const handleSearch = () => {
     // Validar que al menos un filtro esté presente
@@ -43,9 +66,32 @@ export default function SearchInspectionsScreen() {
         id: searchId.trim(),
         title: searchTitle.trim(),
         inspectorName: searchInspectorName.trim(),
-        dateFrom: dateFrom ? dateFrom.toISOString().split('T')[0] : '',
-        dateTo: dateTo ? dateTo.toISOString().split('T')[0] : '',
+        dateFrom: dateFrom ? formatLocalDateForQuery(dateFrom) : '',
+        dateTo: dateTo ? formatLocalDateForQuery(dateTo) : '',
         type: searchType,
+        status: searchStatus,
+      },
+    });
+  };
+
+  const openAndroidDatePicker = (field: 'from' | 'to') => {
+    const currentValue =
+      field === 'from'
+        ? (dateFrom || new Date())
+        : (dateTo || new Date());
+
+    DateTimePickerAndroid.open({
+      value: currentValue,
+      mode: 'date',
+      is24Hour: true,
+      onChange: (event: any, selectedDate?: Date) => {
+        if (event?.type === 'set' && selectedDate) {
+          if (field === 'from') {
+            setDateFrom(selectedDate);
+          } else {
+            setDateTo(selectedDate);
+          }
+        }
       },
     });
   };
@@ -57,6 +103,9 @@ export default function SearchInspectionsScreen() {
     setDateFrom(null);
     setDateTo(null);
     setSearchType('both');
+    setSearchStatus('all');
+    setShowTypeDropdown(false);
+    setShowStatusDropdown(false);
   };
 
   return (
@@ -131,8 +180,12 @@ export default function SearchInspectionsScreen() {
                 <TouchableOpacity
                   style={styles.dateInput}
                   onPress={() => {
-                    setTempDateFrom(dateFrom || new Date());
-                    setShowDateFromPicker(true);
+                    if (Platform.OS === 'android') {
+                      openAndroidDatePicker('from');
+                    } else {
+                      setTempDateFrom(dateFrom || new Date());
+                      setShowDateFromPicker(true);
+                    }
                   }}
                 >
                   <Text style={[styles.dateInputText, !dateFrom && styles.dateInputPlaceholder]}>
@@ -151,8 +204,12 @@ export default function SearchInspectionsScreen() {
                 <TouchableOpacity
                   style={styles.dateInput}
                   onPress={() => {
-                    setTempDateTo(dateTo || new Date());
-                    setShowDateToPicker(true);
+                    if (Platform.OS === 'android') {
+                      openAndroidDatePicker('to');
+                    } else {
+                      setTempDateTo(dateTo || new Date());
+                      setShowDateToPicker(true);
+                    }
                   }}
                 >
                   <Text style={[styles.dateInputText, !dateTo && styles.dateInputPlaceholder]}>
@@ -170,51 +227,84 @@ export default function SearchInspectionsScreen() {
           </View>
 
           {/* Tipo de Inspección */}
-          <View style={styles.inputContainer}>
+          <View style={[styles.inputContainer, showTypeDropdown && styles.dropdownInputContainerActive]}>
             <Text style={styles.label}>Tipo de Inspección</Text>
-            <View style={styles.typeSelectorContainer}>
+            <View style={styles.dropdownContainerInline}>
               <TouchableOpacity
-                style={[
-                  styles.typeButton,
-                  searchType === 'both' && styles.typeButtonActive
-                ]}
-                onPress={() => setSearchType('both')}
+                style={styles.dropdownButtonInline}
+                onPress={() => {
+                  setShowTypeDropdown((prev) => !prev);
+                  setShowStatusDropdown(false);
+                }}
               >
-                <Text style={[
-                  styles.typeButtonText,
-                  searchType === 'both' && styles.typeButtonTextActive
-                ]}>
-                  Ambos
+                <Text style={styles.dropdownButtonInlineText} numberOfLines={1}>
+                  {typeLabelMap[searchType]}
                 </Text>
+                <Ionicons
+                  name={showTypeDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6b7280"
+                />
               </TouchableOpacity>
+              {showTypeDropdown && (
+                <View style={styles.dropdownMenuInline}>
+                  {(['both', 'closed', 'open'] as const).map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.dropdownMenuItemInline}
+                      onPress={() => {
+                        setSearchType(option);
+                        setShowTypeDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownMenuItemInlineText} numberOfLines={1}>
+                        {typeLabelMap[option]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Estado */}
+          <View style={[styles.inputContainer, showStatusDropdown && styles.dropdownInputContainerActive]}>
+            <Text style={styles.label}>Estado</Text>
+            <View style={styles.dropdownContainerInline}>
               <TouchableOpacity
-                style={[
-                  styles.typeButton,
-                  searchType === 'closed' && styles.typeButtonActive
-                ]}
-                onPress={() => setSearchType('closed')}
+                style={styles.dropdownButtonInline}
+                onPress={() => {
+                  setShowStatusDropdown((prev) => !prev);
+                  setShowTypeDropdown(false);
+                }}
               >
-                <Text style={[
-                  styles.typeButtonText,
-                  searchType === 'closed' && styles.typeButtonTextActive
-                ]}>
-                  Checklist
+                <Text style={styles.dropdownButtonInlineText} numberOfLines={1}>
+                  {statusLabelMap[searchStatus]}
                 </Text>
+                <Ionicons
+                  name={showStatusDropdown ? 'chevron-up' : 'chevron-down'}
+                  size={18}
+                  color="#6b7280"
+                />
               </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.typeButton,
-                  searchType === 'open' && styles.typeButtonActive
-                ]}
-                onPress={() => setSearchType('open')}
-              >
-                <Text style={[
-                  styles.typeButtonText,
-                  searchType === 'open' && styles.typeButtonTextActive
-                ]}>
-                  Abierta
-                </Text>
-              </TouchableOpacity>
+              {showStatusDropdown && (
+                <View style={styles.dropdownMenuInline}>
+                  {(['all', 'completed', 'incomplete'] as const).map((option) => (
+                    <TouchableOpacity
+                      key={option}
+                      style={styles.dropdownMenuItemInline}
+                      onPress={() => {
+                        setSearchStatus(option);
+                        setShowStatusDropdown(false);
+                      }}
+                    >
+                      <Text style={styles.dropdownMenuItemInlineText} numberOfLines={1}>
+                        {statusLabelMap[option]}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
             </View>
           </View>
 
@@ -339,38 +429,7 @@ export default function SearchInspectionsScreen() {
             </View>
           </Modal>
         </>
-      ) : (
-        <>
-          {showDateFromPicker && (
-            <DateTimePicker
-              value={dateFrom || new Date()}
-              mode="date"
-              display="default"
-              onChange={(event: any, selectedDate?: Date) => {
-                setShowDateFromPicker(false);
-                if (event.type === 'set' && selectedDate) {
-                  setDateFrom(selectedDate);
-                }
-              }}
-              locale="es-ES"
-            />
-          )}
-          {showDateToPicker && (
-            <DateTimePicker
-              value={dateTo || new Date()}
-              mode="date"
-              display="default"
-              onChange={(event: any, selectedDate?: Date) => {
-                setShowDateToPicker(false);
-                if (event.type === 'set' && selectedDate) {
-                  setDateTo(selectedDate);
-                }
-              }}
-              locale="es-ES"
-            />
-          )}
-        </>
-      )}
+      ) : null}
     </KeyboardAvoidingView>
   );
 }
@@ -473,32 +532,58 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  typeSelectorContainer: {
-    flexDirection: 'row',
-    gap: 8,
+  dropdownContainerInline: {
+    position: 'relative',
+    zIndex: 20,
   },
-  typeButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
+  dropdownInputContainerActive: {
+    zIndex: 100,
+    elevation: 20,
+  },
+  dropdownButtonInline: {
     borderWidth: 1,
     borderColor: '#e5e7eb',
+    borderRadius: 8,
     backgroundColor: '#fff',
+    minHeight: 46,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
-  typeButtonActive: {
-    backgroundColor: '#3b82f6',
-    borderColor: '#3b82f6',
-  },
-  typeButtonText: {
+  dropdownButtonInlineText: {
+    flex: 1,
     fontSize: 14,
-    fontWeight: '500',
-    color: '#6b7280',
+    color: '#1f2937',
+    marginRight: 8,
   },
-  typeButtonTextActive: {
-    color: '#fff',
-    fontWeight: '600',
+  dropdownMenuInline: {
+    position: 'absolute',
+    top: 52,
+    left: 0,
+    right: 0,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+    borderRadius: 8,
+    backgroundColor: '#fff',
+    overflow: 'hidden',
+    zIndex: 30,
+    elevation: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+  },
+  dropdownMenuItemInline: {
+    minHeight: 42,
+    paddingHorizontal: 12,
+    justifyContent: 'center',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f3f4f6',
+  },
+  dropdownMenuItemInlineText: {
+    fontSize: 14,
+    color: '#1f2937',
   },
   dateContainer: {
     flexDirection: 'row',

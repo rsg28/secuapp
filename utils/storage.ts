@@ -6,6 +6,12 @@ const STORAGE_KEYS = {
   USER_SESSION: 'userSession',
   EMPLOYEES: 'employees',
   TEMPLATE_ID_MAP: 'templateIdMap',
+  OFFLINE_ITEMS: 'offlineItems', // Inspecciones/AST/RALS creados offline (pendientes de sync)
+  PENDING_DELETES: 'pendingDeletes', // IDs eliminados offline (pendientes de DELETE en API)
+  CLOSED_TEMPLATES_PREFIX: 'closed_templates_user_',
+  OPEN_TEMPLATES_PREFIX: 'open_templates_user_',
+  CLOSED_TEMPLATE_ITEMS_PREFIX: 'closed_template_items_',
+  OPEN_TEMPLATE_ITEMS_PREFIX: 'open_template_items_',
 };
 
 export const storage = {
@@ -227,6 +233,176 @@ export const storage = {
     } catch (error) {
       console.error('Error loading user templates:', error);
       return [];
+    }
+  },
+
+  // Offline: items creados sin conexión (pendientes de sincronizar)
+  async saveOfflineItems(items: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEYS.OFFLINE_ITEMS, JSON.stringify(items));
+    } catch (error) {
+      console.error('Error saving offline items:', error);
+    }
+  },
+
+  async loadOfflineItems(): Promise<any[]> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.OFFLINE_ITEMS);
+      return raw ? JSON.parse(raw) : [];
+    } catch (error) {
+      console.error('Error loading offline items:', error);
+      return [];
+    }
+  },
+
+  async addOfflineItem(item: any): Promise<void> {
+    const items = await this.loadOfflineItems();
+    items.push(item);
+    await this.saveOfflineItems(items);
+  },
+
+  async addPendingDelete(id: string): Promise<void> {
+    const ids = await this.getPendingDeletes();
+    if (!ids.includes(id)) {
+      ids.push(id);
+      await AsyncStorage.setItem(STORAGE_KEYS.PENDING_DELETES, JSON.stringify(ids));
+    }
+  },
+
+  async removePendingDelete(id: string): Promise<void> {
+    const ids = (await this.getPendingDeletes()).filter((i) => i !== id);
+    await AsyncStorage.setItem(STORAGE_KEYS.PENDING_DELETES, JSON.stringify(ids));
+  },
+
+  async getPendingDeletes(): Promise<string[]> {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.PENDING_DELETES);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  },
+
+  async removeOfflineItem(id: string): Promise<void> {
+    const items = await this.loadOfflineItems();
+    const filtered = items.filter((i: any) => i.id !== id);
+    await this.saveOfflineItems(filtered);
+  },
+
+  // Payload completo de inspección offline (response + items) para edición y sync
+  OFFLINE_INSPECTION_PREFIX: 'offline_inspection_',
+
+  async saveOfflineInspectionPayload(localId: string, payload: { response: any; items: any[] }): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        `${this.OFFLINE_INSPECTION_PREFIX}${localId}`,
+        JSON.stringify(payload)
+      );
+    } catch (error) {
+      console.error('Error saving offline inspection payload:', error);
+    }
+  },
+
+  async getOfflineInspectionPayload(localId: string): Promise<{ response: any; items: any[] } | null> {
+    try {
+      const raw = await AsyncStorage.getItem(`${this.OFFLINE_INSPECTION_PREFIX}${localId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error('Error loading offline inspection payload:', error);
+      return null;
+    }
+  },
+
+  async removeOfflineInspectionPayload(localId: string): Promise<void> {
+    try {
+      await AsyncStorage.removeItem(`${this.OFFLINE_INSPECTION_PREFIX}${localId}`);
+    } catch (error) {
+      console.error('Error removing offline inspection payload:', error);
+    }
+  },
+
+  // Cache de templates (inspecciones cerradas/abiertas) para uso offline
+  async saveClosedTemplatesForUser(userId: string, templates: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        `${STORAGE_KEYS.CLOSED_TEMPLATES_PREFIX}${userId}`,
+        JSON.stringify(templates)
+      );
+    } catch (error) {
+      console.error('Error saving closed templates cache:', error);
+    }
+  },
+
+  async loadClosedTemplatesForUser(userId: string): Promise<any[] | null> {
+    try {
+      const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.CLOSED_TEMPLATES_PREFIX}${userId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error('Error loading closed templates cache:', error);
+      return null;
+    }
+  },
+
+  async saveOpenTemplatesForUser(userId: string, templates: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        `${STORAGE_KEYS.OPEN_TEMPLATES_PREFIX}${userId}`,
+        JSON.stringify(templates)
+      );
+    } catch (error) {
+      console.error('Error saving open templates cache:', error);
+    }
+  },
+
+  async loadOpenTemplatesForUser(userId: string): Promise<any[] | null> {
+    try {
+      const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.OPEN_TEMPLATES_PREFIX}${userId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error('Error loading open templates cache:', error);
+      return null;
+    }
+  },
+
+  async saveClosedTemplateItems(templateId: string, items: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        `${STORAGE_KEYS.CLOSED_TEMPLATE_ITEMS_PREFIX}${templateId}`,
+        JSON.stringify(items)
+      );
+    } catch (error) {
+      console.error('Error saving closed template items cache:', error);
+    }
+  },
+
+  async loadClosedTemplateItems(templateId: string): Promise<any[] | null> {
+    try {
+      const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.CLOSED_TEMPLATE_ITEMS_PREFIX}${templateId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error('Error loading closed template items cache:', error);
+      return null;
+    }
+  },
+
+  async saveOpenTemplateItems(templateId: string, items: any[]): Promise<void> {
+    try {
+      await AsyncStorage.setItem(
+        `${STORAGE_KEYS.OPEN_TEMPLATE_ITEMS_PREFIX}${templateId}`,
+        JSON.stringify(items)
+      );
+    } catch (error) {
+      console.error('Error saving open template items cache:', error);
+    }
+  },
+
+  async loadOpenTemplateItems(templateId: string): Promise<any[] | null> {
+    try {
+      const raw = await AsyncStorage.getItem(`${STORAGE_KEYS.OPEN_TEMPLATE_ITEMS_PREFIX}${templateId}`);
+      return raw ? JSON.parse(raw) : null;
+    } catch (error) {
+      console.error('Error loading open template items cache:', error);
+      return null;
     }
   },
 };

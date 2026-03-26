@@ -16,6 +16,8 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useCompanies } from '../../hooks/useCompanies';
 import { useAuth } from '../../contexts/AuthContext';
+import { useNetworkContext } from '../../contexts/NetworkContext';
+import { storage } from '../../utils/storage';
 
 interface Company {
   id: string;
@@ -89,7 +91,9 @@ export default function ProceduresScreen() {
   ]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [offlineBanner, setOfflineBanner] = useState<string | null>(null);
 
+  const { isOffline } = useNetworkContext();
   const { getAllCompanies, deleteCompany } = useCompanies();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [showCompanyModal, setShowCompanyModal] = useState(false);
@@ -102,35 +106,62 @@ export default function ProceduresScreen() {
   useFocusEffect(
     React.useCallback(() => {
       loadCompanies();
-    }, [])
+    }, [isOffline])
   );
+
+  const adaptRawToCompanies = (rawCompanies: any[]): Company[] =>
+    rawCompanies.map((company: any) => {
+      const industryName = company.industry || 'Sin Industria';
+      const industryKey = sanitizeIndustryKey(industryName);
+      return {
+        id: company.id,
+        name: company.name || 'Sin nombre',
+        industry: industryName,
+        industryKey,
+        contactPerson: company.contact_person || 'Sin contacto',
+        email: company.contact_email || 'Sin email',
+        phone: company.contact_phone || 'Sin teléfono',
+        address: company.address || 'Sin dirección',
+        status: company.status === 'inactive' ? 'inactive' : 'active',
+        formCount: company.form_count ?? 0,
+        lastActivity: formatDate(company.updated_at || company.created_at),
+        image_url: company.image_url || undefined,
+      };
+    });
 
   const loadCompanies = async () => {
     try {
       setLoadingCompanies(true);
       setErrorMessage(null);
+      setOfflineBanner(null);
+
+      if (isOffline) {
+        const cached = await storage.loadCompanies();
+        const adaptedCompanies = adaptRawToCompanies(cached);
+        const uniqueIndustries = new Map<string, IndustryOption>();
+        adaptedCompanies.forEach(company => {
+          if (company.industryKey && company.industryKey !== 'sinIndustria') {
+            if (!uniqueIndustries.has(company.industryKey)) {
+              uniqueIndustries.set(company.industryKey, {
+                id: company.industryKey,
+                name: company.industry,
+                color: INDUSTRY_COLORS[company.industryKey] || '#3b82f6'
+              });
+            }
+          }
+        });
+        setIndustryOptions([
+          { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+          ...Array.from(uniqueIndustries.values())
+        ]);
+        setCompanies(adaptedCompanies);
+        setOfflineBanner(cached.length > 0 ? 'Sin conexión. Mostrando datos guardados.' : 'Sin conexión. Conecta a internet para cargar las empresas.');
+        return;
+      }
 
       const response = await getAllCompanies(1, 100);
       const rawCompanies = response?.data?.companies || response?.data || [];
-
-      const adaptedCompanies: Company[] = rawCompanies.map((company: any) => {
-        const industryName = company.industry || 'Sin Industria';
-        const industryKey = sanitizeIndustryKey(industryName);
-        return {
-          id: company.id,
-          name: company.name || 'Sin nombre',
-          industry: industryName,
-          industryKey,
-          contactPerson: company.contact_person || 'Sin contacto',
-          email: company.contact_email || 'Sin email',
-          phone: company.contact_phone || 'Sin teléfono',
-          address: company.address || 'Sin dirección',
-          status: company.status === 'inactive' ? 'inactive' : 'active',
-          formCount: company.form_count ?? 0,
-          lastActivity: formatDate(company.updated_at || company.created_at),
-          image_url: company.image_url || undefined,
-        };
-      });
+      const adaptedCompanies = adaptRawToCompanies(rawCompanies);
 
       const uniqueIndustries = new Map<string, IndustryOption>();
       adaptedCompanies.forEach(company => {
@@ -150,9 +181,33 @@ export default function ProceduresScreen() {
         ...Array.from(uniqueIndustries.values())
       ]);
       setCompanies(adaptedCompanies);
-    } catch (error: any) {
-      console.error('Error loading companies:', error?.message);
-      setErrorMessage(error?.message || 'No se pudieron cargar las empresas');
+    } catch (_error: any) {
+      const cached = await storage.loadCompanies().catch(() => []);
+      const adaptedCompanies = adaptRawToCompanies(cached);
+      const uniqueIndustries = new Map<string, IndustryOption>();
+      adaptedCompanies.forEach(company => {
+        if (company.industryKey && company.industryKey !== 'sinIndustria') {
+          if (!uniqueIndustries.has(company.industryKey)) {
+            uniqueIndustries.set(company.industryKey, {
+              id: company.industryKey,
+              name: company.industry,
+              color: INDUSTRY_COLORS[company.industryKey] || '#3b82f6'
+            });
+          }
+        }
+      });
+      setIndustryOptions([
+        { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+        ...Array.from(uniqueIndustries.values())
+      ]);
+      setCompanies(adaptedCompanies);
+      if (cached.length > 0) {
+        setOfflineBanner('Sin conexión. Mostrando datos guardados.');
+        setErrorMessage(null);
+      } else {
+        setOfflineBanner(null);
+        setErrorMessage('Sin conexión. Conecta a internet para cargar las empresas.');
+      }
     } finally {
       setLoadingCompanies(false);
     }
@@ -308,10 +363,10 @@ export default function ProceduresScreen() {
             </View>
           )}
 
-          {!loadingCompanies && errorMessage && (
-            <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-              <Ionicons name="alert-circle" size={48} color="#ef4444" />
-              <Text style={{ marginTop: 12, color: '#ef4444', textAlign: 'center' }}>{errorMessage}</Text>
+          {!loadingCompanies && (offlineBanner || errorMessage) && (
+            <View style={{ paddingVertical: 16, paddingHorizontal: 16, marginHorizontal: 16, marginBottom: 8, backgroundColor: offlineBanner ? '#fef3c7' : '#fee2e2', borderRadius: 8, alignItems: 'center' }}>
+              <Ionicons name={offlineBanner ? 'cloud-offline' : 'alert-circle'} size={24} color={offlineBanner ? '#92400e' : '#ef4444'} />
+              <Text style={{ marginTop: 8, color: offlineBanner ? '#92400e' : '#ef4444', textAlign: 'center', fontSize: 14 }}>{offlineBanner || errorMessage}</Text>
             </View>
           )}
 

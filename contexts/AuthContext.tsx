@@ -2,9 +2,11 @@ import React, { createContext, ReactNode, useContext, useEffect, useState, useRe
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AuthContextType, User } from '../types/auth';
-import { initializeCompanies } from '../utils/initialData';
 import { storage } from '../utils/storage';
 import { useAuth as useAuthHook } from '../hooks/useAuth';
+import { useCompanies } from '../hooks/useCompanies';
+import { preloadInspectionTemplates } from '../services/preloadTemplates';
+import { getIsOffline } from '../utils/networkStore';
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -27,6 +29,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [currentCompany, setCurrentCompany] = useState<any | null>(null);
   
   const authHook = useAuthHook();
+  const { getAllCompanies } = useCompanies();
   const appState = useRef(AppState.currentState);
 
   useEffect(() => {
@@ -67,6 +70,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const session = await storage.getUserSession();
       if (session) {
         setUser(session);
+        if (session.id) {
+          preloadInspectionTemplates(session.id).catch(() => {});
+        }
       }
     } catch (error) {
       console.error('Error loading user session:', error);
@@ -127,6 +133,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           const backendUser = buildBackendUser(userProfile);
           await storage.saveUserSession(backendUser);
           setUser(backendUser);
+          if (backendUser.id) {
+            preloadInspectionTemplates(backendUser.id).catch(() => {});
+          }
+          await loadUserCompanies();
           return true;
         }
       }
@@ -142,13 +152,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const logout = async () => {
     try {
       await authHook.logout();
-      await storage.clearUserSession();
-      setUser(null);
-      setUserCompanies([]);
-      setCurrentCompany(null);
     } catch (error) {
-      console.error('Error during logout:', error);
+      console.error('Error during authHook logout:', error);
     }
+    try {
+      await storage.clearUserSession();
+      await AsyncStorage.removeItem('authToken');
+    } catch (error) {
+      console.error('Error clearing session:', error);
+    }
+    setUser(null);
+    setUserCompanies([]);
+    setCurrentCompany(null);
   };
 
   const handleAppStateChange = useCallback(async (nextAppState: AppStateStatus) => {
@@ -183,7 +198,40 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const loadUserCompanies = async () => {
     try {
-      await initializeCompanies(storage);
+      const token = await AsyncStorage.getItem('authToken');
+      if (token) {
+        // Si no hay internet real, evitamos llamadas al backend y usamos el cache local.
+        if (getIsOffline()) {
+          const companies = await storage.loadCompanies();
+          setUserCompanies(companies);
+          if (companies.length === 1) setCurrentCompany(companies[0]);
+          return;
+        }
+
+        // Traer todas las paginas para evitar listas incompletas.
+        const pageSize = 100;
+        let page = 1;
+        let totalPages = 1;
+        const allCompanies: any[] = [];
+        do {
+          const response = await getAllCompanies(page, pageSize);
+          const rawCompanies = response?.data?.companies ?? response?.data ?? [];
+          const companiesPage = Array.isArray(rawCompanies) ? rawCompanies : [];
+          allCompanies.push(...companiesPage);
+          totalPages = Number(response?.data?.pagination?.pages || 1);
+          page += 1;
+        } while (page <= totalPages);
+        const companies = allCompanies.filter(
+          (company, index, arr) => company?.id && arr.findIndex((c) => c?.id === company.id) === index
+        );
+        await storage.saveCompanies(companies);
+        setUserCompanies(companies);
+        if (companies.length === 1) {
+          setCurrentCompany(companies[0]);
+        }
+        return;
+      }
+      // Sin token: usar solo storage por si hay datos guardados (ej. uso offline previo)
       const companies = await storage.loadCompanies();
       setUserCompanies(companies);
       if (companies.length === 1) {
@@ -191,6 +239,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     } catch (error) {
       console.error('Error loading user companies:', error);
+      // Ante fallos temporales de red/API, NO vaciar empresas:
+      // mantener/cargar cache local evita que el selector aparezca incompleto o vacio.
+      try {
+        const companies = await storage.loadCompanies();
+        setUserCompanies(companies);
+        if (companies.length === 1) {
+          setCurrentCompany(companies[0]);
+        }
+      } catch (_) {}
     }
   };
 

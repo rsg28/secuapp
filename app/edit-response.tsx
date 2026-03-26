@@ -19,20 +19,49 @@ import * as ImagePicker from 'expo-image-picker';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { useNavigation } from '@react-navigation/native';
-import { useAuth } from '../contexts/AuthContext';
 import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
 import { useClosedInspectionResponses } from '../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../hooks/useOpenInspectionResponses';
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
-import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { useInspectionTeam } from '../hooks/useInspectionTeam';
+import { useAuth } from '../contexts/AuthContext';
+import { getIsOffline } from '../utils/networkStore';
+import { storage } from '../utils/storage';
+import { copyImageToPersistentStorage } from '../utils/imageStorage';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import CustomAlert from '../components/CustomAlert';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
+
+/** Convierte errores de red genéricos de RN en mensaje claro en español */
+function humanizeNetworkError(err: unknown): string {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  const lower = msg.toLowerCase();
+  if (
+    !msg ||
+    msg === 'Network request failed' ||
+    lower.includes('network request failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network error')
+  ) {
+    return 'No hay conexión a internet o el servidor no responde. Comprueba tu red e intenta de nuevo.';
+  }
+  return msg;
+}
+
+function isNetworkFailure(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  const lower = msg.toLowerCase();
+  return (
+    msg === 'Network request failed' ||
+    lower.includes('network request failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network error')
+  );
+}
 
 interface TemplateItem {
   id: string;
@@ -81,24 +110,24 @@ export default function EditResponseScreen() {
   const templateTitle = params.templateTitle as string || 'Template';
 
 
-  const { getCurrentCompany } = useAuth();
   const { getItemsByTemplateId } = type === 'closed' ? useClosedTemplateItems() : useOpenTemplateItems();
   const { createResponse: createClosedResponse } = useClosedInspectionResponses();
   const { createResponse: createOpenResponse } = useOpenInspectionResponses();
   const { createItem: createClosedResponseItem } = useClosedInspectionResponseItems();
   const { createItem: createOpenResponseItem } = useOpenInspectionResponseItems();
-  const { getAllCompanies } = useCompanies();
   const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
   const { createTeamMember } = useInspectionTeam();
+  const { userCompanies, loadUserCompanies, isLoading: authIsLoading } = useAuth();
 
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [companiesSyncing, setCompaniesSyncing] = useState(false);
+  const [usingLocalData, setUsingLocalData] = useState(false);
   const [localImages, setLocalImages] = useState<Record<string, string>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   
   // For closed inspections: responses are C, CP, NC, NA
@@ -117,51 +146,76 @@ export default function EditResponseScreen() {
   const isSavingRef = useRef(false);
   const isNavigatingProgrammatically = useRef(false);
 
-  // Lista de distritos de Lima
-  const limaDistricts = [
-    'Ancón',
-    'Ate',
-    'Barranco',
-    'Breña',
-    'Carabayllo',
-    'Cieneguilla',
-    'Chaclacayo',
-    'Chorrillos',
-    'Cercado de Lima',
-    'El Agustino',
-    'Independencia',
-    'Jesús María',
-    'La Molina',
-    'La Victoria',
-    'Lima',
-    'Lince',
-    'Los Olivos',
-    'Lurigancho',
-    'Lurín',
-    'Magdalena del Mar',
-    'Miraflores',
-    'Pachacámac',
-    'Pucusana',
-    'Pueblo Libre',
-    'Puente Piedra',
-    'Punta Hermosa',
-    'Punta Negra',
-    'Rímac',
-    'San Bartolo',
-    'San Borja',
-    'San Isidro',
-    'San Juan de Lurigancho',
-    'San Juan de Miraflores',
-    'San Luis',
-    'San Martín de Porres',
-    'San Miguel',
-    'Santa Anita',
-    'Santa María del Mar',
-    'Santa Rosa',
-    'Santiago de Surco',
-    'Surquillo',
-    'Villa El Salvador',
-    'Villa María del Triunfo'
+  // Opciones de ubicación (Línea 2, Línea 4, TBM)
+  const ubicacionOpciones = [
+    // LÍNEA 2
+    'LÍNEA 2 - PATIO TALLER SANTA ANITA (PTSA)',
+    'LÍNEA 2 - ESTACIÓN 27 (E27)',
+    'LÍNEA 2 - ESTACIÓN 26 (E26)',
+    'LÍNEA 2 - ESTACIÓN 25 (E25)',
+    'LÍNEA 2 - ESTACIÓN 24 (E24)',
+    'LÍNEA 2 - ESTACIÓN 23 (E23)',
+    'LÍNEA 2 - ESTACIÓN 22 (E22)',
+    'LÍNEA 2 - ESTACIÓN 21 (E21)',
+    'LÍNEA 2 - ESTACIÓN 20 (E20)',
+    'LÍNEA 2 - ESTACIÓN 19 (E19)',
+    'LÍNEA 2 - ESTACIÓN 18 (E18)',
+    'LÍNEA 2 - ESTACIÓN 17 (E17)',
+    'LÍNEA 2 - ESTACIÓN 16 (E16)',
+    'LÍNEA 2 - ESTACIÓN 15 (E15)',
+    'LÍNEA 2 - ESTACIÓN 14 (E14)',
+    'LÍNEA 2 - ESTACIÓN 13 (E13)',
+    'LÍNEA 2 - ESTACIÓN 12 (E12)',
+    'LÍNEA 2 - ESTACIÓN 11 (E11)',
+    'LÍNEA 2 - ESTACIÓN 10 (E10)',
+    'LÍNEA 2 - ESTACIÓN 9 (E09)',
+    'LÍNEA 2 - ESTACIÓN 8 (E08)',
+    'LÍNEA 2 - ESTACIÓN 7 (E07)',
+    'LÍNEA 2 - ESTACIÓN 6 (E06)',
+    'LÍNEA 2 - ESTACIÓN 5 (E05)',
+    'LÍNEA 2 - ESTACIÓN 4 (E04)',
+    'LÍNEA 2 - ESTACIÓN 3 (E03)',
+    'LÍNEA 2 - ESTACIÓN 2 (E02)',
+    'LÍNEA 2 - ESTACIÓN 1 (E01)',
+    // LÍNEA 4
+    'LÍNEA 4 - PATIO TALLER BOCANEGRA (PTBN)',
+    'LÍNEA 4 - ESTACIÓN 1 (E04-01)',
+    'LÍNEA 4 - ESTACIÓN 2 (E04-02)',
+    'LÍNEA 4 - ESTACIÓN 3 (E04-03)',
+    'LÍNEA 4 - ESTACIÓN 4 (E04-04)',
+    'LÍNEA 4 - ESTACIÓN 5 (E04-05)',
+    'LÍNEA 4 - ESTACIÓN 6 (E04-06)',
+    'LÍNEA 4 - ESTACIÓN 7 (E04-07)',
+    'LÍNEA 4 - ESTACIÓN 8 (E04-08)',
+    // TBM - LÍNEA 2
+    'TBM - LÍNEA 2 ESTACIÓN 1 (E01-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 2 (E02-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 3 (E03-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 4 (E04-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 5 (E05-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 6 (E06-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 7 (E07-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 8 (E08-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 9 (E09-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 10 (E10-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 11 (E11-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 12 (E12-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 13 (E13-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 14 (E14-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 15 (E15-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 16 (E16-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 17 (E17-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 18 (E18-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 19 (E19-TBM)',
+    // TBM - RAMAL 4
+    'TBM-RAMAL 4 ESTACIÓN 1 (E04-01-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 2 (E04-02-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 3 (E04-03-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 4 (E04-04-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 5 (E04-05-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 6 (E04-06-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 7 (E04-07-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 8 (E04-08-TBM)',
   ];
   
   // Custom alert states
@@ -186,9 +240,35 @@ export default function EditResponseScreen() {
   const [sending, setSending] = useState(false);
 
   useEffect(() => {
-    loadCompanies();
     loadTemplateItems();
   }, [templateId, type]);
+
+  // If userCompanies is temporarily empty, force a refresh once.
+  useEffect(() => {
+    let cancelled = false;
+    const ensureCompanies = async () => {
+      if ((userCompanies?.length ?? 0) > 0) return;
+      setCompaniesSyncing(true);
+      try {
+        await loadUserCompanies();
+      } catch {
+        // Silent fallback: UI shows "cargando" / "sin empresas"
+      } finally {
+        if (!cancelled) setCompaniesSyncing(false);
+      }
+    };
+    ensureCompanies();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadUserCompanies, userCompanies?.length]);
+
+  // Auto-select company when list becomes available.
+  useEffect(() => {
+    if (!selectedCompanyId && (userCompanies?.length ?? 0) > 0) {
+      setSelectedCompanyId(userCompanies[0].id);
+    }
+  }, [selectedCompanyId, userCompanies]);
 
   // Track changes to detect unsaved data
   useEffect(() => {
@@ -262,27 +342,6 @@ export default function EditResponseScreen() {
     setWasAllAnswered(allAnswered);
   }, [areAllQuestionsAnswered, templateItems.length]);
 
-  const loadCompanies = async () => {
-    try {
-      const result = await getAllCompanies(1, 100);
-      if (result && result.data && result.data.companies) {
-        const companiesList = result.data.companies;
-        setCompanies(companiesList);
-        // Set first company as default if available
-        if (companiesList.length > 0) {
-          setSelectedCompany(companiesList[0]);
-        }
-      }
-    } catch (error: any) {
-      console.error('Error loading companies:', error);
-      // Fallback to getCurrentCompany if available
-      const currentCompany = getCurrentCompany();
-      if (currentCompany) {
-        setSelectedCompany(currentCompany);
-      }
-    }
-  };
-
   const loadTemplateItems = async () => {
     try {
       setLoading(true);
@@ -291,7 +350,24 @@ export default function EditResponseScreen() {
         throw new Error('No se proporcionó el ID del template');
       }
       
-      const items = await getItemsByTemplateId(templateId);
+      let items: any[] = [];
+      if (usingLocalData) {
+        items = type === 'closed'
+          ? ((await storage.loadClosedTemplateItems(templateId)) || [])
+          : ((await storage.loadOpenTemplateItems(templateId)) || []);
+      } else {
+        try {
+          items = await getItemsByTemplateId(templateId);
+        } catch (error: any) {
+          if (!isNetworkFailure(error)) throw error;
+          const cached = type === 'closed'
+            ? ((await storage.loadClosedTemplateItems(templateId)) || [])
+            : ((await storage.loadOpenTemplateItems(templateId)) || []);
+          if (!cached || cached.length === 0) throw error;
+          items = cached;
+          setUsingLocalData(true);
+        }
+      }
       
       if (items && items.length > 0) {
         setTemplateItems(items);
@@ -337,7 +413,7 @@ export default function EditResponseScreen() {
         }
       }
     } catch (error: any) {
-      showAlert('Error', `No se pudieron cargar las preguntas: ${error.message}`);
+      showAlert('Error', `No se pudieron cargar las preguntas: ${humanizeNetworkError(error)}`);
     } finally {
       setLoading(false);
     }
@@ -359,6 +435,33 @@ export default function EditResponseScreen() {
           image_url: existingData?.image_url
         }
       };
+    });
+  };
+
+  const handleBulkClosedCategoryResponse = (responseType: string) => {
+    if (type !== 'closed' || !selectedCategory) return;
+    const categoryItems = templateItems.filter(
+      (item) => (item.category || 'Sin categoría') === selectedCategory
+    );
+    if (categoryItems.length === 0) return;
+
+    setClosedResponses((prev) => {
+      const next = { ...prev };
+      categoryItems.forEach((item) => {
+        if (item.question_type === 'text') return;
+        const allowedOptions =
+          item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA'];
+        if (!allowedOptions.includes(responseType)) return;
+        const existing = next[item.id];
+        next[item.id] = {
+          item_id: existing?.item_id || item.id,
+          question_index: existing?.question_index || item.question_index,
+          response: responseType,
+          explanation: existing?.explanation || '',
+          image_url: existing?.image_url,
+        };
+      });
+      return next;
     });
   };
 
@@ -406,7 +509,10 @@ export default function EditResponseScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
+        let imageUri = result.assets[0].uri;
+        if (getIsOffline()) {
+          imageUri = await copyImageToPersistentStorage(imageUri);
+        }
         setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
       }
     } catch (error: any) {
@@ -430,7 +536,10 @@ export default function EditResponseScreen() {
       });
 
       if (!result.canceled && result.assets && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
+        let imageUri = result.assets[0].uri;
+        if (getIsOffline()) {
+          imageUri = await copyImageToPersistentStorage(imageUri);
+        }
         setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
       }
     } catch (error: any) {
@@ -471,9 +580,11 @@ export default function EditResponseScreen() {
   };
 
   const handleAutoSave = useCallback(async (navigationAction?: any) => {
-    if (!selectedCompany) {
+    if (!selectedCompanyId) {
       if (navigationAction) {
         navigation.dispatch(navigationAction);
+      } else {
+        Alert.alert('Empresa requerida', 'Selecciona una empresa.');
       }
       return;
     }
@@ -498,7 +609,7 @@ export default function EditResponseScreen() {
       // Create the response first
       const responseData: any = {
         template_id: templateId,
-        company_id: selectedCompany.id,
+        company_id: selectedCompanyId,
         title: responseTitle.trim()
       };
 
@@ -525,10 +636,85 @@ export default function EditResponseScreen() {
       }
 
       let createdResponse;
+
+      const buildClosedOfflineItems = () => {
+        const items: any[] = [];
+        for (const templateItem of templateItems) {
+          const closedItem = closedResponses[templateItem.id];
+          if (!closedItem?.response?.trim()) continue;
+          const itemId = closedItem.item_id || templateItem.id;
+          const imageUrl = localImages[itemId] ?? closedItem.image_url ?? null;
+          items.push({
+            item_id: itemId,
+            question_index: closedItem.question_index || templateItem.question_index,
+            response: closedItem.response.trim(),
+            explanation: closedItem.explanation?.trim() || null,
+            image_url: imageUrl
+          });
+        }
+        return items;
+      };
+
+      const buildOpenOfflineItems = () => {
+        const items: any[] = [];
+        for (const itemData of Object.values(openResponses)) {
+          const openItem = itemData as OpenResponseData;
+          if (!openItem.response?.trim()) continue;
+          const itemId = openItem.item_id;
+          const imageUrl = localImages[itemId] ?? openItem.image_url ?? null;
+          items.push({
+            item_id: itemId,
+            question_index: openItem.question_index,
+            response: openItem.response.trim(),
+            image_url: imageUrl
+          });
+        }
+        return items;
+      };
+
+      const finishOfflineSuccess = () => {
+        setSavedResponseId(createdResponse!.id);
+        setResponseAlreadySaved(true);
+        setHasUnsavedChanges(false);
+        if (!navigationAction) {
+          showAlert(
+            'Guardado local',
+            'La inspección se guardó localmente y se sincronizará al reconectar.',
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  if (type === 'open') {
+                    router.replace('/open-inspections');
+                  } else {
+                    router.replace('/closed-inspections');
+                  }
+                }
+              }
+            ]
+          );
+        } else {
+          navigation.dispatch(navigationAction);
+        }
+        setSaving(false);
+        isSavingRef.current = false;
+      };
+
+      // Un solo flujo: los hooks intentan API; si falla la red, guardan local con options.items
+      const itemsClosed = buildClosedOfflineItems();
+      const itemsOpen = buildOpenOfflineItems();
       if (type === 'closed') {
-        createdResponse = await createClosedResponse(responseData);
+        createdResponse = await createClosedResponse(responseData, {
+          items: itemsClosed,
+          templateId
+        });
       } else {
-        createdResponse = await createOpenResponse(responseData);
+        createdResponse = await createOpenResponse(responseData, { items: itemsOpen });
+      }
+
+      if (createdResponse._offline) {
+        finishOfflineSuccess();
+        return;
       }
 
       const responseId = createdResponse.id;
@@ -810,11 +996,11 @@ export default function EditResponseScreen() {
       
       if (error) {
         if (typeof error === 'string') {
-          errorMessage = error;
+          errorMessage = humanizeNetworkError(error);
         } else if (error.message && typeof error.message === 'string') {
-          errorMessage = error.message;
+          errorMessage = humanizeNetworkError(error);
         } else if (error.toString && error.toString() !== '[object Object]') {
-          errorMessage = error.toString();
+          errorMessage = humanizeNetworkError(error);
         }
       }
       
@@ -828,7 +1014,7 @@ export default function EditResponseScreen() {
       setSaving(false);
       isSavingRef.current = false;
     }
-  }, [selectedCompany, responseTitle, type, notes, area, turno, cantidadPersonal, closedResponses, openResponses, templateId, createClosedResponse, createOpenResponse, createClosedResponseItem, createOpenResponseItem, navigation, showAlert, areAllQuestionsAnswered]);
+  }, [selectedCompanyId, responseTitle, type, notes, area, turno, cantidadPersonal, closedResponses, openResponses, templateId, templateItems, localImages, createClosedResponse, createOpenResponse, createClosedResponseItem, createOpenResponseItem, navigation, showAlert, router, areAllQuestionsAnswered]);
 
   const handleSave = async () => {
     await handleAutoSave();
@@ -888,7 +1074,10 @@ export default function EditResponseScreen() {
         showAlert('Error', 'La función de compartir no está disponible en este dispositivo');
       }
     } catch (error: any) {
-      showAlert('Error', `No se pudo generar el archivo: ${error.message}`);
+      showAlert(
+        'Error',
+        `No se pudo generar el archivo: ${humanizeNetworkError(error)}`
+      );
     }
   };
 
@@ -958,7 +1147,10 @@ export default function EditResponseScreen() {
         router.push('/closed-inspections');
       }
     } catch (error: any) {
-      Alert.alert('Error', error?.message || 'No se pudo enviar el archivo por correo');
+      Alert.alert(
+        'Error',
+        humanizeNetworkError(error) || 'No se pudo enviar el archivo por correo'
+      );
     } finally {
       setSending(false);
     }
@@ -1003,7 +1195,7 @@ export default function EditResponseScreen() {
             style: 'destructive',
             onPress: async () => {
               // If title exists, save before leaving
-              if (responseTitle.trim() && selectedCompany) {
+              if (responseTitle.trim() && selectedCompanyId) {
                 await handleAutoSave(e.data.action);
               } else {
                 // Just leave without saving - go to the corresponding inspection page
@@ -1022,7 +1214,7 @@ export default function EditResponseScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, responseTitle, selectedCompany, handleAutoSave, responseAlreadySaved, showAlert, router, type]);
+  }, [navigation, responseTitle, selectedCompanyId, handleAutoSave, responseAlreadySaved, showAlert, router, type]);
 
   const groupedItems = templateItems.reduce((acc, item) => {
     const category = item.category || 'Sin categoría';
@@ -1035,6 +1227,13 @@ export default function EditResponseScreen() {
 
   const categories = Object.keys(groupedItems);
   const currentCategoryItems = selectedCategory ? groupedItems[selectedCategory] || [] : [];
+  const bulkCategoryOptions = Array.from(
+    new Set(
+      currentCategoryItems
+        .filter((item) => item.question_type !== 'text')
+        .flatMap((item) => (item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA']))
+    )
+  );
 
   if (loading) {
     return (
@@ -1128,6 +1327,12 @@ export default function EditResponseScreen() {
         </TouchableOpacity>
       </View>
 
+      {usingLocalData ? (
+        <View style={styles.localDataBanner}>
+          <Text style={styles.localDataBannerText}>Utilizando datos guardados localmente</Text>
+        </View>
+      ) : null}
+
       {/* Tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
@@ -1157,7 +1362,7 @@ export default function EditResponseScreen() {
       >
         {activeTab === 'preguntas' && (
           <>
-        {/* Company Selector */}
+        {/* Empresa (selector) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Empresa</Text>
           <View style={styles.dropdownContainer}>
@@ -1165,8 +1370,13 @@ export default function EditResponseScreen() {
               style={styles.dropdownButton}
               onPress={() => setShowCompanyDropdown(true)}
             >
-              <Text style={styles.dropdownButtonText}>
-                {selectedCompany ? selectedCompany.name : 'Seleccionar empresa'}
+              <Text style={[
+                styles.dropdownButtonText,
+                !selectedCompanyId && { color: '#9ca3af' }
+              ]}>
+                {selectedCompanyId
+                  ? (userCompanies.find((c: any) => c.id === selectedCompanyId)?.name ?? 'Seleccionar empresa')
+                  : 'Seleccionar empresa'}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -1176,59 +1386,6 @@ export default function EditResponseScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Company Dropdown Modal */}
-        <Modal
-          visible={showCompanyDropdown}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowCompanyDropdown(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowCompanyDropdown(false)}
-          >
-            <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
-              <View style={styles.dropdownModalHeader}>
-                <Text style={styles.dropdownModalTitle}>Seleccionar Empresa</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCompanyDropdown(false)}
-                  style={styles.closeButton}
-                >
-                  <Ionicons name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.dropdownModalScroll}>
-                {companies.map((company) => (
-                  <TouchableOpacity
-                    key={company.id}
-                    style={[
-                      styles.dropdownModalItem,
-                      selectedCompany?.id === company.id && styles.dropdownModalItemSelected
-                    ]}
-                    onPress={() => {
-                      setSelectedCompany(company);
-                      setShowCompanyDropdown(false);
-                    }}
-                  >
-                    <Text style={[
-                      styles.dropdownModalItemText,
-                      selectedCompany?.id === company.id && styles.dropdownModalItemTextSelected
-                    ]}>
-                      {company.name}
-                    </Text>
-                    {company.industry && (
-                      <Text style={styles.dropdownModalItemCount}>
-                        {company.industry}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
 
         {/* Area Input */}
         <View style={styles.section}>
@@ -1283,7 +1440,7 @@ export default function EditResponseScreen() {
                 styles.dropdownButtonText,
                 !responseTitle && { color: '#9ca3af' }
               ]}>
-                {responseTitle || 'Seleccionar distrito'}
+                {responseTitle || 'Seleccionar ubicación'}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -1308,7 +1465,7 @@ export default function EditResponseScreen() {
           >
             <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.dropdownModalHeader}>
-                <Text style={styles.dropdownModalTitle}>Seleccionar Distrito</Text>
+                <Text style={styles.dropdownModalTitle}>Seleccionar Ubicación</Text>
                 <TouchableOpacity
                   onPress={() => setShowLocationDropdown(false)}
                   style={styles.closeButton}
@@ -1317,26 +1474,81 @@ export default function EditResponseScreen() {
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.dropdownModalScroll}>
-                {limaDistricts.map((district) => (
+                {ubicacionOpciones.map((ubicacion) => (
                   <TouchableOpacity
-                    key={district}
+                    key={ubicacion}
                     style={[
                       styles.dropdownModalItem,
-                      responseTitle === district && styles.dropdownModalItemSelected
+                      responseTitle === ubicacion && styles.dropdownModalItemSelected
                     ]}
                     onPress={() => {
-                      setResponseTitle(district);
+                      setResponseTitle(ubicacion);
                       setShowLocationDropdown(false);
                     }}
                   >
                     <Text style={[
                       styles.dropdownModalItemText,
-                      responseTitle === district && styles.dropdownModalItemTextSelected
+                      responseTitle === ubicacion && styles.dropdownModalItemTextSelected
                     ]}>
-                      {district}
+                      {ubicacion}
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Company Dropdown Modal */}
+        <Modal
+          visible={showCompanyDropdown}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowCompanyDropdown(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCompanyDropdown(false)}
+          >
+            <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>Seleccionar Empresa</Text>
+                <TouchableOpacity
+                  onPress={() => setShowCompanyDropdown(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.dropdownModalScroll}>
+                {(userCompanies || []).map((company: any) => (
+                  <TouchableOpacity
+                    key={company.id}
+                    style={[
+                      styles.dropdownModalItem,
+                      selectedCompanyId === company.id && styles.dropdownModalItemSelected
+                    ]}
+                    onPress={() => {
+                      setSelectedCompanyId(company.id);
+                      setShowCompanyDropdown(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.dropdownModalItemText,
+                      selectedCompanyId === company.id && styles.dropdownModalItemTextSelected
+                    ]}>
+                      {company.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {(userCompanies?.length ?? 0) === 0 && (
+                  <Text style={styles.dropdownModalItemText}>
+                    {(authIsLoading || companiesSyncing)
+                      ? 'Cargando empresas...'
+                      : 'No hay empresas disponibles en este momento. Intenta nuevamente.'}
+                  </Text>
+                )}
               </ScrollView>
             </View>
           </TouchableOpacity>
@@ -1418,6 +1630,22 @@ export default function EditResponseScreen() {
         {/* Questions for Selected Category */}
         {selectedCategory && currentCategoryItems.length > 0 && (
           <View style={styles.section}>
+            {type === 'closed' ? (
+              <View style={styles.bulkActionsContainer}>
+                <Text style={styles.bulkActionsLabel}>Marcar toda la categoría:</Text>
+                <View style={styles.bulkButtonsRow}>
+                  {bulkCategoryOptions.map((responseType) => (
+                    <TouchableOpacity
+                      key={responseType}
+                      style={styles.bulkActionButton}
+                      onPress={() => handleBulkClosedCategoryResponse(responseType)}
+                    >
+                      <Text style={styles.bulkActionButtonText}>{responseType}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
             {currentCategoryItems.map((item, index) => (
               <View key={item.id} style={styles.questionCard}>
                 {/* Question Text */}
@@ -2014,6 +2242,19 @@ const styles = StyleSheet.create({
     color: '#dbeafe',
     marginTop: 2,
   },
+  localDataBanner: {
+    backgroundColor: '#fef3c7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  localDataBannerText: {
+    color: '#92400e',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2146,6 +2387,37 @@ const styles = StyleSheet.create({
   dropdownModalItemCount: {
     fontSize: 12,
     color: '#6b7280',
+  },
+  bulkActionsContainer: {
+    marginBottom: 14,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  bulkActionsLabel: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  bulkButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bulkActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+  },
+  bulkActionButtonText: {
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '700',
   },
   questionCard: {
     marginBottom: 12,

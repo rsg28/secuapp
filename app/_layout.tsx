@@ -6,6 +6,7 @@ import 'react-native-reanimated';
 
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { AuthProvider } from '../contexts/AuthContext';
+import { NetworkProvider } from '../contexts/NetworkContext';
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -19,14 +20,19 @@ export default function RootLayout() {
   }
 
   return (
+    <NetworkProvider>
     <AuthProvider>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
           <Stack.Screen name="login" options={{ headerShown: false }} />
+        <Stack.Screen name="forgot-password" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="create-form" options={{ headerShown: false }} />
           <Stack.Screen name="create-company" options={{ headerShown: false }} />
           <Stack.Screen name="inspection-types" options={{ headerShown: false }} />
+          <Stack.Screen name="otros-types" options={{ headerShown: false }} />
+          <Stack.Screen name="ast-evaluation-form" options={{ headerShown: false }} />
+          <Stack.Screen name="rals-form" options={{ headerShown: false }} />
           <Stack.Screen name="open-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="closed-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="create-open-inspection" options={{ headerShown: false }} />
@@ -50,10 +56,12 @@ export default function RootLayout() {
         <Stack.Screen name="employee-inspections" options={{ headerShown: false }} />
         <Stack.Screen name="employee-statistics" options={{ headerShown: false }} />
         <Stack.Screen name="generate-reports" options={{ headerShown: false }} />
+        <Stack.Screen name="select-report-employees" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
       <StatusBar style="auto" />
     </ThemeProvider>
     </AuthProvider>
+    </NetworkProvider>
   );
 }

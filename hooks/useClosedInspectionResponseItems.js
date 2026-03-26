@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { storage } from '../utils/storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -191,7 +192,14 @@ export const useClosedInspectionResponseItems = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
+      if (responseId && responseId.startsWith('local-')) {
+        const payload = await storage.getOfflineInspectionPayload(responseId);
+        const list = payload?.items || [];
+        setItems(list);
+        return list;
+      }
+
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/closed-inspection-response-items/response/${responseId}`, {
         method: 'GET',

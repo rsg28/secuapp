@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import React, { useCallback, useState } from 'react';
 import {
   View,
   Text,
@@ -14,19 +15,13 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { useUsers } from '../hooks/useUsers';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import { loadReportEmployeeSelection } from './select-report-employees';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
-
-interface Employee {
-  id: string;
-  email: string;
-  first_name: string;
-  last_name: string;
-}
 
 interface AppService {
   id: string;
@@ -45,11 +40,9 @@ const appServices: AppService[] = [
 ];
 
 export default function GenerateReportsScreen() {
-  const { getNonManagerUsers } = useUsers();
-
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [loadingEmployees, setLoadingEmployees] = useState(true);
+  const insets = useSafeAreaInsets();
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
+  const [selectionSummary, setSelectionSummary] = useState<string>('');
   const [selectedService, setSelectedService] = useState<AppService>(appServices[0]);
   const [dateFrom, setDateFrom] = useState<Date | null>(null);
   const [dateTo, setDateTo] = useState<Date | null>(null);
@@ -59,44 +52,41 @@ export default function GenerateReportsScreen() {
   const [showDateToPicker, setShowDateToPicker] = useState(false);
   const [inspectionType, setInspectionType] = useState<'both' | 'closed' | 'open'>('both');
   const [showInspectionTypePicker, setShowInspectionTypePicker] = useState(false);
+  const [reportStatus, setReportStatus] = useState<'all' | 'completed' | 'incomplete'>('all');
+  const [showReportStatusPicker, setShowReportStatusPicker] = useState(false);
   const [generating, setGenerating] = useState(false);
 
-  useEffect(() => {
-    loadData();
+  const refreshSelection = useCallback(async () => {
+    const sel = await loadReportEmployeeSelection();
+    setSelectedEmployees(new Set(sel.ids));
+    if (sel.ids.length === 0) {
+      setSelectionSummary('Ninguno seleccionado');
+      return;
+    }
+    const names = sel.ids
+      .map((id) => sel.namesById[id])
+      .filter(Boolean) as string[];
+    if (names.length > 0) {
+      const preview = names.slice(0, 4).join(', ');
+      setSelectionSummary(
+        `${sel.ids.length} empleado${sel.ids.length !== 1 ? 's' : ''}: ${preview}${sel.ids.length > 4 ? '…' : ''}`
+      );
+    } else {
+      setSelectionSummary(`${sel.ids.length} empleado${sel.ids.length !== 1 ? 's' : ''} seleccionado${sel.ids.length !== 1 ? 's' : ''}`);
+    }
   }, []);
 
-  const loadData = async () => {
-    try {
-      setLoadingEmployees(true);
-      const usersData = await getNonManagerUsers();
-      setEmployees(usersData.data.users || []);
-    } catch (error: any) {
-      Alert.alert('Error', `Error al cargar datos: ${error.message}`);
-    } finally {
-      setLoadingEmployees(false);
-    }
-  };
+  useFocusEffect(
+    useCallback(() => {
+      refreshSelection();
+    }, [refreshSelection])
+  );
 
-  const toggleEmployee = (employeeId: string) => {
-    console.log('toggleEmployee called with:', employeeId);
-    setSelectedEmployees(prev => {
-      const newSelected = new Set(prev);
-      if (newSelected.has(employeeId)) {
-        newSelected.delete(employeeId);
-      } else {
-        newSelected.add(employeeId);
-      }
-      console.log('New selected employees:', Array.from(newSelected));
-      return newSelected;
-    });
-  };
-
-  const toggleAllEmployees = () => {
-    if (selectedEmployees.size === employees.length) {
-      setSelectedEmployees(new Set());
-    } else {
-      setSelectedEmployees(new Set(employees.map(e => e.id)));
-    }
+  const formatLocalDateForQuery = (date: Date): string => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   };
 
   const handleGenerate = async () => {
@@ -110,8 +100,8 @@ export default function GenerateReportsScreen() {
       return;
     }
 
-    const dateFromStr = dateFrom.toISOString().split('T')[0];
-    const dateToStr = dateTo.toISOString().split('T')[0];
+    const dateFromStr = formatLocalDateForQuery(dateFrom);
+    const dateToStr = formatLocalDateForQuery(dateTo);
 
     try {
       setGenerating(true);
@@ -133,6 +123,7 @@ export default function GenerateReportsScreen() {
           dateTo: dateToStr,
           inspectionType,
           service: selectedService.name,
+          status: reportStatus,
         }),
       });
 
@@ -178,18 +169,21 @@ export default function GenerateReportsScreen() {
   };
 
   return (
+    <SafeAreaView style={styles.safeRoot} edges={['bottom']}>
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>Generar Reportes</Text>
-          <Text style={styles.headerSubtitle}>Configura los parámetros del reporte</Text>
+      {/* Franja azul bajo barra de estado (evita blanco arriba del header) */}
+      <View style={[styles.headerStatusFill, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
+            <Ionicons name="arrow-back" size={22} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerContent}>
+            <Text style={styles.headerTitle}>Generar reportes</Text>
+            <Text style={styles.headerSubtitle}>Completa los filtros y elige empleados</Text>
+          </View>
         </View>
       </View>
 
@@ -197,6 +191,7 @@ export default function GenerateReportsScreen() {
         style={styles.content}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
       >
         {/* Servicios de la Aplicación */}
         <View style={styles.section}>
@@ -220,6 +215,7 @@ export default function GenerateReportsScreen() {
                 <Ionicons
                   name={service.icon as any}
                   size={18}
+                  style={styles.serviceIcon}
                   color={selectedService.id === service.id ? '#fff' : service.available ? '#6b7280' : '#d1d5db'}
                 />
                 <Text
@@ -242,25 +238,46 @@ export default function GenerateReportsScreen() {
           )}
         </View>
 
-        {/* Tipo de Inspecciones */}
+        {/* Inspección: tipo + estado */}
         {selectedService.id === 'inspecciones' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Tipo de Inspecciones</Text>
+            <Text style={styles.sectionKicker}>Paso 2</Text>
+            <Text style={styles.sectionTitle}>Inspección</Text>
+            <Text style={styles.sectionDesc}>Tipo de checklist y si debe estar completa.</Text>
+            <Text style={styles.fieldLabel}>Tipo de inspección</Text>
             <TouchableOpacity
               style={styles.dropdownInput}
               onPress={() => setShowInspectionTypePicker(true)}
+              activeOpacity={0.75}
             >
-              <Text style={styles.dropdownInputText}>
+              <Text style={styles.dropdownInputText} numberOfLines={1}>
                 {inspectionType === 'both' ? 'Ambos' : inspectionType === 'closed' ? 'Checklist' : 'Abiertas'}
               </Text>
-              <Ionicons name="chevron-down" size={20} color="#6b7280" />
+              <Ionicons name="chevron-down" size={20} color="#64748b" />
+            </TouchableOpacity>
+            <Text style={[styles.fieldLabel, styles.fieldLabelSpaced]}>Estado de completitud</Text>
+            <TouchableOpacity
+              style={styles.dropdownInput}
+              onPress={() => setShowReportStatusPicker(true)}
+              activeOpacity={0.75}
+            >
+              <Text style={styles.dropdownInputText} numberOfLines={1}>
+                {reportStatus === 'all'
+                  ? 'Todas'
+                  : reportStatus === 'completed'
+                    ? 'Completadas'
+                    : 'Incompletas'}
+              </Text>
+              <Ionicons name="chevron-down" size={20} color="#64748b" />
             </TouchableOpacity>
           </View>
         )}
 
         {/* Rango de Fechas */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Rango de Fechas</Text>
+          <Text style={styles.sectionKicker}>{selectedService.id === 'inspecciones' ? 'Paso 3' : 'Paso 2'}</Text>
+          <Text style={styles.sectionTitle}>Rango de fechas</Text>
+          <Text style={styles.sectionDesc}>Incluye el día “hasta” completo.</Text>
           <View style={styles.dateContainer}>
             <View style={styles.dateInputContainer}>
               <Text style={styles.dateLabel}>Desde</Text>
@@ -282,7 +299,7 @@ export default function GenerateReportsScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
-            <View style={styles.dateInputContainer}>
+            <View style={[styles.dateInputContainer, styles.dateInputColSpaced]}>
               <Text style={styles.dateLabel}>Hasta</Text>
               <TouchableOpacity
                 style={styles.dateInput}
@@ -307,42 +324,32 @@ export default function GenerateReportsScreen() {
 
         {/* Empleados */}
         <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>Empleados</Text>
-            <TouchableOpacity onPress={toggleAllEmployees}>
-              <Text style={styles.selectAllText}>
-                {selectedEmployees.size === employees.length ? 'Deseleccionar todo' : 'Seleccionar todo'}
-              </Text>
+          <Text style={styles.sectionKicker}>{selectedService.id === 'inspecciones' ? 'Paso 4' : 'Paso 3'}</Text>
+          <Text style={styles.sectionTitle}>Empleados</Text>
+          <Text style={styles.sectionDesc}>Solo se exportan datos de quienes marques en la lista.</Text>
+          <View style={styles.employeeCard}>
+            <TouchableOpacity
+              style={styles.pickEmployeesButton}
+              onPress={() => router.push('/select-report-employees')}
+              activeOpacity={0.88}
+            >
+              <Ionicons name="people-outline" size={20} color="#fff" />
+              <Text style={styles.pickEmployeesButtonText}>Seleccionar empleados</Text>
+              <Ionicons name="chevron-forward" size={20} color="#fff" />
             </TouchableOpacity>
-          </View>
-          {loadingEmployees ? (
-            <ActivityIndicator size="small" color="#3b82f6" />
-          ) : employees.length === 0 ? (
-            <Text style={styles.emptyText}>No hay empleados disponibles</Text>
-          ) : (
-            <View style={styles.checkboxContainer}>
-              {employees.map((employee) => (
-                <TouchableOpacity
-                  key={employee.id}
-                  style={styles.checkboxItem}
-                  onPress={() => toggleEmployee(employee.id)}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.checkbox, selectedEmployees.has(employee.id) && styles.checkboxSelected]}>
-                    {selectedEmployees.has(employee.id) && (
-                      <Ionicons name="checkmark" size={16} color="#fff" />
-                    )}
-                  </View>
-                  <Text style={styles.checkboxLabel}>
-                    {employee.first_name} {employee.last_name}
-                  </Text>
-                </TouchableOpacity>
-              ))}
+            <View style={styles.employeeNamesBlock}>
+              {selectedEmployees.size > 0 ? (
+                <>
+                  <Text style={styles.employeeNamesLabel}>Seleccionados</Text>
+                  <Text style={styles.employeeNamesText}>{selectionSummary}</Text>
+                </>
+              ) : (
+                <Text style={styles.employeeNamesEmpty}>
+                  Ningún empleado seleccionado. Pulsa el botón para abrir la lista.
+                </Text>
+              )}
             </View>
-          )}
-          <Text style={styles.selectedCount}>
-            {selectedEmployees.size} de {employees.length} seleccionados
-          </Text>
+          </View>
         </View>
 
         {/* Botón Generar */}
@@ -366,6 +373,63 @@ export default function GenerateReportsScreen() {
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* Modal Estado (completitud) */}
+      <Modal
+        visible={showReportStatusPicker}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowReportStatusPicker(false)}
+      >
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowReportStatusPicker(false)}
+        >
+          <View style={styles.dropdownModal}>
+            <TouchableOpacity
+              style={styles.dropdownOption}
+              onPress={() => {
+                setReportStatus('all');
+                setShowReportStatusPicker(false);
+              }}
+            >
+              <Text style={[styles.dropdownOptionText, reportStatus === 'all' && styles.dropdownOptionTextActive]}>
+                Todas
+              </Text>
+              {reportStatus === 'all' && <Ionicons name="checkmark" size={20} color="#3b82f6" />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dropdownOption}
+              onPress={() => {
+                setReportStatus('completed');
+                setShowReportStatusPicker(false);
+              }}
+            >
+              <Text
+                style={[styles.dropdownOptionText, reportStatus === 'completed' && styles.dropdownOptionTextActive]}
+              >
+                Completadas
+              </Text>
+              {reportStatus === 'completed' && <Ionicons name="checkmark" size={20} color="#3b82f6" />}
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.dropdownOption}
+              onPress={() => {
+                setReportStatus('incomplete');
+                setShowReportStatusPicker(false);
+              }}
+            >
+              <Text
+                style={[styles.dropdownOptionText, reportStatus === 'incomplete' && styles.dropdownOptionTextActive]}
+              >
+                Incompletas
+              </Text>
+              {reportStatus === 'incomplete' && <Ionicons name="checkmark" size={20} color="#3b82f6" />}
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* Modal para Tipo de Inspecciones */}
       <Modal
@@ -553,60 +617,101 @@ export default function GenerateReportsScreen() {
         </>
       )}
     </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  safeRoot: {
+    flex: 1,
+    backgroundColor: '#f1f5f9',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f1f5f9',
+  },
+  headerStatusFill: {
+    backgroundColor: '#2563eb',
   },
   header: {
-    backgroundColor: '#3b82f6',
-    padding: 20,
-    paddingTop: 60,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
     flexDirection: 'row',
     alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.2)',
   },
   backButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 12,
   },
   headerContent: {
     flex: 1,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 22,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   headerSubtitle: {
-    fontSize: 14,
+    fontSize: 13,
     color: '#dbeafe',
+    lineHeight: 18,
   },
   content: {
     flex: 1,
   },
   scrollContent: {
-    padding: 20,
+    padding: 16,
     paddingBottom: 100,
   },
   section: {
-    marginBottom: 24,
+    marginBottom: 16,
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 16,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    shadowColor: '#0f172a',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+  },
+  sectionKicker: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#64748b',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    marginBottom: 6,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 6,
+  },
+  sectionDesc: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 19,
+    marginBottom: 14,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#475569',
+    marginBottom: 6,
+  },
+  fieldLabelSpaced: {
+    marginTop: 14,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -614,11 +719,63 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  sectionTitle: {
+  sectionTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sectionIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#eff6ff',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+  },
+  sectionTitleInline: {
     fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 12,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+  },
+  sectionHint: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  employeeCard: {
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    overflow: 'hidden',
+    backgroundColor: '#fff',
+  },
+  employeeNamesBlock: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
+    borderTopWidth: 1,
+    borderTopColor: '#e2e8f0',
+    borderBottomLeftRadius: 13,
+    borderBottomRightRadius: 13,
+  },
+  employeeNamesLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#64748b',
+    marginBottom: 6,
+  },
+  employeeNamesText: {
+    fontSize: 14,
+    color: '#0f172a',
+    lineHeight: 21,
+  },
+  employeeNamesEmpty: {
+    fontSize: 13,
+    color: '#94a3b8',
+    lineHeight: 19,
   },
   selectAllText: {
     fontSize: 14,
@@ -630,10 +787,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    borderRadius: 8,
-    padding: 12,
-    backgroundColor: '#fff',
+    borderColor: '#e2e8f0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
     minHeight: 48,
   },
   dropdownInputText: {
@@ -686,6 +844,9 @@ const styles = StyleSheet.create({
     minWidth: '30%',
     justifyContent: 'center',
   },
+  serviceIcon: {
+    marginRight: 6,
+  },
   serviceButtonDisabled: {
     opacity: 0.5,
   },
@@ -709,10 +870,13 @@ const styles = StyleSheet.create({
   },
   dateContainer: {
     flexDirection: 'row',
-    gap: 12,
+    alignItems: 'stretch',
   },
   dateInputContainer: {
     flex: 1,
+  },
+  dateInputColSpaced: {
+    marginLeft: 12,
   },
   dateLabel: {
     fontSize: 14,
@@ -823,20 +987,37 @@ const styles = StyleSheet.create({
     color: '#6b7280',
     marginTop: 8,
   },
+  pickEmployeesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderTopLeftRadius: 13,
+    borderTopRightRadius: 13,
+  },
+  pickEmployeesButtonText: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 8,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
   emptyText: {
     fontSize: 14,
     color: '#9ca3af',
     fontStyle: 'italic',
   },
   generateButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: '#2563eb',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginTop: 8,
+    borderRadius: 14,
+    marginTop: 4,
     shadowColor: '#3b82f6',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
@@ -848,8 +1029,11 @@ const styles = StyleSheet.create({
   },
   generateButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  generateButtonTextAfterIcon: {
+    marginLeft: 10,
   },
   bottomSpacer: {
     height: 20,

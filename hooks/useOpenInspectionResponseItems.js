@@ -1,3 +1,5 @@
+import { storage } from '../utils/storage';
+
 /**
  * Hook para manejar items de respuestas de inspecciones abiertas
  * 
@@ -40,6 +42,11 @@ export const useOpenInspectionResponseItems = () => {
   };
 
   const fetchItemsByResponseId = async (responseId) => {
+    if (responseId && responseId.startsWith('local-')) {
+      const payload = await storage.getOfflineInspectionPayload(responseId);
+      return payload?.items || [];
+    }
+
     const AsyncStorage = require('@react-native-async-storage/async-storage').default;
     const token = await AsyncStorage.getItem('authToken');
     const API_BASE_URL = 'https://www.securg.xyz/api/v1';

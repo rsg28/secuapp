@@ -24,10 +24,29 @@ import { useClosedInspectionResponses } from '../hooks/useClosedInspectionRespon
 import { useOpenInspectionResponses } from '../hooks/useOpenInspectionResponses';
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
-import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
 import { useInspectionTeam } from '../hooks/useInspectionTeam';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getIsOffline } from '../utils/networkStore';
+import { storage } from '../utils/storage';
+import { copyImageToPersistentStorage } from '../utils/imageStorage';
+
+/** True if the URL is a local path (file://, content://, or device path). Never send these to the API. */
+const isLocalImageUri = (uri: string | null | undefined): boolean => {
+  if (!uri || typeof uri !== 'string') return true;
+  return uri.startsWith('file://') || uri.startsWith('content://') || (!uri.startsWith('http://') && !uri.startsWith('https://'));
+};
+
+const isNetworkFailure = (err: unknown): boolean => {
+  const msg = err instanceof Error ? err.message : String(err || '');
+  const lower = msg.toLowerCase();
+  return (
+    msg === 'Network request failed' ||
+    lower.includes('network request failed') ||
+    lower.includes('failed to fetch') ||
+    lower.includes('network error')
+  );
+};
 
 interface TemplateItem {
   id: string;
@@ -79,7 +98,7 @@ export default function EditExistingResponseScreen() {
   const templateTitle = params.templateTitle as string || 'Template';
 
 
-  const { getCurrentCompany } = useAuth();
+  const { getCurrentCompany, userCompanies, loadUserCompanies, isLoading: authIsLoading } = useAuth();
   const { getItemsByTemplateId } = type === 'closed' ? useClosedTemplateItems() : useOpenTemplateItems();
   const { getResponseById: getClosedResponseById, updateResponse: updateClosedResponse } = useClosedInspectionResponses();
   const { getResponseById: getOpenResponseById, updateResponse: updateOpenResponse } = useOpenInspectionResponses();
@@ -95,7 +114,6 @@ export default function EditExistingResponseScreen() {
     updateItem: updateOpenResponseItem,
     deleteItem: deleteOpenResponseItem
   } = useOpenInspectionResponseItems();
-  const { getAllCompanies } = useCompanies();
   const { uploadImage, deleteImage, uploading: uploadingImage } = useImageUpload();
   const { createTeamMember, updateTeamMember, deleteTeamMember, getTeamMembersByResponseId } = useInspectionTeam();
 
@@ -164,11 +182,39 @@ export default function EditExistingResponseScreen() {
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [companiesSyncing, setCompaniesSyncing] = useState(false);
+  const [usingLocalData, setUsingLocalData] = useState(false);
   const [localImages, setLocalImages] = useState<Record<string, string>>({});
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
+  const [selectedCompanyId, setSelectedCompanyId] = useState<string>('');
+  // If companies list is transiently empty, reload once from context/API.
+  useEffect(() => {
+    let cancelled = false;
+    const ensureCompanies = async () => {
+      if ((userCompanies?.length ?? 0) > 0) return;
+      setCompaniesSyncing(true);
+      try {
+        await loadUserCompanies();
+      } catch {
+        // Silent fallback
+      } finally {
+        if (!cancelled) setCompaniesSyncing(false);
+      }
+    };
+    ensureCompanies();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadUserCompanies, userCompanies?.length]);
+
+  // Auto-select first company when available (unless existing response already set one).
+  useEffect(() => {
+    if (!selectedCompanyId && (userCompanies?.length ?? 0) > 0) {
+      setSelectedCompanyId(userCompanies[0].id);
+    }
+  }, [selectedCompanyId, userCompanies]);
+
   const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   
   // For closed inspections: responses are C, CP, NC, NA
@@ -192,51 +238,72 @@ export default function EditExistingResponseScreen() {
   // Estados para tabs y equipo
   const [activeTab, setActiveTab] = useState<'preguntas' | 'equipo'>('preguntas');
 
-  // Lista de distritos de Lima
-  const limaDistricts = [
-    'Ancón',
-    'Ate',
-    'Barranco',
-    'Breña',
-    'Carabayllo',
-    'Cieneguilla',
-    'Chaclacayo',
-    'Chorrillos',
-    'Cercado de Lima',
-    'El Agustino',
-    'Independencia',
-    'Jesús María',
-    'La Molina',
-    'La Victoria',
-    'Lima',
-    'Lince',
-    'Los Olivos',
-    'Lurigancho',
-    'Lurín',
-    'Magdalena del Mar',
-    'Miraflores',
-    'Pachacámac',
-    'Pucusana',
-    'Pueblo Libre',
-    'Puente Piedra',
-    'Punta Hermosa',
-    'Punta Negra',
-    'Rímac',
-    'San Bartolo',
-    'San Borja',
-    'San Isidro',
-    'San Juan de Lurigancho',
-    'San Juan de Miraflores',
-    'San Luis',
-    'San Martín de Porres',
-    'San Miguel',
-    'Santa Anita',
-    'Santa María del Mar',
-    'Santa Rosa',
-    'Santiago de Surco',
-    'Surquillo',
-    'Villa El Salvador',
-    'Villa María del Triunfo'
+  // Opciones de ubicación (Línea 2, Línea 4, TBM) - mismas que en nueva respuesta
+  const ubicacionOpciones = [
+    'LÍNEA 2 - PATIO TALLER SANTA ANITA (PTSA)',
+    'LÍNEA 2 - ESTACIÓN 27 (E27)',
+    'LÍNEA 2 - ESTACIÓN 26 (E26)',
+    'LÍNEA 2 - ESTACIÓN 25 (E25)',
+    'LÍNEA 2 - ESTACIÓN 24 (E24)',
+    'LÍNEA 2 - ESTACIÓN 23 (E23)',
+    'LÍNEA 2 - ESTACIÓN 22 (E22)',
+    'LÍNEA 2 - ESTACIÓN 21 (E21)',
+    'LÍNEA 2 - ESTACIÓN 20 (E20)',
+    'LÍNEA 2 - ESTACIÓN 19 (E19)',
+    'LÍNEA 2 - ESTACIÓN 18 (E18)',
+    'LÍNEA 2 - ESTACIÓN 17 (E17)',
+    'LÍNEA 2 - ESTACIÓN 16 (E16)',
+    'LÍNEA 2 - ESTACIÓN 15 (E15)',
+    'LÍNEA 2 - ESTACIÓN 14 (E14)',
+    'LÍNEA 2 - ESTACIÓN 13 (E13)',
+    'LÍNEA 2 - ESTACIÓN 12 (E12)',
+    'LÍNEA 2 - ESTACIÓN 11 (E11)',
+    'LÍNEA 2 - ESTACIÓN 10 (E10)',
+    'LÍNEA 2 - ESTACIÓN 9 (E09)',
+    'LÍNEA 2 - ESTACIÓN 8 (E08)',
+    'LÍNEA 2 - ESTACIÓN 7 (E07)',
+    'LÍNEA 2 - ESTACIÓN 6 (E06)',
+    'LÍNEA 2 - ESTACIÓN 5 (E05)',
+    'LÍNEA 2 - ESTACIÓN 4 (E04)',
+    'LÍNEA 2 - ESTACIÓN 3 (E03)',
+    'LÍNEA 2 - ESTACIÓN 2 (E02)',
+    'LÍNEA 2 - ESTACIÓN 1 (E01)',
+    'LÍNEA 4 - PATIO TALLER BOCANEGRA (PTBN)',
+    'LÍNEA 4 - ESTACIÓN 1 (E04-01)',
+    'LÍNEA 4 - ESTACIÓN 2 (E04-02)',
+    'LÍNEA 4 - ESTACIÓN 3 (E04-03)',
+    'LÍNEA 4 - ESTACIÓN 4 (E04-04)',
+    'LÍNEA 4 - ESTACIÓN 5 (E04-05)',
+    'LÍNEA 4 - ESTACIÓN 6 (E04-06)',
+    'LÍNEA 4 - ESTACIÓN 7 (E04-07)',
+    'LÍNEA 4 - ESTACIÓN 8 (E04-08)',
+    'TBM - LÍNEA 2 ESTACIÓN 1 (E01-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 2 (E02-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 3 (E03-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 4 (E04-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 5 (E05-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 6 (E06-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 7 (E07-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 8 (E08-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 9 (E09-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 10 (E10-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 11 (E11-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 12 (E12-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 13 (E13-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 14 (E14-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 15 (E15-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 16 (E16-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 17 (E17-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 18 (E18-TBM)',
+    'TBM - LÍNEA 2 ESTACIÓN 19 (E19-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 1 (E04-01-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 2 (E04-02-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 3 (E04-03-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 4 (E04-04-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 5 (E04-05-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 6 (E04-06-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 7 (E04-07-TBM)',
+    'TBM-RAMAL 4 ESTACIÓN 8 (E04-08-TBM)',
   ];
   const [teamMembers, setTeamMembers] = useState<TeamMember[]>([
     { cargo: '', empresa: '', nombre: '', sort_order: 0 }
@@ -294,30 +361,17 @@ export default function EditExistingResponseScreen() {
     });
 
     return unsubscribe;
-  }, [navigation, closedResponses, openResponses, responseTitle, notes, area, turno, cantidadPersonal, selectedCompany, type, templateItems, existingResponseItems, originalResponseItems, localImages]);
+  }, [navigation, closedResponses, openResponses, responseTitle, notes, area, turno, cantidadPersonal, selectedCompanyId, type, templateItems, existingResponseItems, originalResponseItems, localImages]);
 
   const loadData = async () => {
     try {
       setLoading(true);
-      await loadCompanies();
       const loadedItems = await loadTemplateItems(); // This will initialize empty responses
       await loadResponse(loadedItems); // This will load response data and then call loadResponseItems
     } catch (error: any) {
       Alert.alert('Error', `Error al cargar datos: ${error.message}`);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const loadCompanies = async () => {
-    try {
-      const result = await getAllCompanies(1, 100);
-      if (result && result.data && result.data.companies) {
-        const companiesList = result.data.companies;
-        setCompanies(companiesList);
-      }
-    } catch (error: any) {
-      console.error('Error loading companies:', error);
     }
   };
 
@@ -344,12 +398,7 @@ export default function EditExistingResponseScreen() {
         
         // Set company from response
         if (response.company_id) {
-          const result = await getAllCompanies(1, 100);
-          const companiesList = result?.data?.companies || [];
-          const foundCompany = companiesList.find((c: Company) => c.id === response.company_id);
-          if (foundCompany) {
-            setSelectedCompany(foundCompany);
-          }
+          setSelectedCompanyId(response.company_id);
         }
         
         // Load response items after template items are loaded
@@ -479,8 +528,25 @@ export default function EditExistingResponseScreen() {
       if (!templateId) {
         throw new Error('No se proporcionó el ID del template');
       }
-      
-      const items = await getItemsByTemplateId(templateId);
+
+      let items: any[] = [];
+      if (usingLocalData) {
+        items = type === 'closed'
+          ? ((await storage.loadClosedTemplateItems(templateId)) || [])
+          : ((await storage.loadOpenTemplateItems(templateId)) || []);
+      } else {
+        try {
+          items = await getItemsByTemplateId(templateId);
+        } catch (error: any) {
+          if (!isNetworkFailure(error)) throw error;
+          const cached = type === 'closed'
+            ? ((await storage.loadClosedTemplateItems(templateId)) || [])
+            : ((await storage.loadOpenTemplateItems(templateId)) || []);
+          if (!cached || cached.length === 0) throw error;
+          items = cached;
+          setUsingLocalData(true);
+        }
+      }
       
       if (items && items.length > 0) {
         setTemplateItems(items);
@@ -530,7 +596,7 @@ export default function EditExistingResponseScreen() {
       }
       return [];
     } catch (error: any) {
-      Alert.alert('Error', `No se pudieron cargar las preguntas: ${error.message}`);
+      Alert.alert('Error', `No se pudieron cargar las preguntas: ${error?.message || 'Error de red'}`);
       return [];
     }
   };
@@ -543,6 +609,34 @@ export default function EditExistingResponseScreen() {
         response
       }
     }));
+  };
+
+  const handleBulkClosedCategoryResponse = (responseType: string) => {
+    if (type !== 'closed' || !selectedCategory) return;
+    const categoryItems = templateItems.filter(
+      (item) => (item.category || 'Sin categoría') === selectedCategory
+    );
+    if (categoryItems.length === 0) return;
+
+    setClosedResponses((prev) => {
+      const next = { ...prev };
+      categoryItems.forEach((item) => {
+        if (item.question_type === 'text') return;
+        const allowedOptions =
+          item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA'];
+        if (!allowedOptions.includes(responseType)) return;
+        const existing = next[item.id];
+        next[item.id] = {
+          item_id: existing?.item_id || item.id,
+          question_index: existing?.question_index || item.question_index,
+          response: responseType,
+          explanation: existing?.explanation || '',
+          image_url: existing?.image_url,
+          response_item_id: existing?.response_item_id,
+        };
+      });
+      return next;
+    });
   };
 
   const handleClosedExplanationChange = (itemId: string, explanation: string) => {
@@ -606,7 +700,8 @@ export default function EditExistingResponseScreen() {
 
   const loadTeamMembers = async () => {
     if (!responseId || (type !== 'closed' && type !== 'open')) return;
-    
+    if (responseId.startsWith('local-')) return; // No team en servidor para respuestas offline
+
     try {
       setLoadingTeam(true);
       const members = await getTeamMembersByResponseId(responseId);
@@ -636,22 +731,35 @@ export default function EditExistingResponseScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
+        let imageUri = result.assets[0].uri;
+        if (getIsOffline()) {
+          imageUri = await copyImageToPersistentStorage(imageUri);
+          setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+          const imageUrl = imageUri;
+          if (type === 'closed') {
+            setClosedResponses(prev => ({
+              ...prev,
+              [itemId]: { ...prev[itemId], image_url: imageUrl }
+            }));
+          } else {
+            setOpenResponses(prev => ({
+              ...prev,
+              [itemId]: { ...prev[itemId], image_url: imageUrl }
+            }));
+          }
+          return;
+        }
         setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
         
         try {
-          // Get current image URL before replacing
           const currentImageUrl = type === 'closed' 
             ? closedResponses[itemId]?.image_url 
             : openResponses[itemId]?.image_url;
-          
-          // Delete old image from S3 if it exists
-          if (currentImageUrl) {
+          if (currentImageUrl && (currentImageUrl.startsWith('http') || currentImageUrl.startsWith('https'))) {
             try {
               await deleteImage(currentImageUrl);
             } catch (deleteError: any) {
               console.warn('Error deleting old image (continuing with upload):', deleteError);
-              // Continue with upload even if deletion fails
             }
           }
           
@@ -667,21 +775,14 @@ export default function EditExistingResponseScreen() {
             if (type === 'closed') {
               setClosedResponses(prev => ({
                 ...prev,
-                [itemId]: {
-                  ...prev[itemId],
-                  image_url: imageUrl
-                }
+                [itemId]: { ...prev[itemId], image_url: imageUrl }
               }));
             } else {
               setOpenResponses(prev => ({
                 ...prev,
-                [itemId]: {
-                  ...prev[itemId],
-                  image_url: imageUrl
-                }
+                [itemId]: { ...prev[itemId], image_url: imageUrl }
               }));
             }
-            
             setLocalImages(prev => {
               const newState = { ...prev };
               delete newState[itemId];
@@ -718,22 +819,35 @@ export default function EditExistingResponseScreen() {
       });
 
       if (!result.canceled && result.assets[0]) {
-        const imageUri = result.assets[0].uri;
+        let imageUri = result.assets[0].uri;
+        if (getIsOffline()) {
+          imageUri = await copyImageToPersistentStorage(imageUri);
+          setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
+          const imageUrl = imageUri;
+          if (type === 'closed') {
+            setClosedResponses(prev => ({
+              ...prev,
+              [itemId]: { ...prev[itemId], image_url: imageUrl }
+            }));
+          } else {
+            setOpenResponses(prev => ({
+              ...prev,
+              [itemId]: { ...prev[itemId], image_url: imageUrl }
+            }));
+          }
+          return;
+        }
         setLocalImages(prev => ({ ...prev, [itemId]: imageUri }));
         
         try {
-          // Get current image URL before replacing
           const currentImageUrl = type === 'closed' 
             ? closedResponses[itemId]?.image_url 
             : openResponses[itemId]?.image_url;
-          
-          // Delete old image from S3 if it exists
-          if (currentImageUrl) {
+          if (currentImageUrl && (currentImageUrl.startsWith('http') || currentImageUrl.startsWith('https'))) {
             try {
               await deleteImage(currentImageUrl);
             } catch (deleteError: any) {
               console.warn('Error deleting old image (continuing with upload):', deleteError);
-              // Continue with upload even if deletion fails
             }
           }
           
@@ -749,21 +863,14 @@ export default function EditExistingResponseScreen() {
             if (type === 'closed') {
               setClosedResponses(prev => ({
                 ...prev,
-                [itemId]: {
-                  ...prev[itemId],
-                  image_url: imageUrl
-                }
+                [itemId]: { ...prev[itemId], image_url: imageUrl }
               }));
             } else {
               setOpenResponses(prev => ({
                 ...prev,
-                [itemId]: {
-                  ...prev[itemId],
-                  image_url: imageUrl
-                }
+                [itemId]: { ...prev[itemId], image_url: imageUrl }
               }));
             }
-            
             setLocalImages(prev => {
               const newState = { ...prev };
               delete newState[itemId];
@@ -786,12 +893,11 @@ export default function EditExistingResponseScreen() {
   };
 
   const handleSave = async (navigationAction?: any) => {
-    if (!selectedCompany) {
+    if (!selectedCompanyId) {
       if (navigationAction) {
-        // If navigating, just allow it without saving
         navigation.dispatch(navigationAction);
       } else {
-        Alert.alert('Error', 'Por favor selecciona una empresa');
+        Alert.alert('Error', 'Selecciona una empresa');
       }
       return;
     }
@@ -810,11 +916,14 @@ export default function EditExistingResponseScreen() {
       isSavingRef.current = true;
       setSaving(true);
 
-      // Update the response
+      // Update the response (include template_id for closed so sync POST has it)
       const responseData: any = {
         title: responseTitle.trim()
       };
-      
+      if (type === 'closed' && templateId) {
+        responseData.template_id = templateId;
+      }
+
       // Add Area field (common for both types)
       if (area.trim()) {
         responseData.Area = area.trim();
@@ -833,12 +942,86 @@ export default function EditExistingResponseScreen() {
         } else {
           responseData.Turno = null;
         }
-      } else if (type === 'closed') {
+      } else       if (type === 'closed') {
         if (cantidadPersonal.trim()) {
           responseData.Cantidad_de_Personal = parseInt(cantidadPersonal.trim()) || null;
         } else {
           responseData.Cantidad_de_Personal = null;
         }
+      }
+
+      responseData.company_id = selectedCompanyId;
+
+      // Solo cuando estamos ONLINE y la inspección ya está en el servidor: subir a S3 las fotos
+      // que sigan en localImages (file://, /data/...) antes de guardar. Así el backend nunca
+      // recibe URI local (evita "NoSuchKey" en el Excel). Si estamos offline o es inspección
+      // local (responseId.startsWith('local-')), se guarda localmente con la URI; el sync
+      // subirá las imágenes al tener internet (offlineSync).
+      const uploadedImageUrls: Record<string, string> = {};
+      if (!responseId.startsWith('local-') && !getIsOffline()) {
+        for (const [itemIdKey, uri] of Object.entries(localImages)) {
+          if (!uri || !isLocalImageUri(uri)) continue;
+          try {
+            const imageUrl = await uploadImage({
+              imageUri: uri,
+              folder: 'inspection-images',
+              subfolder: type,
+              identifier: responseId,
+              itemId: itemIdKey,
+            });
+            if (imageUrl) {
+              uploadedImageUrls[itemIdKey] = imageUrl;
+              if (type === 'closed') {
+                setClosedResponses(prev => prev[itemIdKey] ? { ...prev, [itemIdKey]: { ...prev[itemIdKey], image_url: imageUrl } } : prev);
+              } else {
+                setOpenResponses(prev => prev[itemIdKey] ? { ...prev, [itemIdKey]: { ...prev[itemIdKey], image_url: imageUrl } } : prev);
+              }
+            }
+          } catch (err: any) {
+            console.warn('[edit-existing-response] Error subiendo imagen antes de guardar:', itemIdKey, err?.message);
+          }
+        }
+      }
+
+      // Guardado offline: actualizar payload local y cola (sin API de ítems)
+      if (responseId.startsWith('local-')) {
+        const items: any[] = [];
+        if (type === 'closed') {
+          for (const templateItem of templateItems) {
+            const rd = closedResponses[templateItem.id];
+            if (!rd?.response?.trim()) continue;
+            const imageUrl = localImages[rd.item_id || templateItem.id] ?? rd.image_url ?? null;
+            items.push({
+              item_id: rd.item_id || templateItem.id,
+              question_index: rd.question_index,
+              response: rd.response?.trim() || '',
+              explanation: rd.explanation?.trim() || null,
+              image_url: imageUrl
+            });
+          }
+          await updateClosedResponse(responseId, responseData, { items });
+        } else {
+          for (const templateItem of templateItems) {
+            const rd = openResponses[templateItem.id];
+            if (!rd?.response?.trim()) continue;
+            const imageUrl = localImages[rd.item_id || templateItem.id] ?? rd.image_url ?? null;
+            items.push({
+              item_id: rd.item_id || templateItem.id,
+              question_index: rd.question_index,
+              response: rd.response?.trim() || '',
+              image_url: imageUrl
+            });
+          }
+          await updateOpenResponse(responseId, responseData, { items });
+        }
+        setSaving(false);
+        isSavingRef.current = false;
+        if (navigationAction) {
+          navigation.dispatch(navigationAction);
+        } else {
+          Alert.alert('Guardado', 'Cambios guardados localmente. Se sincronizarán al reconectar.');
+        }
+        return;
       }
 
       if (type === 'closed') {
@@ -904,16 +1087,15 @@ export default function EditExistingResponseScreen() {
             // Compare current data with original
             const responseChanged = originalItem?.response !== trimmedResponse;
             const explanationChanged = originalExplanation !== currentExplanation;
-            // Prioritize localImages (recently uploaded) over responseData.image_url
-            // Check both localImages and responseData.image_url (in case image was already uploaded)
-            // IMPORTANT: Also check closedResponses state directly as it may have the latest image_url
+            // Use S3 URL only (never send file:// or device path to API)
             const stateImageUrl = closedResponses[templateItem.id]?.image_url;
-            const currentImageUrl = localImages[itemIdKey] || stateImageUrl || (responseData.image_url !== undefined ? responseData.image_url : null);
+            const rawImageUrl = uploadedImageUrls[itemIdKey] || localImages[itemIdKey] || stateImageUrl || (responseData.image_url !== undefined ? responseData.image_url : null);
+            const currentImageUrl = rawImageUrl && !isLocalImageUri(rawImageUrl) ? rawImageUrl : null;
             const originalImageUrl = originalItem?.image_url ?? null;
             const imageUrlChanged = originalImageUrl !== currentImageUrl;
-            
+
             if (responseChanged || explanationChanged || imageUrlChanged) {
-              // Data changed - update it
+              // Data changed - update it (solo URL de S3, nunca URI local)
               const updateData: any = {
                 response: trimmedResponse,
                 explanation: currentExplanation,
@@ -970,10 +1152,10 @@ export default function EditExistingResponseScreen() {
               }
             }
           } else {
-            // Item doesn't exist - create it
-            // Check both localImages and responseData.image_url for the image URL
-            const imageUrlToSave = localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
-            
+            // Item doesn't exist - create it (solo URL de S3, nunca URI local)
+            const rawImageUrl = uploadedImageUrls[itemIdKey] || localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
+            const imageUrlToSave = rawImageUrl && !isLocalImageUri(rawImageUrl) ? rawImageUrl : null;
+
             const createData: any = {
               response_id: responseId,
               item_id: itemIdKey,
@@ -1062,14 +1244,14 @@ export default function EditExistingResponseScreen() {
             // Item exists in DB - check if it changed
             const originalItem = updatedOriginalResponseItemsState[itemIdKey] || originalResponseItems[itemIdKey];
             const responseChanged = originalItem?.response !== trimmedResponse;
-            // Prioritize localImages (recently uploaded) over responseData.image_url
-            // Check both localImages and responseData.image_url (in case image was already uploaded)
-            const currentImageUrl = localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
+            // Use S3 URL only (never send file:// or device path to API)
+            const rawImageUrl = uploadedImageUrls[itemIdKey] || localImages[itemIdKey] || (responseData.image_url !== undefined ? responseData.image_url : null);
+            const currentImageUrl = rawImageUrl && !isLocalImageUri(rawImageUrl) ? rawImageUrl : null;
             const originalImageUrl = originalItem?.image_url ?? null;
             const imageUrlChanged = originalImageUrl !== currentImageUrl;
-            
+
             if (responseChanged || imageUrlChanged) {
-              // Data changed - update it
+              // Data changed - update it (solo URL de S3)
               const updateData: any = {
                 response: trimmedResponse,
                 image_url: currentImageUrl
@@ -1120,14 +1302,12 @@ export default function EditExistingResponseScreen() {
               }
             }
           } else {
-            // Item doesn't exist - create it
+            // Item doesn't exist - create it (solo URL de S3, nunca URI local)
             const itemIdKey = responseData.item_id ?? templateItem.id;
-            
-            // Prioritize localImages (recently uploaded) over responseData.image_url
-            // IMPORTANT: Also check openResponses state directly as it may have the latest image_url
             const stateImageUrl = openResponses[templateItem.id]?.image_url;
-            const imageUrlToSave = localImages[itemIdKey] || stateImageUrl || (responseData.image_url ?? null);
-            
+            const rawImageUrl = uploadedImageUrls[itemIdKey] || localImages[itemIdKey] || stateImageUrl || (responseData.image_url ?? null);
+            const imageUrlToSave = rawImageUrl && !isLocalImageUri(rawImageUrl) ? rawImageUrl : null;
+
             const createData: any = {
               response_id: responseId,
               item_id: itemIdKey,
@@ -1353,6 +1533,13 @@ export default function EditExistingResponseScreen() {
 
   const categories = Object.keys(groupedItems);
   const currentCategoryItems = selectedCategory ? groupedItems[selectedCategory] || [] : [];
+  const bulkCategoryOptions = Array.from(
+    new Set(
+      currentCategoryItems
+        .filter((item) => item.question_type !== 'text')
+        .flatMap((item) => (item.options && item.options.length > 0 ? item.options : ['C', 'CP', 'NC', 'NA']))
+    )
+  );
 
   if (loading) {
     return (
@@ -1438,6 +1625,12 @@ export default function EditExistingResponseScreen() {
         </TouchableOpacity>
       </View>
 
+      {usingLocalData ? (
+        <View style={styles.localDataBanner}>
+          <Text style={styles.localDataBannerText}>Utilizando datos guardados localmente</Text>
+        </View>
+      ) : null}
+
       {/* Tabs */}
       <View style={styles.tabsContainer}>
         <TouchableOpacity 
@@ -1467,7 +1660,7 @@ export default function EditExistingResponseScreen() {
       >
         {activeTab === 'preguntas' && (
           <>
-        {/* Company Selector */}
+        {/* Empresa (selector) */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>Empresa</Text>
           <View style={styles.dropdownContainer}>
@@ -1475,8 +1668,13 @@ export default function EditExistingResponseScreen() {
               style={styles.dropdownButton}
               onPress={() => setShowCompanyDropdown(true)}
             >
-              <Text style={styles.dropdownButtonText}>
-                {selectedCompany ? selectedCompany.name : 'Seleccionar empresa'}
+              <Text style={[
+                styles.dropdownButtonText,
+                !selectedCompanyId && { color: '#9ca3af' }
+              ]}>
+                {selectedCompanyId
+                  ? (userCompanies?.find((c: Company) => c.id === selectedCompanyId)?.name ?? 'Seleccionar empresa')
+                  : 'Seleccionar empresa'}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -1486,59 +1684,6 @@ export default function EditExistingResponseScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
-        {/* Company Dropdown Modal */}
-        <Modal
-          visible={showCompanyDropdown}
-          transparent={true}
-          animationType="fade"
-          onRequestClose={() => setShowCompanyDropdown(false)}
-        >
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => setShowCompanyDropdown(false)}
-          >
-            <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
-              <View style={styles.dropdownModalHeader}>
-                <Text style={styles.dropdownModalTitle}>Seleccionar Empresa</Text>
-                <TouchableOpacity
-                  onPress={() => setShowCompanyDropdown(false)}
-                  style={styles.closeButton}
-                >
-                  <Ionicons name="close" size={24} color="#6b7280" />
-                </TouchableOpacity>
-              </View>
-              <ScrollView style={styles.dropdownModalScroll}>
-                {companies.map((company) => (
-                  <TouchableOpacity
-                    key={company.id}
-                    style={[
-                      styles.dropdownModalItem,
-                      selectedCompany?.id === company.id && styles.dropdownModalItemSelected
-                    ]}
-                    onPress={() => {
-                      setSelectedCompany(company);
-                      setShowCompanyDropdown(false);
-                    }}
-                  >
-                    <Text style={[
-                      styles.dropdownModalItemText,
-                      selectedCompany?.id === company.id && styles.dropdownModalItemTextSelected
-                    ]}>
-                      {company.name}
-                    </Text>
-                    {company.industry && (
-                      <Text style={styles.dropdownModalItemCount}>
-                        {company.industry}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </View>
-          </TouchableOpacity>
-        </Modal>
 
         {/* Area Input */}
         <View style={styles.section}>
@@ -1593,7 +1738,7 @@ export default function EditExistingResponseScreen() {
                 styles.dropdownButtonText,
                 !responseTitle && { color: '#9ca3af' }
               ]}>
-                {responseTitle || 'Seleccionar distrito'}
+                {responseTitle || 'Seleccionar ubicación'}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -1618,7 +1763,7 @@ export default function EditExistingResponseScreen() {
           >
             <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
               <View style={styles.dropdownModalHeader}>
-                <Text style={styles.dropdownModalTitle}>Seleccionar Distrito</Text>
+                <Text style={styles.dropdownModalTitle}>Seleccionar Ubicación</Text>
                 <TouchableOpacity
                   onPress={() => setShowLocationDropdown(false)}
                   style={styles.closeButton}
@@ -1627,26 +1772,81 @@ export default function EditExistingResponseScreen() {
                 </TouchableOpacity>
               </View>
               <ScrollView style={styles.dropdownModalScroll}>
-                {limaDistricts.map((district) => (
+                {ubicacionOpciones.map((ubicacion) => (
                   <TouchableOpacity
-                    key={district}
+                    key={ubicacion}
                     style={[
                       styles.dropdownModalItem,
-                      responseTitle === district && styles.dropdownModalItemSelected
+                      responseTitle === ubicacion && styles.dropdownModalItemSelected
                     ]}
                     onPress={() => {
-                      setResponseTitle(district);
+                      setResponseTitle(ubicacion);
                       setShowLocationDropdown(false);
                     }}
                   >
                     <Text style={[
                       styles.dropdownModalItemText,
-                      responseTitle === district && styles.dropdownModalItemTextSelected
+                      responseTitle === ubicacion && styles.dropdownModalItemTextSelected
                     ]}>
-                      {district}
+                      {ubicacion}
                     </Text>
                   </TouchableOpacity>
                 ))}
+              </ScrollView>
+            </View>
+          </TouchableOpacity>
+        </Modal>
+
+        {/* Company Dropdown Modal */}
+        <Modal
+          visible={showCompanyDropdown}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setShowCompanyDropdown(false)}
+        >
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => setShowCompanyDropdown(false)}
+          >
+            <View style={styles.dropdownModalContent} onStartShouldSetResponder={() => true}>
+              <View style={styles.dropdownModalHeader}>
+                <Text style={styles.dropdownModalTitle}>Seleccionar Empresa</Text>
+                <TouchableOpacity
+                  onPress={() => setShowCompanyDropdown(false)}
+                  style={styles.closeButton}
+                >
+                  <Ionicons name="close" size={24} color="#6b7280" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.dropdownModalScroll}>
+                {(userCompanies || []).map((company: Company) => (
+                  <TouchableOpacity
+                    key={company.id}
+                    style={[
+                      styles.dropdownModalItem,
+                      selectedCompanyId === company.id && styles.dropdownModalItemSelected
+                    ]}
+                    onPress={() => {
+                      setSelectedCompanyId(company.id);
+                      setShowCompanyDropdown(false);
+                    }}
+                  >
+                    <Text style={[
+                      styles.dropdownModalItemText,
+                      selectedCompanyId === company.id && styles.dropdownModalItemTextSelected
+                    ]}>
+                      {company.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+                {(userCompanies?.length ?? 0) === 0 && (
+                  <Text style={styles.dropdownModalItemText}>
+                    {(authIsLoading || companiesSyncing)
+                      ? 'Cargando empresas...'
+                      : 'No hay empresas disponibles en este momento. Intenta nuevamente.'}
+                  </Text>
+                )}
               </ScrollView>
             </View>
           </TouchableOpacity>
@@ -1728,6 +1928,22 @@ export default function EditExistingResponseScreen() {
         {/* Questions for Selected Category */}
         {selectedCategory && currentCategoryItems.length > 0 && (
           <View style={styles.section}>
+            {type === 'closed' ? (
+              <View style={styles.bulkActionsContainer}>
+                <Text style={styles.bulkActionsLabel}>Marcar toda la categoría:</Text>
+                <View style={styles.bulkButtonsRow}>
+                  {bulkCategoryOptions.map((responseType) => (
+                    <TouchableOpacity
+                      key={responseType}
+                      style={styles.bulkActionButton}
+                      onPress={() => handleBulkClosedCategoryResponse(responseType)}
+                    >
+                      <Text style={styles.bulkActionButtonText}>{responseType}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            ) : null}
             {currentCategoryItems.map((item, index) => (
               <View key={item.id} style={styles.questionCard}>
                 {/* Question Text */}
@@ -2172,6 +2388,19 @@ const styles = StyleSheet.create({
     color: '#dbeafe',
     marginTop: 2,
   },
+  localDataBanner: {
+    backgroundColor: '#fef3c7',
+    borderBottomWidth: 1,
+    borderBottomColor: '#f59e0b',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  localDataBannerText: {
+    color: '#92400e',
+    fontSize: 13,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -2304,6 +2533,37 @@ const styles = StyleSheet.create({
   dropdownModalItemCount: {
     fontSize: 12,
     color: '#6b7280',
+  },
+  bulkActionsContainer: {
+    marginBottom: 14,
+    padding: 10,
+    borderRadius: 10,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  bulkActionsLabel: {
+    fontSize: 13,
+    color: '#374151',
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  bulkButtonsRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  bulkActionButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    backgroundColor: '#fff',
+  },
+  bulkActionButtonText: {
+    fontSize: 13,
+    color: '#1f2937',
+    fontWeight: '700',
   },
   questionCard: {
     marginBottom: 12,

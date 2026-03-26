@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getIsOffline } from '../utils/networkStore';
+import { storage } from '../utils/storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -169,21 +171,30 @@ export const useOpenTemplateItems = () => {
     }
   };
 
-  // Obtener todos los items de un template específico por template_id
+  // Obtener todos los items de un template específico por template_id (usa caché si offline)
   const getItemsByTemplateId = async (templateId) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       if (!templateId) {
         throw new Error('El ID del template es requerido');
       }
-      
+
+      if (getIsOffline()) {
+        const cached = await storage.loadOpenTemplateItems(templateId);
+        if (cached && Array.isArray(cached)) {
+          setItems(cached);
+          return cached;
+        }
+        throw new Error('Sin conexión y sin ítems del template en caché. Inicia sesión con internet para cargarlos.');
+      }
+
       const token = await getAuthToken();
       if (!token) {
         throw new Error('No se encontró el token de autenticación');
       }
-      
+
       const url = `${API_BASE_URL}/open-template-items/template/${templateId}`;
       const response = await fetch(url, {
         method: 'GET',
@@ -200,24 +211,18 @@ export const useOpenTemplateItems = () => {
         console.error('[getItemsByTemplateId] JSON parse error:', parseErr?.message);
         throw new Error(`Error al parsear respuesta del servidor (HTTP ${response.status})`);
       }
-      
-      // Check for authentication errors first
+
       if (response.status === 401 || response.status === 403) {
         throw new Error('Error de autenticación. Por favor inicia sesión nuevamente.');
       }
-      
+
       if (!response.ok) {
-        // Parse error message properly
         let errorMessage = 'Error al obtener items del template';
-        
         if (data) {
           if (data.errors) {
-            // Handle express-validator errors format - can be array or object
             if (Array.isArray(data.errors)) {
-              // Format: [{ field: 'templateId', message: 'ID inválido', value: '...' }]
               errorMessage = data.errors.map(err => err.message || err.msg || String(err)).join(', ');
             } else {
-              // Format: { field: ['error1', 'error2'] }
               const errorArray = Object.values(data.errors).flat();
               errorMessage = errorArray.map(err => {
                 if (typeof err === 'string') return err;
@@ -232,17 +237,18 @@ export const useOpenTemplateItems = () => {
             errorMessage = data.error;
           }
         }
-        
         throw new Error(errorMessage);
       }
 
-      const items = data?.data?.items || data?.data || [];
-      setItems(items);
-      return items;
+      const items = data?.data?.items ?? data?.data ?? [];
+      const list = Array.isArray(items) ? items : [];
+      setItems(list);
+      await storage.saveOpenTemplateItems(templateId, list);
+      return list;
     } catch (err) {
       console.error('[getItemsByTemplateId] ERROR:', err?.message);
-      const errorMessage = typeof err.message === 'string' 
-        ? err.message 
+      const errorMessage = typeof err.message === 'string'
+        ? err.message
         : (typeof err === 'string' ? err : 'Error al obtener items del template');
       setError(errorMessage);
       throw new Error(errorMessage);

@@ -24,9 +24,12 @@ interface SearchResult {
   completion_date: string | null;
   type: 'open' | 'closed';
   created_at: string;
+  inspector_id?: string;
   Area?: string;
   Turno?: string;
   Cantidad_de_Personal?: string;
+  inspector_name?: string | null;
+  is_completed?: boolean;
 }
 
 export default function SearchResultsScreen() {
@@ -60,6 +63,7 @@ export default function SearchResultsScreen() {
       if (params.dateFrom) searchParams.append('dateFrom', params.dateFrom as string);
       if (params.dateTo) searchParams.append('dateTo', params.dateTo as string);
       if (params.type && params.type !== 'both') searchParams.append('type', params.type as string);
+      if (params.status && params.status !== 'all') searchParams.append('status', params.status as string);
 
       const response = await fetch(`${API_BASE_URL}/search/inspections?${searchParams.toString()}`, {
         method: 'GET',
@@ -203,14 +207,24 @@ export default function SearchResultsScreen() {
                   <Text style={styles.resultTitle} numberOfLines={2}>
                     {item.title || 'Sin título'}
                   </Text>
-                  <View style={[
-                    styles.typeBadge,
-                    item.type === 'closed' ? styles.closedBadge : styles.openBadge
-                  ]}>
-                    <Text style={styles.typeBadgeText}>
-                      {item.type === 'closed' ? 'Checklist' : 'Abierta'}
-                    </Text>
-                  </View>
+                    <View style={styles.badgesColumn}>
+                      <View style={[
+                        styles.typeBadge,
+                        item.type === 'closed' ? styles.closedBadge : styles.openBadge
+                      ]}>
+                        <Text style={styles.typeBadgeText}>
+                          {item.type === 'closed' ? 'Checklist' : 'Abierta'}
+                        </Text>
+                      </View>
+                      <View style={[
+                        styles.statusBadge,
+                        item.is_completed ? styles.statusCompletedBadge : styles.statusIncompleteBadge
+                      ]}>
+                        <Text style={styles.statusBadgeText}>
+                          {item.is_completed ? 'Completada' : 'Incompleta'}
+                        </Text>
+                      </View>
+                    </View>
                 </View>
               </View>
               
@@ -225,6 +239,12 @@ export default function SearchResultsScreen() {
                   <Ionicons name="calendar" size={16} color="#6b7280" />
                   <Text style={styles.resultText}>
                     Fecha: {formatDate(item.inspection_date)}
+                  </Text>
+                </View>
+                <View style={styles.resultRow}>
+                  <Ionicons name="person" size={16} color="#6b7280" />
+                  <Text style={styles.resultText}>
+                    Inspector: {item.inspector_name || (item.inspector_id ? `ID ${item.inspector_id.slice(0, 8)}` : 'No disponible')}
                   </Text>
                 </View>
                 {item.Area && (
@@ -370,6 +390,10 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: 8,
   },
+  badgesColumn: {
+    alignItems: 'flex-end',
+    gap: 6,
+  },
   resultTitle: {
     flex: 1,
     fontSize: 16,
@@ -390,6 +414,22 @@ const styles = StyleSheet.create({
   typeBadgeText: {
     fontSize: 12,
     fontWeight: '600',
+    color: '#1f2937',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusCompletedBadge: {
+    backgroundColor: '#dcfce7',
+  },
+  statusIncompleteBadge: {
+    backgroundColor: '#fee2e2',
+  },
+  statusBadgeText: {
+    fontSize: 12,
+    fontWeight: '700',
     color: '#1f2937',
   },
   resultDetails: {

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
@@ -18,14 +18,25 @@ export const useUsers = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Obtener usuarios sin rol de manager
-  const getNonManagerUsers = async () => {
+  /**
+   * Usuarios sin rol manager.
+   * Sin opciones: todos (comportamiento anterior).
+   * Con { page, limit, search }: paginación y/o búsqueda (search solo cuando envías el término).
+   */
+  const getNonManagerUsers = useCallback(async (options = {}) => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const token = await getAuthToken();
-      const response = await fetch(`${API_BASE_URL}/users/non-managers`, {
+      const params = new URLSearchParams();
+      if (options.page != null) params.set('page', String(options.page));
+      if (options.limit != null) params.set('limit', String(options.limit));
+      if (options.search && String(options.search).trim()) {
+        params.set('search', String(options.search).trim());
+      }
+      const qs = params.toString();
+      const response = await fetch(`${API_BASE_URL}/users/non-managers${qs ? `?${qs}` : ''}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -46,7 +57,7 @@ export const useUsers = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // Obtener todas las inspecciones de un inspector
   const getInspectorInspections = async (inspectorId) => {

@@ -17,6 +17,10 @@ export default function ServiciosScreen() {
     router.push('/inspection-types');
   };
 
+  const handleOtros = () => {
+    router.push('/otros-types');
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
@@ -116,6 +120,22 @@ export default function ServiciosScreen() {
             <Ionicons name="construct" size={24} color="#9ca3af" />
           </View>
         </View>
+
+        {/* Otros Card */}
+        <TouchableOpacity style={styles.inspectionCard} onPress={handleOtros}>
+          <View style={styles.cardHeader}>
+            <View style={styles.cardIconContainer}>
+              <Ionicons name="ellipsis-horizontal" size={32} color="#6b7280" />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle}>Otros</Text>
+              <Text style={styles.cardDescription}>
+                Otros servicios y herramientas adicionales
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
         {/* Espacio para el bottom tab */}
         <View style={{ height: 40 }} />
