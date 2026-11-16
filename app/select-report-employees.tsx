@@ -15,7 +15,8 @@ import {
   Keyboard,
   Pressable,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import GradientHeader from '@/components/ui/GradientHeader';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useUsers } from '../hooks/useUsers';
 
@@ -26,6 +27,8 @@ export interface Employee {
   email: string;
   first_name: string;
   last_name: string;
+  role?: string;
+  is_active?: boolean;
 }
 
 export type StoredEmployeeSelection = {
@@ -57,8 +60,7 @@ export async function saveReportEmployeeSelection(selection: StoredEmployeeSelec
 const PAGE_SIZE = 50;
 
 export default function SelectReportEmployeesScreen() {
-  const insets = useSafeAreaInsets();
-  const { getNonManagerUsers } = useUsers();
+  const { getAllUsers } = useUsers();
 
   const [searchDraft, setSearchDraft] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
@@ -67,6 +69,7 @@ export default function SelectReportEmployeesScreen() {
   const [pagesTotal, setPagesTotal] = useState(1);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [namesById, setNamesById] = useState<Record<string, string>>({});
 
@@ -82,7 +85,8 @@ export default function SelectReportEmployeesScreen() {
       if (isFirst) setLoading(true);
       else setLoadingMore(true);
       try {
-        const data = await getNonManagerUsers({
+        // Incluye employees + managers (todos pueden tener inspecciones)
+        const data = await getAllUsers({
           page: pageNum,
           limit: PAGE_SIZE,
           search: search || undefined,
@@ -103,7 +107,7 @@ export default function SelectReportEmployeesScreen() {
         setLoadingMore(false);
       }
     },
-    [getNonManagerUsers]
+    [getAllUsers]
   );
 
   useEffect(() => {
@@ -175,6 +179,36 @@ export default function SelectReportEmployeesScreen() {
     setSelectedIds(next);
   };
 
+  const selectAllMatching = async () => {
+    try {
+      setSelectingAll(true);
+      const data = await getAllUsers({
+        page: 1,
+        limit: 200,
+        search: activeSearch || undefined,
+      });
+      const list = (data?.data?.users || []) as Employee[];
+      const next = new Set<string>();
+      const nextNames: Record<string, string> = {};
+      list.forEach((u) => {
+        next.add(u.id);
+        nextNames[u.id] = `${u.first_name} ${u.last_name}`.trim();
+      });
+      setSelectedIds(next);
+      setNamesById(nextNames);
+      Alert.alert('Listo', `${list.length} usuario(s) seleccionados`);
+    } catch (e: any) {
+      Alert.alert('Error', e?.message || 'No se pudo seleccionar a todos');
+    } finally {
+      setSelectingAll(false);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setNamesById({});
+  };
+
   const allOnPageSelected =
     users.length > 0 && users.every((u) => selectedIds.has(u.id));
 
@@ -206,6 +240,7 @@ export default function SelectReportEmployeesScreen() {
         <View style={styles.rowText}>
           <Text style={styles.name}>
             {item.first_name} {item.last_name}
+            {item.role === 'manager' ? ' · Manager' : ''}
           </Text>
           <Text style={styles.email} numberOfLines={1}>
             {item.email}
@@ -266,9 +301,25 @@ export default function SelectReportEmployeesScreen() {
         <View style={styles.toolbar}>
           <View style={styles.pageBadge}>
             <Text style={styles.pageBadgeText}>
-              Página {page} de {pagesTotal}
+              Página {page} de {pagesTotal} · {selectedIds.size} sel.
             </Text>
           </View>
+          <TouchableOpacity
+            onPress={selectAllMatching}
+            style={styles.toolbarBtn}
+            activeOpacity={0.75}
+            disabled={selectingAll}
+          >
+            <Ionicons
+              name="people-circle-outline"
+              size={18}
+              color="#15803d"
+              style={styles.pageActionIcon}
+            />
+            <Text style={[styles.toolbarBtnText, { color: '#15803d' }]}>
+              {selectingAll ? 'Seleccionando…' : 'Seleccionar TODOS'}
+            </Text>
+          </TouchableOpacity>
           <TouchableOpacity
             onPress={allOnPageSelected ? deselectAllOnPage : selectAllOnPage}
             style={styles.toolbarBtn}
@@ -281,21 +332,26 @@ export default function SelectReportEmployeesScreen() {
               style={styles.pageActionIcon}
             />
             <Text style={styles.toolbarBtnText}>
-              {allOnPageSelected ? 'Quitar todos en pantalla' : 'Seleccionar todos en pantalla'}
+              {allOnPageSelected ? 'Quitar página' : 'Solo esta página'}
             </Text>
           </TouchableOpacity>
+          {selectedIds.size > 0 ? (
+            <TouchableOpacity onPress={clearSelection} style={styles.toolbarBtn} activeOpacity={0.75}>
+              <Text style={[styles.toolbarBtnText, { color: '#dc2626' }]}>Limpiar selección</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
       ) : null}
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['bottom']}>
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={styles.header}>
+        <GradientHeader style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
           </TouchableOpacity>
@@ -308,7 +364,7 @@ export default function SelectReportEmployeesScreen() {
           <TouchableOpacity style={styles.doneButton} onPress={handleDone} hitSlop={8}>
             <Text style={styles.doneButtonText}>Listo</Text>
           </TouchableOpacity>
-        </View>
+        </GradientHeader>
 
         <FlatList
           data={users}

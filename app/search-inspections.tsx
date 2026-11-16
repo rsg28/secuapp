@@ -15,6 +15,7 @@ import {
   Modal,
 } from 'react-native';
 import DateTimePicker, { DateTimePickerAndroid } from '@react-native-community/datetimepicker';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 export default function SearchInspectionsScreen() {
   const { width } = useWindowDimensions();
@@ -115,7 +116,7 @@ export default function SearchInspectionsScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -123,7 +124,7 @@ export default function SearchInspectionsScreen() {
           <Text style={styles.headerTitle}>Búsqueda de Inspecciones</Text>
           <Text style={styles.headerSubtitle}>Busca por ID, título, inspector o fecha</Text>
         </View>
-      </View>
+      </GradientHeader>
 
       <ScrollView 
         style={styles.content} 
@@ -437,11 +438,9 @@ export default function SearchInspectionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#7dd3fc',
-    paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -462,7 +461,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#fff',
+    color: 'rgba(255,255,255,0.78)',
     opacity: 0.9,
   },
   content: {
@@ -477,11 +476,11 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     margin: 16,
     borderRadius: 12,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   sectionTitle: {
     fontSize: 18,
@@ -568,10 +567,10 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     overflow: 'hidden',
     zIndex: 30,
-    elevation: 24,
-    shadowColor: '#000',
+    elevation: 2,
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.06,
     shadowRadius: 10,
   },
   dropdownMenuItemInline: {

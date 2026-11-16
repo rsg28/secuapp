@@ -15,6 +15,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { useOpenInspectionTemplates } from '../hooks/useOpenInspectionTemplates';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface FormTemplate {
   id: string;
@@ -164,7 +165,7 @@ export default function OpenInspectionsScreen() {
           id: category,
           name: category,
           icon: '',
-          color: '#6366f1',
+          color: '#2563eb',
         };
       }).sort((a, b) => a.name.localeCompare(b.name)); // Ordenar alfabéticamente
       
@@ -178,7 +179,7 @@ export default function OpenInspectionsScreen() {
           id: category,
           name: category,
           icon: '',
-          color: '#6366f1',
+          color: '#2563eb',
         };
       }).sort((a, b) => a.name.localeCompare(b.name));
       
@@ -206,7 +207,7 @@ export default function OpenInspectionsScreen() {
   );
 
   const categories: Category[] = [
-    { id: 'todos', name: 'Todos', icon: '', color: '#6366f1' },
+    { id: 'todos', name: 'Todos', icon: '', color: '#2563eb' },
   ];
 
   const getFilteredForms = () => {
@@ -845,7 +846,7 @@ export default function OpenInspectionsScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => {
           isNavigatingProgrammatically.current = true;
           router.push('/inspection-types');
@@ -855,7 +856,7 @@ export default function OpenInspectionsScreen() {
         <View>
           <Text style={styles.headerTitle}>Inspecciones Abiertas</Text>
         </View>
-      </View>
+      </GradientHeader>
 
       <View style={styles.contentOverlay}>
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
@@ -1283,7 +1284,7 @@ export default function OpenInspectionsScreen() {
                         flex: 1,
                         padding: 10,
                         borderRadius: 8,
-                        backgroundColor: (item.question_type || 'text') === 'text' ? '#6366f1' : '#e5e7eb',
+                        backgroundColor: (item.question_type || 'text') === 'text' ? '#2563eb' : '#e5e7eb',
                         alignItems: 'center'
                       }}
                       onPress={() => updateEditItem(index, 'question_type', 'text')}
@@ -1295,7 +1296,7 @@ export default function OpenInspectionsScreen() {
                         flex: 1,
                         padding: 10,
                         borderRadius: 8,
-                        backgroundColor: item.question_type === 'single_choice' ? '#6366f1' : '#e5e7eb',
+                        backgroundColor: item.question_type === 'single_choice' ? '#2563eb' : '#e5e7eb',
                         alignItems: 'center'
                       }}
                       onPress={() => updateEditItem(index, 'question_type', 'single_choice')}
@@ -1307,7 +1308,7 @@ export default function OpenInspectionsScreen() {
                         flex: 1,
                         padding: 10,
                         borderRadius: 8,
-                        backgroundColor: item.question_type === 'multiple_choice' ? '#6366f1' : '#e5e7eb',
+                        backgroundColor: item.question_type === 'multiple_choice' ? '#2563eb' : '#e5e7eb',
                         alignItems: 'center'
                       }}
                       onPress={() => updateEditItem(index, 'question_type', 'multiple_choice')}
@@ -1340,7 +1341,7 @@ export default function OpenInspectionsScreen() {
                         style={{alignSelf: 'flex-start', marginTop: 4}}
                         onPress={() => addEditItemOption(index)}
                       >
-                        <Text style={{color: '#6366f1', fontSize: 12}}>+ Agregar opción</Text>
+                        <Text style={{color: '#2563eb', fontSize: 12}}>+ Agregar opción</Text>
                       </TouchableOpacity>
                     </View>
                   )}
@@ -1403,28 +1404,18 @@ export default function OpenInspectionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -1436,7 +1427,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   contentOverlay: {
@@ -1466,8 +1457,8 @@ const styles = StyleSheet.create({
     marginRight: 12,
   },
   categoryButtonActive: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
   },
   categoryText: {
     fontSize: 14,
@@ -1499,14 +1490,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 25,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   addButtonText: {
     color: '#fff',
@@ -1667,14 +1658,14 @@ const styles = StyleSheet.create({
     padding: 24,
     width: '90%',
     maxWidth: 400,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   renameModalTitle: {
     fontSize: 20,
@@ -1795,11 +1786,11 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     marginTop: 4,
     borderRadius: 8,
-    backgroundColor: '#e0f2fe',
+    backgroundColor: '#dbeafe',
     gap: 6,
   },
   addQuestionText: {
-    color: '#0369a1',
+    color: '#1d4ed8',
     fontWeight: '600',
   },
   addCategoryButton: {
@@ -1944,14 +1935,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     maxHeight: 250,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 10,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   itemsCategoryDropdownItem: {
     flexDirection: 'row',
@@ -1971,7 +1962,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   itemsCategoryDropdownItemTextActive: {
-    color: '#6366f1',
+    color: '#2563eb',
     fontWeight: '700',
   },
   itemsModalScrollView: {
@@ -2047,7 +2038,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   itemsQuestionIndex: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#2563eb',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 6,
@@ -2069,7 +2060,7 @@ const styles = StyleSheet.create({
   itemsQuestionNumberText: {
     fontSize: 14,
     fontWeight: '700',
-    color: '#6366f1',
+    color: '#2563eb',
   },
   itemsQuestionText: {
     fontSize: 16,

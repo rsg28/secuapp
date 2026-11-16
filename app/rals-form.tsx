@@ -17,9 +17,115 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useRalsReports } from '../hooks/useRalsReports';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 type TabType = 'reporte' | 'cierre' | 'referencia';
-type TipoObservacion = 'acto_subestandar' | 'condicion_subestandar' | 'sugerencia_recomendacion' | 'felicitacion' | null;
+type TipoObservacionId =
+  | 'acto_subestandar'
+  | 'condicion_subestandar'
+  | 'sugerencia_recomendacion'
+  | 'felicitacion';
+
+const VALID_TIPO_IDS = new Set<TipoObservacionId>([
+  'acto_subestandar',
+  'condicion_subestandar',
+  'sugerencia_recomendacion',
+  'felicitacion',
+]);
+
+function parseTiposFromApi(raw: unknown): TipoObservacionId[] {
+  if (raw == null || raw === '') return [];
+  if (Array.isArray(raw)) {
+    return [
+      ...new Set(
+        raw.filter((x): x is TipoObservacionId => VALID_TIPO_IDS.has(x as TipoObservacionId)),
+      ),
+    ];
+  }
+  if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (t.startsWith('[')) {
+      try {
+        const a = JSON.parse(t) as unknown;
+        if (Array.isArray(a)) {
+          return [
+            ...new Set(
+              a.filter((x): x is TipoObservacionId => VALID_TIPO_IDS.has(x as TipoObservacionId)),
+            ),
+          ];
+        }
+      } catch {
+        return [];
+      }
+    }
+    return VALID_TIPO_IDS.has(t as TipoObservacionId) ? [t as TipoObservacionId] : [];
+  }
+  return [];
+}
+
+const ACTOS_SUBESTANDARES = [
+  'Operar un equipo sin autorización/Entrenamiento.',
+  'Falla al advertir.',
+  'Falla al asegurar.',
+  'Exponerse y/o exponer a los trabajadores a riesgos innecesarios.',
+  'Operar a velocidad excesiva.',
+  'No utilizar su equipo de protección personal.',
+  'Estar fumando en las zonas operativas o en áreas donde no está permitido.',
+  'Encontrarse con signos de haber ingerido alcohol.',
+  'No reportar un incidente/accidente.',
+  'No asistir a las reuniones de inicio de jornada u otras capacitaciones programadas.',
+  'No cumplir con el procedimiento de trabajo.',
+  'No realizó el ATS.',
+];
+
+const CONDICIONES_SUBESTANDAR = [
+  'Instrucciones y/o procedimientos inadecuados.',
+  'Falta o inadecuadas barreras, guardas, bermas, barricadas, etc.',
+  'Equipos de protección personal inadecuados o insuficientes.',
+  'Herramientas, equipos o materiales defectuosos y/o inadecuados.',
+  'Área de trabajo congestionada o restringida.',
+  'Vías, paredes, tejados inestables.',
+  'Almacenamiento inadecuado de productos químicos.',
+  'Sistemas de advertencia y/o señalización insuficientes o inadecuadas.',
+  'Peligro de explosión y/o incendio.',
+  'Orden y Limpieza deficientes en el lugar de trabajo.',
+  'Condiciones climáticas adversas.',
+  'Condiciones ambientales peligrosas: Polvos, humos, emanaciones y/o vapores.',
+  'Área con ventilación deficiente. Otra condición subestándar no clasificada.',
+  'Área con exposiciones a ruidos excesivos.',
+  'Área con exposiciones a temperaturas altas o bajas.',
+  'Área con iluminación excesiva o deficiente.',
+];
+
+const TIPOS_OBSERVACION = [
+  { id: 'acto_subestandar' as const, label: 'Acto Subestándar' },
+  { id: 'condicion_subestandar' as const, label: 'Condición Subestándar' },
+  { id: 'sugerencia_recomendacion' as const, label: 'Sugerencia y/o Recomendación' },
+  { id: 'felicitacion' as const, label: 'Felicitación a un trabajador' },
+];
+
+function parseClasificacionesReport(raw: unknown): { actos: string[]; condiciones: string[] } {
+  if (raw == null || raw === '') return { actos: [], condiciones: [] };
+  if (typeof raw === 'string') {
+    try {
+      const o = JSON.parse(raw) as { actos?: unknown; condiciones?: unknown };
+      return {
+        actos: Array.isArray(o.actos) ? (o.actos as string[]) : [],
+        condiciones: Array.isArray(o.condiciones) ? (o.condiciones as string[]) : [],
+      };
+    } catch {
+      return { actos: [], condiciones: [] };
+    }
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    const o = raw as { actos?: unknown; condiciones?: unknown };
+    return {
+      actos: Array.isArray(o.actos) ? (o.actos as string[]) : [],
+      condiciones: Array.isArray(o.condiciones) ? (o.condiciones as string[]) : [],
+    };
+  }
+  return { actos: [], condiciones: [] };
+}
 
 export default function RALSFormScreen() {
   const { getCurrentCompany } = useAuth();
@@ -43,7 +149,11 @@ export default function RALSFormScreen() {
   const [nombre, setNombre] = useState('');
   const [fecha, setFecha] = useState(() => new Date().toISOString().split('T')[0]);
   const [empresa, setEmpresa] = useState('');
-  const [tipoObservacion, setTipoObservacion] = useState<TipoObservacion>(null);
+  const [tiposObservacion, setTiposObservacion] = useState<TipoObservacionId[]>([]);
+  const [actosSeleccionados, setActosSeleccionados] = useState<string[]>([]);
+  const [condicionesSeleccionadas, setCondicionesSeleccionadas] = useState<string[]>([]);
+  const [refActosExpandida, setRefActosExpandida] = useState(true);
+  const [refCondicionesExpandida, setRefCondicionesExpandida] = useState(true);
   const [areaSeccion, setAreaSeccion] = useState('');
   const [descripcionObservado, setDescripcionObservado] = useState('');
   const [accionesCorrectivas, setAccionesCorrectivas] = useState('');
@@ -55,47 +165,6 @@ export default function RALSFormScreen() {
   const [fechaLevantamiento, setFechaLevantamiento] = useState('');
   const [supervisorNombre, setSupervisorNombre] = useState('');
   const [supervisorFirma, setSupervisorFirma] = useState('');
-
-  const ACTOS_SUBESTANDARES = [
-    'Operar un equipo sin autorización/Entrenamiento.',
-    'Falla al advertir.',
-    'Falla al asegurar.',
-    'Exponerse y/o exponer a los trabajadores a riesgos innecesarios.',
-    'Operar a velocidad excesiva.',
-    'No utilizar su equipo de protección personal.',
-    'Estar fumando en las zonas operativas o en áreas donde no está permitido.',
-    'Encontrarse con signos de haber ingerido alcohol.',
-    'No reportar un incidente/accidente.',
-    'No asistir a las reuniones de inicio de jornada u otras capacitaciones programadas.',
-    'No cumplir con el procedimiento de trabajo.',
-    'No realizó el ATS.',
-  ];
-
-  const CONDICIONES_SUBESTANDAR = [
-    'Instrucciones y/o procedimientos inadecuados.',
-    'Falta o inadecuadas barreras, guardas, bermas, barricadas, etc.',
-    'Equipos de protección personal inadecuados o insuficientes.',
-    'Herramientas, equipos o materiales defectuosos y/o inadecuados.',
-    'Área de trabajo congestionada o restringida.',
-    'Vías, paredes, tejados inestables.',
-    'Almacenamiento inadecuado de productos químicos.',
-    'Sistemas de advertencia y/o señalización insuficientes o inadecuadas.',
-    'Peligro de explosión y/o incendio.',
-    'Orden y Limpieza deficientes en el lugar de trabajo.',
-    'Condiciones climáticas adversas.',
-    'Condiciones ambientales peligrosas: Polvos, humos, emanaciones y/o vapores.',
-    'Área con ventilación deficiente. Otra condición subestándar no clasificada.',
-    'Área con exposiciones a ruidos excesivos.',
-    'Área con exposiciones a temperaturas altas o bajas.',
-    'Área con iluminación excesiva o deficiente.',
-  ];
-
-  const TIPOS_OBSERVACION = [
-    { id: 'acto_subestandar' as const, label: 'Acto Subestándar' },
-    { id: 'condicion_subestandar' as const, label: 'Condición Subestándar' },
-    { id: 'sugerencia_recomendacion' as const, label: 'Sugerencia y/o Recomendación' },
-    { id: 'felicitacion' as const, label: 'Felicitación a un trabajador' },
-  ];
 
   // Cargar datos existentes si hay reportId
   useEffect(() => {
@@ -114,7 +183,7 @@ export default function RALSFormScreen() {
       setNombre(report.nombre || '');
       setFecha(typeof report.fecha === 'string' ? (report.fecha?.split('T')[0] || new Date().toISOString().split('T')[0]) : (report.fecha instanceof Date ? report.fecha.toISOString().split('T')[0] : new Date().toISOString().split('T')[0]));
       setEmpresa(report.empresa || '');
-      setTipoObservacion(report.tipo_observacion || null);
+      setTiposObservacion(parseTiposFromApi(report.tipo_observacion));
       setAreaSeccion(report.area_seccion || '');
       setDescripcionObservado(report.descripcion_observado || '');
       setAccionesCorrectivas(report.acciones_correctivas || '');
@@ -124,6 +193,12 @@ export default function RALSFormScreen() {
       setFechaLevantamiento(typeof report.fecha_levantamiento === 'string' ? (report.fecha_levantamiento?.split('T')[0] || '') : (report.fecha_levantamiento instanceof Date ? report.fecha_levantamiento.toISOString().split('T')[0] : ''));
       setSupervisorNombre(report.supervisor_nombre || '');
       setSupervisorFirma(report.supervisor_firma || '');
+      const rawReport = report as Record<string, unknown>;
+      const c = parseClasificacionesReport(
+        rawReport.clasificaciones_referencia ?? rawReport.clasificacionesReferencia,
+      );
+      setActosSeleccionados(c.actos);
+      setCondicionesSeleccionadas(c.condiciones);
     } catch (error: any) {
       Alert.alert('Error', error?.message || 'No se pudo cargar el reporte');
       router.back();
@@ -132,12 +207,39 @@ export default function RALSFormScreen() {
     }
   };
 
+  const toggleTipoObservacion = (id: TipoObservacionId) => {
+    setTiposObservacion((prev) => {
+      if (prev.includes(id)) {
+        const next = prev.filter((t) => t !== id);
+        if (id === 'acto_subestandar') setActosSeleccionados([]);
+        if (id === 'condicion_subestandar') setCondicionesSeleccionadas([]);
+        return next;
+      }
+      if (id === 'acto_subestandar') setRefActosExpandida(true);
+      if (id === 'condicion_subestandar') setRefCondicionesExpandida(true);
+      return [...prev, id];
+    });
+  };
+
+  const toggleActoLine = (linea: string) => {
+    setActosSeleccionados((prev) =>
+      prev.includes(linea) ? prev.filter((t) => t !== linea) : [...prev, linea],
+    );
+  };
+
+  const toggleCondicionLine = (linea: string) => {
+    setCondicionesSeleccionadas((prev) =>
+      prev.includes(linea) ? prev.filter((t) => t !== linea) : [...prev, linea],
+    );
+  };
+
   const hasFormData = () => {
-    if (nombre.trim() || empresa.trim() || tipoObservacion) return true;
+    if (nombre.trim() || empresa.trim() || tiposObservacion.length > 0) return true;
     if (areaSeccion.trim() || descripcionObservado.trim()) return true;
     if (accionesCorrectivas.trim() || compromisoObservado.trim()) return true;
     if (trabajadorObservadoNombre.trim() || trabajadorObservadoFirma.trim()) return true;
     if (fechaLevantamiento.trim() || supervisorNombre.trim() || supervisorFirma.trim()) return true;
+    if (actosSeleccionados.length > 0 || condicionesSeleccionadas.length > 0) return true;
     return false;
   };
 
@@ -150,12 +252,37 @@ export default function RALSFormScreen() {
       Alert.alert('Campo requerido', 'La fecha es obligatoria para guardar.');
       return;
     }
+    if (tiposObservacion.length === 0) {
+      Alert.alert(
+        'Selección requerida',
+        'Seleccione al menos un tipo de observación.',
+      );
+      return;
+    }
+    if (tiposObservacion.includes('acto_subestandar') && actosSeleccionados.length === 0) {
+      Alert.alert(
+        'Selección requerida',
+        'Marque al menos un ítem de la lista referencial de actos subestándar.',
+      );
+      return;
+    }
+    if (tiposObservacion.includes('condicion_subestandar') && condicionesSeleccionadas.length === 0) {
+      Alert.alert(
+        'Selección requerida',
+        'Marque al menos un ítem de la lista referencial de condiciones subestándar.',
+      );
+      return;
+    }
     const company = getCurrentCompany();
     const payload = {
       nombre,
       fecha,
       empresa: empresa || company?.name,
-      tipoObservacion,
+      tiposObservacion,
+      clasificacionesReferencia: {
+        actos: actosSeleccionados,
+        condiciones: condicionesSeleccionadas,
+      },
       areaSeccion,
       descripcionObservado,
       accionesCorrectivas,
@@ -177,7 +304,7 @@ export default function RALSFormScreen() {
       } else {
         // Modo creación: crear nuevo
         await createRalsReport(payload);
-        router.replace('/otros-types?saved=rals');
+        router.replace('/(tabs)/explore?saved=rals');
       }
       return true;
     } catch (err: any) {
@@ -212,7 +339,7 @@ export default function RALSFormScreen() {
               if (hasFormData()) {
                 saveForm();
               } else {
-                router.replace('/otros-types');
+                router.replace('/(tabs)/explore');
               }
             }
           }
@@ -228,7 +355,7 @@ export default function RALSFormScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       {/* Header - estructura Nueva Respuesta, colores RALS */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack} disabled={saving || loadingData}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -249,7 +376,7 @@ export default function RALSFormScreen() {
             <Ionicons name="checkmark" size={24} color="#fff" />
           )}
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       {loadingData ? (
         <View style={styles.loadingContainer}>
@@ -326,22 +453,120 @@ export default function RALSFormScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Tipo de observación</Text>
+              <Text style={styles.tiposHint}>Puede marcar uno o más tipos.</Text>
               <View style={styles.tiposGrid}>
-                {TIPOS_OBSERVACION.map(tipo => (
-                  <TouchableOpacity
-                    key={tipo.id}
-                    style={[styles.tipoCard, tipoObservacion === tipo.id && styles.tipoCardSelected]}
-                    onPress={() => setTipoObservacion(tipo.id)}
-                  >
-                    <View style={[styles.checkbox, tipoObservacion === tipo.id && styles.checkboxChecked]}>
-                      {tipoObservacion === tipo.id && <Ionicons name="checkmark" size={16} color="#fff" />}
-                    </View>
-                    <Text style={[styles.tipoLabel, tipoObservacion === tipo.id && styles.tipoLabelSelected]}>
-                      {tipo.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                {TIPOS_OBSERVACION.map((tipo) => {
+                  const selected = tiposObservacion.includes(tipo.id);
+                  return (
+                    <TouchableOpacity
+                      key={tipo.id}
+                      style={[styles.tipoCard, selected && styles.tipoCardSelected]}
+                      onPress={() => toggleTipoObservacion(tipo.id)}
+                    >
+                      <View style={[styles.checkbox, selected && styles.checkboxChecked]}>
+                        {selected && <Ionicons name="checkmark" size={16} color="#fff" />}
+                      </View>
+                      <Text style={[styles.tipoLabel, selected && styles.tipoLabelSelected]}>
+                        {tipo.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
+
+              {tiposObservacion.includes('acto_subestandar') && (
+                <View style={styles.refPickerWrap}>
+                  <TouchableOpacity
+                    style={styles.refPickerHeader}
+                    onPress={() => setRefActosExpandida((e) => !e)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.refPickerHeaderText}>
+                      {`Actos subestándar (${actosSeleccionados.length} seleccionado${actosSeleccionados.length === 1 ? '' : 's'})`}
+                    </Text>
+                    <Ionicons
+                      name={refActosExpandida ? 'chevron-up' : 'chevron-down'}
+                      size={22}
+                      color="#15803d"
+                    />
+                  </TouchableOpacity>
+
+                  {refActosExpandida && (
+                    <ScrollView
+                      style={styles.refPickerScroll}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                    >
+                      {ACTOS_SUBESTANDARES.map((linea, idx) => {
+                        const selected = actosSeleccionados.includes(linea);
+                        return (
+                          <TouchableOpacity
+                            key={`acto-${idx}`}
+                            style={[styles.refRow, selected && styles.refRowSelected]}
+                            onPress={() => toggleActoLine(linea)}
+                          >
+                            <View style={[styles.refCheckbox, selected && styles.refCheckboxChecked]}>
+                              {selected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                            </View>
+                            <Text style={styles.refRowText}>{linea}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                  <Text style={styles.refPickerHint}>
+                    (*) Lista referencial (pestaña Referencia). Marque todas las que apliquen.
+                  </Text>
+                </View>
+              )}
+
+              {tiposObservacion.includes('condicion_subestandar') && (
+                <View style={[styles.refPickerWrap, styles.refPickerWrapSecond]}>
+                  <TouchableOpacity
+                    style={styles.refPickerHeader}
+                    onPress={() => setRefCondicionesExpandida((e) => !e)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.refPickerHeaderText}>
+                      {`Condiciones subestándar (${condicionesSeleccionadas.length} seleccionada${condicionesSeleccionadas.length === 1 ? '' : 's'})`}
+                    </Text>
+                    <Ionicons
+                      name={refCondicionesExpandida ? 'chevron-up' : 'chevron-down'}
+                      size={22}
+                      color="#15803d"
+                    />
+                  </TouchableOpacity>
+
+                  {refCondicionesExpandida && (
+                    <ScrollView
+                      style={styles.refPickerScroll}
+                      nestedScrollEnabled
+                      keyboardShouldPersistTaps="handled"
+                      showsVerticalScrollIndicator
+                    >
+                      {CONDICIONES_SUBESTANDAR.map((linea, idx) => {
+                        const selected = condicionesSeleccionadas.includes(linea);
+                        return (
+                          <TouchableOpacity
+                            key={`cond-${idx}`}
+                            style={[styles.refRow, selected && styles.refRowSelected]}
+                            onPress={() => toggleCondicionLine(linea)}
+                          >
+                            <View style={[styles.refCheckbox, selected && styles.refCheckboxChecked]}>
+                              {selected && <Ionicons name="checkmark" size={14} color="#fff" />}
+                            </View>
+                            <Text style={styles.refRowText}>{linea}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </ScrollView>
+                  )}
+                  <Text style={styles.refPickerHint}>
+                    (*) Lista referencial (pestaña Referencia). Marque todas las que apliquen.
+                  </Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.section}>
@@ -532,24 +757,17 @@ export default function RALSFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: '#f4f6fb' },
   header: {
-    backgroundColor: '#22c55e',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: { marginRight: 16 },
   headerContent: { flex: 1 },
   checkButton: { marginLeft: 16, padding: 12, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  headerSubtitle: { fontSize: 14, color: '#dcfce7', marginTop: 2, fontStyle: 'italic' },
+  headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.78)', marginTop: 2, fontStyle: 'italic' },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -582,6 +800,7 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   sectionTitle: { fontSize: 18, fontWeight: 'bold', color: '#1f2937', marginBottom: 16 },
+  tiposHint: { fontSize: 13, color: '#6b7280', marginBottom: 12, lineHeight: 18 },
   field: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 8 },
   input: {
@@ -618,6 +837,45 @@ const styles = StyleSheet.create({
   checkboxChecked: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
   tipoLabel: { flex: 1, fontSize: 16, color: '#374151' },
   tipoLabelSelected: { color: '#16a34a', fontWeight: '600' },
+  refPickerWrap: { marginTop: 16 },
+  refPickerWrapSecond: { marginTop: 12 },
+  refPickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: '#ecfdf5',
+    borderRadius: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  refPickerHeaderText: { flex: 1, fontSize: 14, fontWeight: '700', color: '#15803d', marginRight: 8 },
+  refPickerScroll: { marginTop: 8, maxHeight: 260, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 8 },
+  refRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#f3f4f6',
+    backgroundColor: '#fff',
+  },
+  refRowSelected: { backgroundColor: '#f0fdf4' },
+  refCheckbox: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 10,
+    marginTop: 2,
+  },
+  refCheckboxChecked: { backgroundColor: '#22c55e', borderColor: '#22c55e' },
+  refRowText: { flex: 1, fontSize: 14, color: '#374151', lineHeight: 20 },
+  refPickerHint: { marginTop: 8, fontSize: 12, color: '#6b7280', fontStyle: 'italic', lineHeight: 17 },
   equipoSection: { padding: 20 },
   equipoTitle: { fontSize: 24, fontWeight: '700', color: '#1f2937', marginBottom: 8 },
   equipoSubtitle: { fontSize: 14, color: '#6b7280', marginBottom: 24 },

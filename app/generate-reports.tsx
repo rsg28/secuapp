@@ -19,7 +19,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { loadReportEmployeeSelection } from './select-report-employees';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -40,7 +41,6 @@ const appServices: AppService[] = [
 ];
 
 export default function GenerateReportsScreen() {
-  const insets = useSafeAreaInsets();
   const [selectedEmployees, setSelectedEmployees] = useState<Set<string>>(new Set());
   const [selectionSummary, setSelectionSummary] = useState<string>('');
   const [selectedService, setSelectedService] = useState<AppService>(appServices[0]);
@@ -54,6 +54,7 @@ export default function GenerateReportsScreen() {
   const [showInspectionTypePicker, setShowInspectionTypePicker] = useState(false);
   const [reportStatus, setReportStatus] = useState<'all' | 'completed' | 'incomplete'>('all');
   const [showReportStatusPicker, setShowReportStatusPicker] = useState(false);
+  const [includeAllEmployees, setIncludeAllEmployees] = useState(true);
   const [generating, setGenerating] = useState(false);
 
   const refreshSelection = useCallback(async () => {
@@ -90,13 +91,18 @@ export default function GenerateReportsScreen() {
   };
 
   const handleGenerate = async () => {
-    if (selectedEmployees.size === 0) {
-      Alert.alert('Error', 'Debes seleccionar al menos un empleado');
+    if (!includeAllEmployees && selectedEmployees.size === 0) {
+      Alert.alert('Error', 'Selecciona empleados o marca “Todos los empleados”');
       return;
     }
 
     if (!dateFrom || !dateTo) {
       Alert.alert('Error', 'Debes seleccionar un rango de fechas');
+      return;
+    }
+
+    if (dateFrom > dateTo) {
+      Alert.alert('Error', 'La fecha “Desde” no puede ser posterior a “Hasta”');
       return;
     }
 
@@ -118,7 +124,8 @@ export default function GenerateReportsScreen() {
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          employeeIds: Array.from(selectedEmployees),
+          allEmployees: includeAllEmployees,
+          employeeIds: includeAllEmployees ? [] : Array.from(selectedEmployees),
           dateFrom: dateFromStr,
           dateTo: dateToStr,
           inspectionType,
@@ -174,8 +181,7 @@ export default function GenerateReportsScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      {/* Franja azul bajo barra de estado (evita blanco arriba del header) */}
-      <View style={[styles.headerStatusFill, { paddingTop: insets.top }]}>
+      <GradientHeader style={styles.headerStatusFill}>
         <View style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={() => router.back()} hitSlop={12}>
             <Ionicons name="arrow-back" size={22} color="#fff" />
@@ -185,7 +191,7 @@ export default function GenerateReportsScreen() {
             <Text style={styles.headerSubtitle}>Completa los filtros y elige empleados</Text>
           </View>
         </View>
-      </View>
+      </GradientHeader>
 
       <ScrollView
         style={styles.content}
@@ -326,30 +332,64 @@ export default function GenerateReportsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionKicker}>{selectedService.id === 'inspecciones' ? 'Paso 4' : 'Paso 3'}</Text>
           <Text style={styles.sectionTitle}>Empleados</Text>
-          <Text style={styles.sectionDesc}>Solo se exportan datos de quienes marques en la lista.</Text>
-          <View style={styles.employeeCard}>
-            <TouchableOpacity
-              style={styles.pickEmployeesButton}
-              onPress={() => router.push('/select-report-employees')}
-              activeOpacity={0.88}
+          <Text style={styles.sectionDesc}>
+            Por defecto incluye inspecciones de todos. Si quieres filtrar, desmarca y elige personas.
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.allEmployeesToggle, includeAllEmployees && styles.allEmployeesToggleOn]}
+            onPress={() => setIncludeAllEmployees((v) => !v)}
+            activeOpacity={0.8}
+          >
+            <View
+              style={[
+                styles.allEmployeesCheck,
+                includeAllEmployees && styles.allEmployeesCheckOn,
+              ]}
             >
-              <Ionicons name="people-outline" size={20} color="#fff" />
-              <Text style={styles.pickEmployeesButtonText}>Seleccionar empleados</Text>
-              <Ionicons name="chevron-forward" size={20} color="#fff" />
-            </TouchableOpacity>
-            <View style={styles.employeeNamesBlock}>
-              {selectedEmployees.size > 0 ? (
-                <>
-                  <Text style={styles.employeeNamesLabel}>Seleccionados</Text>
-                  <Text style={styles.employeeNamesText}>{selectionSummary}</Text>
-                </>
-              ) : (
-                <Text style={styles.employeeNamesEmpty}>
-                  Ningún empleado seleccionado. Pulsa el botón para abrir la lista.
-                </Text>
-              )}
+              {includeAllEmployees ? (
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              ) : null}
             </View>
-          </View>
+            <View style={styles.allEmployeesTextWrap}>
+              <Text style={styles.allEmployeesTitle}>Todos los empleados</Text>
+              <Text style={styles.allEmployeesHint}>
+                Exporta todas las inspecciones del rango de fechas
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          {!includeAllEmployees ? (
+            <View style={styles.employeeCard}>
+              <TouchableOpacity
+                style={styles.pickEmployeesButton}
+                onPress={() => router.push('/select-report-employees')}
+                activeOpacity={0.88}
+              >
+                <Ionicons name="people-outline" size={20} color="#fff" />
+                <Text style={styles.pickEmployeesButtonText}>Seleccionar empleados</Text>
+                <Ionicons name="chevron-forward" size={20} color="#fff" />
+              </TouchableOpacity>
+              <View style={styles.employeeNamesBlock}>
+                {selectedEmployees.size > 0 ? (
+                  <>
+                    <Text style={styles.employeeNamesLabel}>Seleccionados</Text>
+                    <Text style={styles.employeeNamesText}>{selectionSummary}</Text>
+                  </>
+                ) : (
+                  <Text style={styles.employeeNamesEmpty}>
+                    Ningún empleado seleccionado. Pulsa el botón para abrir la lista.
+                  </Text>
+                )}
+              </View>
+            </View>
+          ) : (
+            <View style={styles.employeeNamesBlockSolo}>
+              <Text style={styles.employeeNamesText}>
+                Se incluirán las inspecciones de todos los usuarios en el rango.
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Botón Generar */}
@@ -631,7 +671,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#f1f5f9',
   },
   headerStatusFill: {
-    backgroundColor: '#2563eb',
+    paddingHorizontal: 0,
+    paddingBottom: 0,
   },
   header: {
     paddingHorizontal: 16,
@@ -745,12 +786,62 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     marginBottom: 14,
   },
+  allEmployeesToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#fff',
+    borderWidth: 1.5,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 12,
+  },
+  allEmployeesToggleOn: {
+    borderColor: '#2563eb',
+    backgroundColor: '#eff6ff',
+  },
+  allEmployeesCheck: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#cbd5e1',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+  },
+  allEmployeesCheckOn: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
+  allEmployeesTextWrap: {
+    flex: 1,
+  },
+  allEmployeesTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+  },
+  allEmployeesHint: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 2,
+  },
   employeeCard: {
     borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     overflow: 'hidden',
     backgroundColor: '#fff',
+  },
+  employeeNamesBlockSolo: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    backgroundColor: '#f8fafc',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
   },
   employeeNamesBlock: {
     paddingHorizontal: 14,

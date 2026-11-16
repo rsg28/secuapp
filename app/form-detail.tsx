@@ -11,6 +11,7 @@ import {
     View
 } from 'react-native';
 import { storage } from '../utils/storage';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface FormItem {
   id: string;
@@ -103,7 +104,7 @@ export default function FormDetailScreen() {
     
     // Si no se encuentra, buscar en categorías personalizadas
     // Por ahora retornamos una categoría genérica
-    return { id: categoryId, name: categoryId, icon: 'cube', color: '#6366f1' };
+    return { id: categoryId, name: categoryId, icon: 'cube', color: '#2563eb' };
   };
 
   const categoryInfo = getCategoryInfo(formData.category);
@@ -118,7 +119,7 @@ export default function FormDetailScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
                 {/* Header */}
-        <View style={styles.header}>
+        <GradientHeader style={styles.header}>
           <TouchableOpacity style={styles.backButton} onPress={handleBack}>
             <Ionicons name="arrow-back" size={24} color="#fff" />
           </TouchableOpacity>
@@ -127,7 +128,7 @@ export default function FormDetailScreen() {
             <Text style={styles.headerSubtitle}>Template de Inspección</Text>
           </View>
 
-        </View>
+        </GradientHeader>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Información del template */}
@@ -198,22 +199,12 @@ export default function FormDetailScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: {
     marginRight: 16,
@@ -228,7 +219,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   // Estilos para el botón de proceder

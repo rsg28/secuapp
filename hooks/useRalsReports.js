@@ -1,5 +1,48 @@
 import { useState } from 'react';
 import { offlineQueue } from '../utils/offlineQueue';
+
+/** Reconstruye un reporte como lo devuelve la API a partir del payload en cola offline (camelCase del formulario). */
+function buildRalsReportFromOfflinePayload(id, p) {
+  const tipos = p.tiposObservacion;
+  let tipoObsStored = null;
+  if (Array.isArray(tipos) && tipos.length > 0) {
+    tipoObsStored = JSON.stringify(tipos);
+  } else if (p.tipoObservacion != null && p.tipoObservacion !== '') {
+    tipoObsStored =
+      typeof p.tipoObservacion === 'string' && p.tipoObservacion.trim().startsWith('[')
+        ? p.tipoObservacion
+        : JSON.stringify([p.tipoObservacion]);
+  }
+
+  let clasifStored = null;
+  if (p.clasificacionesReferencia != null) {
+    clasifStored =
+      typeof p.clasificacionesReferencia === 'string'
+        ? p.clasificacionesReferencia
+        : JSON.stringify(p.clasificacionesReferencia);
+  }
+
+  return {
+    id,
+    nombre: p.nombre ?? '',
+    fecha: p.fecha ?? null,
+    empresa: p.empresa ?? null,
+    tipo_observacion: tipoObsStored,
+    clasificaciones_referencia: clasifStored,
+    area_seccion: p.areaSeccion ?? p.area_seccion ?? null,
+    descripcion_observado: p.descripcionObservado ?? p.descripcion_observado ?? null,
+    acciones_correctivas: p.accionesCorrectivas ?? p.acciones_correctivas ?? null,
+    compromiso_observado: p.compromisoObservado ?? p.compromiso_observado ?? null,
+    trabajador_observado_nombre: p.trabajadorObservadoNombre ?? p.trabajador_observado_nombre ?? null,
+    trabajador_observado_firma: p.trabajadorObservadoFirma ?? p.trabajador_observado_firma ?? null,
+    fecha_levantamiento: p.fechaLevantamiento ?? p.fecha_levantamiento ?? null,
+    supervisor_nombre: p.supervisorNombre ?? p.supervisor_nombre ?? null,
+    supervisor_firma: p.supervisorFirma ?? p.supervisor_firma ?? null,
+    company_id: p.company_id ?? p.companyId ?? null,
+    inspector_id: p.inspector_id ?? p.inspectorId ?? null,
+    _offline: true,
+  };
+}
 import { offlineCache } from '../utils/offlineCache';
 import { getIsOffline } from '../utils/networkStore';
 import { storage } from '../utils/storage';
@@ -62,6 +105,16 @@ export const useRalsReports = () => {
     try {
       setLoading(true);
       setError(null);
+
+      if (id && String(id).startsWith('local-')) {
+        const queue = await offlineQueue.getQueue();
+        const op = queue.find((o) => o.id === id && o.type === 'rals_report');
+        if (!op?.payload) {
+          throw new Error('Reporte RALS no encontrado (offline)');
+        }
+        return buildRalsReportFromOfflinePayload(id, op.payload);
+      }
+
       const token = await getAuthToken();
       const response = await fetch(`${API_BASE_URL}/rals-reports/${id}`, {
         method: 'GET',
@@ -95,12 +148,22 @@ export const useRalsReports = () => {
           type: 'rals_report',
           payload: { ...payload, inspector_id: inspectorId, company_id: payload.company_id || payload.companyId },
         });
+        let tipoObsHistorial = null;
+        if (Array.isArray(payload.tiposObservacion) && payload.tiposObservacion.length > 0) {
+          tipoObsHistorial = JSON.stringify(payload.tiposObservacion);
+        } else if (payload.tipoObservacion != null && payload.tipoObservacion !== '') {
+          tipoObsHistorial =
+            typeof payload.tipoObservacion === 'string' && payload.tipoObservacion.trim().startsWith('[')
+              ? payload.tipoObservacion
+              : JSON.stringify([payload.tipoObservacion]);
+        }
         await storage.addOfflineItem({
           id: localId,
           type: 'rals',
           nombre: payload.nombre,
           fecha: payload.fecha,
           empresa: payload.empresa,
+          tipo_observacion: tipoObsHistorial,
           created_at: new Date().toISOString(),
         });
         return {

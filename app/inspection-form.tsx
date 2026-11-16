@@ -11,6 +11,7 @@ import {
     TouchableOpacity,
     View
 } from 'react-native';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface FormItem {
   id: string;
@@ -371,7 +372,7 @@ export default function InspectionFormScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -381,7 +382,7 @@ export default function InspectionFormScreen() {
             Sección {currentSection + 1} de {formData.length}
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       {/* Progress Bar */}
       <View style={styles.progressContainer}>
@@ -450,12 +451,10 @@ export default function InspectionFormScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -463,7 +462,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -479,7 +478,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
   },
   progressContainer: {
     backgroundColor: '#fff',
@@ -669,14 +668,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 32,
     borderRadius: 8,
     backgroundColor: '#10b981',
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   nextButtonText: {
     fontSize: 16,

@@ -18,6 +18,7 @@ import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -178,7 +179,7 @@ export default function EmployeeInspectionsScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton}
           onPress={() => router.back()}
@@ -203,7 +204,7 @@ export default function EmployeeInspectionsScreen() {
         >
           <Ionicons name="stats-chart" size={24} color="#ffffff" />
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       {/* Inspections List */}
       {loading || loadingInspections ? (
@@ -322,11 +323,9 @@ export default function EmployeeInspectionsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#1e40af',
-    paddingTop: 60,
     paddingBottom: 30,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 20,
@@ -354,12 +353,12 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: 'bold',
-    color: '#ffffff',
+    color: '#fff',
     marginBottom: 4,
   },
   headerSubtitle: {
     fontSize: 16,
-    color: '#e2e8f0',
+    color: 'rgba(255,255,255,0.78)',
     marginBottom: 2,
   },
   headerEmail: {
@@ -429,14 +428,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
     flexDirection: 'row',
     alignItems: 'center',
   },

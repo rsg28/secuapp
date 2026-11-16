@@ -57,6 +57,8 @@ const CAMEL_TO_SNAKE: Record<string, string> = {
   evaluadorFirma: 'evaluador_firma',
   companyId: 'company_id',
   tipoObservacion: 'tipo_observacion',
+  tiposObservacion: 'tipos_observacion',
+  clasificacionesReferencia: 'clasificaciones_referencia',
   areaSeccion: 'area_seccion',
   descripcionObservado: 'descripcion_observado',
   accionesCorrectivas: 'acciones_correctivas',
@@ -92,6 +94,22 @@ function replaceLocalUrisWithRemote(payload: any, remoteUrls: Record<string, str
 
 async function syncOperation(op: PendingOperation, token: string): Promise<{ success: boolean; error?: string }> {
   try {
+    // Visitas: payload = { visit_id, patch }; el id lo genera el teléfono, así que PUT crea o actualiza
+    if (op.type === 'visit_upsert' || op.type === 'delete_visit') {
+      const visitId = op.payload?.visit_id;
+      if (!visitId) return { success: false, error: 'Payload de visita inválido' };
+      const res = await fetch(`${API_BASE_URL}/visits/${visitId}`, {
+        method: op.type === 'delete_visit' ? 'DELETE' : 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: op.type === 'delete_visit' ? undefined : JSON.stringify(op.payload.patch ?? {}),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        return { success: false, error: data?.message || data?.error || `HTTP ${res.status}` };
+      }
+      return { success: true };
+    }
+
     // Operaciones de eliminación pendientes (se ejecutaron offline)
     const deleteTypes = ['delete_closed_inspection', 'delete_open_inspection', 'delete_ast_evaluation', 'delete_rals_report'];
     if (deleteTypes.includes(op.type)) {
@@ -256,9 +274,14 @@ export async function processOfflineQueue(callback?: SyncCallback): Promise<void
     const queue = await offlineQueue.getQueue();
     const errors: string[] = [];
     let successCount = 0;
+    // Los cambios de una visita deben aplicarse en orden: si uno falla, se esperan los siguientes.
+    const blockedVisits = new Set<string>();
 
     for (const op of queue) {
+      const visitId = op.type === 'visit_upsert' || op.type === 'delete_visit' ? op.payload?.visit_id : null;
+      if (visitId && blockedVisits.has(visitId)) continue;
       const result = await syncOperation(op, token);
+      if (!result.success && visitId) blockedVisits.add(visitId);
       if (result.success) {
         await offlineQueue.remove(op.id);
         const isDelete = op.type.startsWith('delete_');

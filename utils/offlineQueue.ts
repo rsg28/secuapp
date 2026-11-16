@@ -7,10 +7,12 @@ export type PendingOperationType =
   | 'open_inspection'
   | 'ast_evaluation'
   | 'rals_report'
+  | 'visit_upsert'
   | 'delete_closed_inspection'
   | 'delete_open_inspection'
   | 'delete_ast_evaluation'
-  | 'delete_rals_report';
+  | 'delete_rals_report'
+  | 'delete_visit';
 
 export interface PendingOperation {
   id: string;

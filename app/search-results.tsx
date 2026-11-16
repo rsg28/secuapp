@@ -14,6 +14,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -163,7 +164,7 @@ export default function SearchResultsScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -173,7 +174,7 @@ export default function SearchResultsScreen() {
             {totalResults} {totalResults === 1 ? 'resultado encontrado' : 'resultados encontrados'}
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       {loading ? (
         <View style={styles.loadingContainer}>
@@ -294,11 +295,9 @@ export default function SearchResultsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#7dd3fc',
-    paddingTop: 60,
     paddingBottom: 20,
     paddingHorizontal: 16,
     flexDirection: 'row',
@@ -319,7 +318,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#fff',
+    color: 'rgba(255,255,255,0.78)',
     opacity: 0.9,
   },
   content: {
@@ -375,11 +374,11 @@ const styles = StyleSheet.create({
     padding: 16,
     margin: 16,
     marginBottom: 0,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   resultHeader: {
     marginBottom: 12,

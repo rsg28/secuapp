@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface CompanyData {
   name: string;
@@ -230,7 +231,7 @@ export default function CreateCompanyScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -252,7 +253,7 @@ export default function CreateCompanyScreen() {
             <Ionicons name="checkmark" size={20} color="#fff" />
           )}
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Información básica de la empresa */}
@@ -458,22 +459,12 @@ export default function CreateCompanyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: {
     marginRight: 16,
@@ -488,11 +479,11 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   saveButton: {
-    backgroundColor: '#22c55e',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     padding: 10,
     borderRadius: 20,
     flexDirection: 'row',
@@ -575,14 +566,14 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
     marginTop: 4,
     maxHeight: 200,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   industryDropdownOption: {
     paddingHorizontal: 16,

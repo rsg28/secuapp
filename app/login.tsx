@@ -1,4 +1,6 @@
+import { colors, gradients, radius, shadows } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React, { useMemo, useState } from 'react';
@@ -15,7 +17,6 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
-import Svg, { Path } from 'react-native-svg';
 import { useAuth } from '../contexts/AuthContext';
 import { useNetworkContext } from '../contexts/NetworkContext';
 
@@ -191,25 +192,10 @@ export default function LoginScreen() {
     >
       <StatusBar style="light" />
       
-      {/* Background with organic shapes */}
       <View style={styles.backgroundContainer}>
-        <Svg height={viewportHeight} width={viewportWidth} style={styles.backgroundSvg}>
-          {/* Fondo azul principal que cubre más área */}
-          <Path
-            d={`M0,0 L${viewportWidth},0 L${viewportWidth},${viewportHeight * 0.7} 
-                Q${viewportWidth * 0.8},${viewportHeight * 0.65} ${viewportWidth * 0.5},${viewportHeight * 0.75}
-                Q${viewportWidth * 0.2},${viewportHeight * 0.85} 0,${viewportHeight * 0.8} Z`}
-            fill="#7dd3fc"
-          />
-          {/* Capa azul más clara encima */}
-          <Path
-            d={`M0,${viewportHeight * 0.1} 
-                Q${viewportWidth * 0.4},${viewportHeight * 0.05} ${viewportWidth * 0.7},${viewportHeight * 0.15}
-                Q${viewportWidth * 0.9},${viewportHeight * 0.25} ${viewportWidth},${viewportHeight * 0.3}
-                L${viewportWidth},0 L0,0 Z`}
-            fill="#bae6fd"
-          />
-        </Svg>
+        <LinearGradient colors={gradients.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
+        <View style={[styles.backgroundCircle, { width: viewportWidth * 1.1, height: viewportWidth * 1.1, borderRadius: viewportWidth * 0.55, top: -viewportWidth * 0.45, right: -viewportWidth * 0.4 }]} />
+        <View style={[styles.backgroundCircle, { width: viewportWidth * 0.9, height: viewportWidth * 0.9, borderRadius: viewportWidth * 0.45, bottom: -viewportWidth * 0.35, left: -viewportWidth * 0.35 }]} />
       </View>
 
       {/* Welcome Screen */}
@@ -234,28 +220,21 @@ export default function LoginScreen() {
         ]}
       >
         <View style={styles.welcomeContent}>
-          <Text style={[styles.welcomeMainTitle, { fontSize: responsive.welcomeTitleSize, marginBottom: responsive.welcomeSpacing }]} >
+          <View style={styles.logoBadge}>
+            <Ionicons name="shield-checkmark" size={44} color="#fff" />
+          </View>
+          <Text style={styles.brandName}>SecuApp</Text>
+          <Text style={[styles.welcomeMainTitle, { fontSize: responsive.welcomeTitleSize, marginBottom: responsive.welcomeSpacing * 0.5 }]} >
             Bienvenido
           </Text>
           <Text style={[styles.welcomeMainSubtitle, { fontSize: responsive.welcomeSubtitleSize, lineHeight: responsive.welcomeSubtitleSize * 1.35, marginBottom: responsive.welcomeSpacing * 0.9 }]}>
-            Seguridad de Salud{'\n'}en el Trabajo
+            Seguridad y Salud{'\n'}en el Trabajo
           </Text>
         </View>
         
-        <TouchableOpacity
-          style={[
-            styles.nextButton,
-            {
-              width: responsive.nextButtonSize,
-              height: responsive.nextButtonSize,
-              borderRadius: responsive.nextButtonSize / 2,
-              shadowRadius: responsive.nextButtonSize * 0.18,
-              shadowOffset: { width: 0, height: responsive.nextButtonSize * 0.15 },
-            }
-          ]}
-          onPress={handleNext}
-        >
-          <Ionicons name="arrow-forward" size={responsive.nextButtonIconSize} color="#0ea5e9" />
+        <TouchableOpacity style={styles.nextButton} onPress={handleNext} activeOpacity={0.85}>
+          <Text style={styles.nextButtonText}>Comenzar</Text>
+          <Ionicons name="arrow-forward" size={20} color={colors.primary} />
         </TouchableOpacity>
       </Animated.View>
 
@@ -300,7 +279,7 @@ export default function LoginScreen() {
             });
           }}
         >
-          <Ionicons name="arrow-back" size={responsive.nextButtonIconSize} color="#0ea5e9" />
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
 
         <ScrollView 
@@ -432,6 +411,7 @@ export default function LoginScreen() {
           }
         ]}
       >
+        <LinearGradient colors={gradients.header} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={StyleSheet.absoluteFill} />
         {/* Sticky Back Button */}
         <TouchableOpacity 
           style={[
@@ -455,7 +435,7 @@ export default function LoginScreen() {
             });
           }}
         >
-          <Ionicons name="arrow-back" size={responsive.nextButtonIconSize} color="#0ea5e9" />
+          <Ionicons name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
 
         <ScrollView 
@@ -646,7 +626,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.navy,
   },
   backgroundContainer: {
     position: 'absolute',
@@ -654,9 +634,30 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
+    overflow: 'hidden',
   },
-  backgroundSvg: {
+  backgroundCircle: {
     position: 'absolute',
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  logoBadge: {
+    width: 88,
+    height: 88,
+    borderRadius: 28,
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.28)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 16,
+  },
+  brandName: {
+    color: colors.onPrimaryMuted,
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    marginBottom: 28,
   },
   welcomeScreenContainer: {
     flex: 1,
@@ -686,36 +687,35 @@ const styles = StyleSheet.create({
   },
   welcomeMainTitle: {
     fontSize: 56,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#ffffff',
     marginBottom: 24,
     textAlign: 'center',
+    letterSpacing: -1,
   },
   welcomeMainSubtitle: {
     fontSize: 18,
-    color: '#ffffff',
+    color: colors.onPrimaryMuted,
     lineHeight: 26,
     textAlign: 'center',
-    opacity: 0.9,
     marginBottom: 32,
   },
 
   nextButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    height: 56,
+    borderRadius: radius.pill,
     backgroundColor: '#ffffff',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 8,
+    gap: 8,
+    alignSelf: 'stretch',
+    ...shadows.raised,
+  },
+  nextButtonText: {
+    color: colors.primary,
+    fontSize: 17,
+    fontWeight: '800',
   },
   backButton: {
     position: 'absolute',
@@ -728,14 +728,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 10,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
 
   stickyBackButtonLogin: {
@@ -745,18 +745,12 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: colors.glass,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 1000,
-    shadowColor: '#0ea5e9',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 10,
   },
 
   formContainer: {
@@ -767,71 +761,63 @@ const styles = StyleSheet.create({
     paddingTop: 32,
     paddingBottom: 40,
     marginHorizontal: -24,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: -4,
     },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.06,
     shadowRadius: 16,
-    elevation: 10,
+    elevation: 2,
   },
   formContainerFullScreen: {
     backgroundColor: '#ffffff',
-    borderTopLeftRadius: 32,
-    borderTopRightRadius: 32,
+    borderRadius: 28,
     paddingHorizontal: 24,
     paddingTop: 40,
     paddingBottom: 40,
-    marginHorizontal: -24,
     marginTop: 120,
     marginBottom: 60,
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -4,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 16,
-    elevation: 10,
+    ...shadows.raised,
   },
   formTitle: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 40,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 32,
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   inputContainer: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   inputLabel: {
     fontSize: 14,
-    color: '#666666',
+    color: colors.textSecondary,
     marginBottom: 8,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   input: {
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
     padding: 16,
     fontSize: 16,
-    color: '#333333',
+    color: colors.text,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: colors.border,
   },
   passwordInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
-    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: colors.border,
   },
   passwordInput: {
     flex: 1,
-    color: '#333333',
+    color: colors.text,
     paddingVertical: 16,
     paddingHorizontal: 16,
   },
@@ -856,7 +842,7 @@ const styles = StyleSheet.create({
     height: 20,
     borderRadius: 4,
     borderWidth: 2,
-    borderColor: '#0ea5e9',
+    borderColor: '#2563eb',
     marginRight: 8,
   },
   rememberText: {
@@ -865,32 +851,34 @@ const styles = StyleSheet.create({
   },
   forgotText: {
     fontSize: 14,
-    color: '#0ea5e9',
+    color: '#2563eb',
     fontWeight: '500',
   },
   loginButton: {
-    backgroundColor: '#0ea5e9',
-    borderRadius: 50,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
     paddingVertical: 16,
     paddingHorizontal: 32,
     alignItems: 'center',
-    shadowColor: '#0ea5e9',
+    marginTop: 8,
+    shadowColor: colors.primary,
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowOpacity: 0.25,
+    shadowRadius: 14,
+    elevation: 4,
   },
   loginButtonDisabled: {
-    backgroundColor: '#cccccc',
+    backgroundColor: '#cbd5e1',
     shadowOpacity: 0,
+    elevation: 0,
   },
   loginButtonText: {
     color: '#ffffff',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '700',
   },
   loginErrorText: {
     color: '#ef4444',
@@ -914,7 +902,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   forgotPasswordLinkText: {
-    color: '#0ea5e9',
+    color: '#2563eb',
     fontWeight: '600',
   },
   registerPrompt: {
@@ -930,7 +918,7 @@ const styles = StyleSheet.create({
   },
   registerLink: {
     fontSize: 14,
-    color: '#0ea5e9',
+    color: '#2563eb',
     fontWeight: '600',
   },
   registerScreenContainer: {
@@ -940,7 +928,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#ffffff',
+    backgroundColor: colors.navy,
   },
   backToLoginButton: {
     alignItems: 'center',

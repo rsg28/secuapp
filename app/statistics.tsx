@@ -1,7 +1,8 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import PasstProgressSlide from '@/components/PasstProgressSlide';
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,8 +11,12 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useWindowDimensions,
+  TextInput,
+  Alert,
 } from 'react-native';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
+import { captureRef } from 'react-native-view-shot';
+import * as Sharing from 'expo-sharing';
 import { useAuth } from '../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../hooks/useOpenInspectionResponses';
@@ -20,16 +25,20 @@ import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
 type TimeFilter = 'week' | 'month' | 'year' | 'all';
+type ViewMode = 'summary' | 'checklist-progress';
 
-interface Service {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
+interface ChecklistProgressData {
+  year: number;
+  monthlyCounts: number[];
+  companiesWithChecklist: number;
+  totalCompanies: number;
+  totalInspections: number;
+  scope: 'organization' | 'personal';
 }
 
 interface Statistics {
@@ -50,22 +59,22 @@ interface ChartDataPoint {
   isCompleted: boolean;
 }
 
-const services: Service[] = [
-  { id: 'inspecciones', name: 'Inspecciones', icon: 'clipboard', color: '#3b82f6' },
-  { id: 'observaciones', name: 'Observaciones', icon: 'eye', color: '#f59e0b' },
-  { id: 'auditoria', name: 'Auditoría', icon: 'document-text', color: '#8b5cf6' },
-  { id: 'linea-base', name: 'Línea de Base', icon: 'bar-chart', color: '#10b981' },
-  { id: 'monitoreo', name: 'Monitoreo', icon: 'trending-up', color: '#ef4444' },
-];
-
 export default function StatisticsScreen() {
   const { user } = useAuth();
   const { width } = useWindowDimensions();
-  const [selectedService, setSelectedService] = useState<Service>(services[0]);
+  const [viewMode, setViewMode] = useState<ViewMode>('summary');
   const [selectedFilter, setSelectedFilter] = useState<TimeFilter>('month');
   const [statistics, setStatistics] = useState<Statistics | null>(null);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [loading, setLoading] = useState(true);
+  const [progressYear, setProgressYear] = useState(new Date().getFullYear());
+  const [progressData, setProgressData] = useState<ChecklistProgressData | null>(null);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState<string | null>(null);
+  const [goal, setGoal] = useState<string>('');
+  const [goalInitialized, setGoalInitialized] = useState(false);
+  const [capturingSlide, setCapturingSlide] = useState(false);
+  const passtSlideRef = useRef<View>(null);
   const { getResponsesByInspectorId: getClosedResponses } = useClosedInspectionResponses();
   const { getResponsesByInspectorId: getOpenResponses } = useOpenInspectionResponses();
   const { countItemsByTemplateId: countClosedTemplateItems } = useClosedTemplateItems();
@@ -73,16 +82,45 @@ export default function StatisticsScreen() {
   const { countItemsByResponseId: countClosedResponseItems } = useClosedInspectionResponseItems();
   const { countItemsByResponseId: countOpenResponseItems } = useOpenInspectionResponseItems();
 
+  const loadChecklistProgress = async (year: number) => {
+    try {
+      setProgressLoading(true);
+      setProgressError(null);
+      const token = await AsyncStorage.getItem('authToken');
+      if (!token) throw new Error('No autenticado');
+
+      const response = await fetch(
+        `${API_BASE_URL}/reports/checklist-progress?year=${year}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || 'Error al cargar avance');
+      }
+
+      const payload = data.data as ChecklistProgressData;
+      setProgressData(payload);
+      if (!goalInitialized) {
+        setGoal(String(payload.totalCompanies || 0));
+        setGoalInitialized(true);
+      }
+    } catch (error: any) {
+      console.error('Error loading checklist progress:', error);
+      setProgressError(error.message || 'Error al cargar avance');
+      setProgressData(null);
+    } finally {
+      setProgressLoading(false);
+    }
+  };
+
   const loadStatistics = async () => {
     if (!user?.id) return;
-
-    // Solo cargar estadísticas para el servicio de Inspecciones
-    if (selectedService.id !== 'inspecciones') {
-      setStatistics(null);
-      setChartData([]);
-      setLoading(false);
-      return;
-    }
 
     try {
       setLoading(true);
@@ -215,8 +253,16 @@ export default function StatisticsScreen() {
   };
 
   useEffect(() => {
-    loadStatistics();
-  }, [selectedFilter, selectedService.id, user?.id]);
+    if (viewMode === 'summary') {
+      loadStatistics();
+    }
+  }, [selectedFilter, user?.id, viewMode]);
+
+  useEffect(() => {
+    if (viewMode === 'checklist-progress') {
+      loadChecklistProgress(progressYear);
+    }
+  }, [viewMode, progressYear, user?.id]);
 
   const getFilterLabel = (filter: TimeFilter) => {
     switch (filter) {
@@ -233,201 +279,277 @@ export default function StatisticsScreen() {
     }
   };
 
+  const goalNumber = Math.max(parseInt(goal, 10) || 0, 1);
+  const progressPercent = progressData
+    ? Math.round((progressData.companiesWithChecklist / goalNumber) * 1000) / 10
+    : 0;
+  const yearOptions = [
+    new Date().getFullYear(),
+    new Date().getFullYear() - 1,
+    new Date().getFullYear() - 2,
+  ];
+
+  const handleDownloadPasstSlide = async () => {
+    if (!progressData || !passtSlideRef.current) {
+      Alert.alert('Aviso', 'Espera a que cargue el slide para descargarlo.');
+      return;
+    }
+    try {
+      setCapturingSlide(true);
+      const uri = await captureRef(passtSlideRef, {
+        format: 'png',
+        quality: 1,
+        result: 'tmpfile',
+      });
+      const canShare = await Sharing.isAvailableAsync();
+      if (!canShare) {
+        Alert.alert('Error', 'Compartir no está disponible en este dispositivo.');
+        return;
+      }
+      await Sharing.shareAsync(uri, {
+        mimeType: 'image/png',
+        dialogTitle: 'Descargar avance',
+      });
+    } catch (error: any) {
+      console.error('Checklist progress capture error:', error);
+      Alert.alert(
+        'No se pudo capturar',
+        'La descarga de imagen necesita el APK preview. En Expo Go puede no funcionar.'
+      );
+    } finally {
+      setCapturingSlide(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Estadísticas</Text>
           <Text style={styles.headerSubtitle}>
-            Resumen de tu actividad
+            {viewMode === 'summary' ? 'Tu actividad' : 'Avance de checklists'}
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       <ScrollView 
         style={styles.content} 
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Service Selector */}
-        <View style={styles.serviceContainer}>
-          <Text style={styles.serviceLabel}>Servicio</Text>
-          <View style={styles.serviceButtonsContainer}>
-            {services.map((service) => {
-              const isSelected = selectedService.id === service.id;
-              return (
+        <View style={styles.tabRow}>
+          <TouchableOpacity
+            style={[styles.tabButton, viewMode === 'summary' && styles.tabButtonActive]}
+            onPress={() => setViewMode('summary')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, viewMode === 'summary' && styles.tabTextActive]}>
+              Mi resumen
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.tabButton, viewMode === 'checklist-progress' && styles.tabButtonActive]}
+            onPress={() => setViewMode('checklist-progress')}
+            activeOpacity={0.7}
+          >
+            <Text style={[styles.tabText, viewMode === 'checklist-progress' && styles.tabTextActive]}>
+              Avance
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {viewMode === 'checklist-progress' ? (
+          <View style={styles.passtSection}>
+            <Text style={styles.pageSectionTitle}>Avance de checklists</Text>
+            <Text style={styles.pageSectionDesc}>
+              Cantidad por mes y cuántas empresas ya tienen al menos un checklist.
+            </Text>
+
+            <View style={styles.controlCard}>
+              <View style={styles.passtControls}>
+                <Text style={styles.passtYearLabel}>Año</Text>
+                <View style={styles.passtYearButtons}>
+                  {yearOptions.map((y) => (
+                    <TouchableOpacity
+                      key={y}
+                      style={[styles.passtYearBtn, progressYear === y && styles.passtYearBtnActive]}
+                      onPress={() => setProgressYear(y)}
+                    >
+                      <Text
+                        style={[
+                          styles.passtYearBtnText,
+                          progressYear === y && styles.passtYearBtnTextActive,
+                        ]}
+                      >
+                        {y}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {progressData?.scope === 'organization' ? (
+                <>
+                  <View style={styles.controlDivider} />
+                  <View style={styles.passtGoalRow}>
+                    <View style={styles.passtGoalTextCol}>
+                      <Text style={styles.passtGoalLabel}>Meta</Text>
+                      <Text style={styles.passtGoalHint}>Empresas objetivo del año</Text>
+                    </View>
+                    <TextInput
+                      style={styles.passtGoalInput}
+                      value={goal}
+                      onChangeText={setGoal}
+                      keyboardType="number-pad"
+                      placeholder="30"
+                      placeholderTextColor="#94a3b8"
+                    />
+                  </View>
+                </>
+              ) : null}
+            </View>
+
+            {progressLoading ? (
+              <View style={styles.loadingContainer}>
+                <ActivityIndicator size="large" color="#1d4ed8" />
+                <Text style={styles.loadingText}>Cargando avance...</Text>
+              </View>
+            ) : progressError ? (
+              <View style={styles.emptyContainer}>
+                <Ionicons name="alert-circle-outline" size={40} color="#ef4444" />
+                <Text style={styles.emptyText}>{progressError}</Text>
+              </View>
+            ) : progressData ? (
+              <>
+                <PasstProgressSlide
+                  ref={passtSlideRef}
+                  year={progressData.year}
+                  monthlyCounts={progressData.monthlyCounts}
+                  totalInspections={progressData.totalInspections}
+                  progressPercent={progressPercent}
+                  numerator={progressData.companiesWithChecklist}
+                  denominator={goalNumber}
+                  scope={progressData.scope}
+                  kpiLabel="Empresas"
+                />
+
                 <TouchableOpacity
-                  key={service.id}
-                  style={[
-                    styles.serviceButton,
-                    isSelected && { backgroundColor: service.color, borderColor: service.color },
-                  ]}
-                  onPress={() => setSelectedService(service)}
+                  style={[styles.downloadBtn, capturingSlide && styles.downloadBtnDisabled]}
+                  onPress={handleDownloadPasstSlide}
+                  disabled={capturingSlide}
+                  activeOpacity={0.85}
                 >
-                  <Ionicons
-                    name={service.icon as any}
-                    size={18}
-                    color={isSelected ? '#fff' : '#6b7280'}
-                  />
-                  <Text
-                    style={[
-                      styles.serviceButtonText,
-                      isSelected && styles.serviceButtonTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {service.name}
+                  {capturingSlide ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Ionicons name="download-outline" size={20} color="#fff" />
+                  )}
+                  <Text style={styles.downloadBtnText}>
+                    {capturingSlide ? 'Generando…' : 'Descargar imagen'}
                   </Text>
                 </TouchableOpacity>
-              );
-            })}
+              </>
+            ) : null}
+          </View>
+        ) : (
+          <>
+        <Text style={styles.pageSectionTitle}>Mis inspecciones</Text>
+        <Text style={styles.pageSectionDesc}>
+          Resumen de tu actividad en el período elegido.
+        </Text>
+
+        <View style={styles.controlCard}>
+          <Text style={styles.filterLabel}>Período</Text>
+          <View style={styles.filterButtonsContainer}>
+            {(['week', 'month', 'year', 'all'] as TimeFilter[]).map((filter) => (
+              <TouchableOpacity
+                key={filter}
+                style={[
+                  styles.filterButton,
+                  selectedFilter === filter && styles.filterButtonActive,
+                ]}
+                onPress={() => setSelectedFilter(filter)}
+              >
+                <Text
+                  style={[
+                    styles.filterText,
+                    selectedFilter === filter && styles.filterTextActive,
+                  ]}
+                >
+                  {getFilterLabel(filter)}
+                </Text>
+              </TouchableOpacity>
+            ))}
           </View>
         </View>
 
-        {/* Time Filters - Only show for Inspecciones */}
-        {selectedService.id === 'inspecciones' && (
-          <View style={styles.filterContainer}>
-            <Text style={styles.filterLabel}>Período</Text>
-            <View style={styles.filterButtonsContainer}>
-              {(['week', 'month', 'year', 'all'] as TimeFilter[]).map((filter) => (
-                <TouchableOpacity
-                  key={filter}
-                  style={[
-                    styles.filterButton,
-                    selectedFilter === filter && styles.filterButtonActive,
-                  ]}
-                  onPress={() => setSelectedFilter(filter)}
-                >
-                  <Text
-                    style={[
-                      styles.filterText,
-                      selectedFilter === filter && styles.filterTextActive,
-                    ]}
-                  >
-                    {getFilterLabel(filter)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {selectedService.id !== 'inspecciones' ? (
-          <View style={styles.comingSoonContainer}>
-            <IconSymbol name="chart.bar.fill" size={64} color="#9ca3af" />
-            <Text style={styles.comingSoonTitle}>
-              Estadísticas de {selectedService.name}
-            </Text>
-            <Text style={styles.comingSoonText}>
-              Las estadísticas para este servicio estarán disponibles próximamente.
-            </Text>
-          </View>
-        ) : loading ? (
+        {loading ? (
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="large" color="#3b82f6" />
             <Text style={styles.loadingText}>Cargando estadísticas...</Text>
           </View>
         ) : statistics ? (
           <>
-            {/* Summary Cards */}
             <View style={styles.summaryContainer}>
               <View style={[styles.summaryCard, styles.primaryCard]}>
-                <IconSymbol name="doc.text.fill" size={32} color="#fff" />
+                <Text style={styles.summaryLabel}>Total</Text>
                 <Text style={styles.summaryNumber}>{statistics.total}</Text>
-                <Text style={styles.summaryLabel}>Total de Inspecciones</Text>
+                <Text style={styles.summarySubLabel}>inspecciones en el período</Text>
               </View>
             </View>
 
-            {/* Status Cards */}
             <View style={styles.statusContainer}>
               <View style={[styles.statusCard, { backgroundColor: '#fef3c7' }]}>
-                <View style={styles.statusHeader}>
-                  <IconSymbol name="clock.fill" size={24} color="#f59e0b" />
-                  <Text style={[styles.statusTitle, { color: '#92400e' }]}>En Proceso</Text>
-                </View>
+                <Text style={[styles.statusTitle, { color: '#92400e' }]}>En proceso</Text>
                 <Text style={[styles.statusNumber, { color: '#92400e' }]}>
                   {statistics.inProgress}
                 </Text>
-                <View style={styles.statusBreakdown}>
-                  <Text style={styles.statusBreakdownText}>
-                    Abiertas: {statistics.openInProgress}
-                  </Text>
-                  <Text style={styles.statusBreakdownText}>
-                    Cerradas: {statistics.closedInProgress}
-                  </Text>
-                </View>
+                <Text style={styles.statusBreakdownText}>
+                  Abiertas {statistics.openInProgress} · Checklist {statistics.closedInProgress}
+                </Text>
               </View>
 
               <View style={[styles.statusCard, { backgroundColor: '#d1fae5' }]}>
-                <View style={styles.statusHeader}>
-                  <IconSymbol name="checkmark.circle.fill" size={24} color="#22c55e" />
-                  <Text style={[styles.statusTitle, { color: '#166534' }]}>Completadas</Text>
-                </View>
+                <Text style={[styles.statusTitle, { color: '#166534' }]}>Completadas</Text>
                 <Text style={[styles.statusNumber, { color: '#166534' }]}>
                   {statistics.completed}
                 </Text>
-                <View style={styles.statusBreakdown}>
-                  <Text style={styles.statusBreakdownText}>
-                    Abiertas: {statistics.openCompleted}
-                  </Text>
-                  <Text style={styles.statusBreakdownText}>
-                    Cerradas: {statistics.closedCompleted}
-                  </Text>
-                </View>
+                <Text style={styles.statusBreakdownText}>
+                  Abiertas {statistics.openCompleted} · Checklist {statistics.closedCompleted}
+                </Text>
               </View>
             </View>
 
-            {/* Detailed Breakdown */}
             <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Desglose por Tipo</Text>
-              
+              <Text style={styles.sectionTitle}>Por tipo</Text>
               <View style={styles.breakdownCard}>
                 <View style={styles.breakdownRow}>
-                  <View style={styles.breakdownLeft}>
-                    <IconSymbol name="list.clipboard.fill" size={20} color="#3b82f6" />
-                    <Text style={styles.breakdownLabel}>Inspecciones Abiertas</Text>
-                  </View>
-                  <View style={styles.breakdownRight}>
-                    <Text style={styles.breakdownValue}>
-                      {statistics.openInProgress + statistics.openCompleted}
-                    </Text>
-                    <Text style={styles.breakdownSubtext}>
-                      {statistics.openInProgress} proceso, {statistics.openCompleted} completadas
-                    </Text>
-                  </View>
+                  <Text style={styles.breakdownLabel}>Abiertas</Text>
+                  <Text style={styles.breakdownValue}>
+                    {statistics.openInProgress + statistics.openCompleted}
+                  </Text>
                 </View>
-
                 <View style={styles.breakdownDivider} />
-
                 <View style={styles.breakdownRow}>
-                  <View style={styles.breakdownLeft}>
-                    <IconSymbol name="document-text" size={20} color="#22c55e" />
-                    <Text style={styles.breakdownLabel}>Checklist (Cerradas)</Text>
-                  </View>
-                  <View style={styles.breakdownRight}>
-                    <Text style={styles.breakdownValue}>
-                      {statistics.closedInProgress + statistics.closedCompleted}
-                    </Text>
-                    <Text style={styles.breakdownSubtext}>
-                      {statistics.closedInProgress} proceso, {statistics.closedCompleted} completadas
-                    </Text>
-                  </View>
+                  <Text style={styles.breakdownLabel}>Checklist (cerradas)</Text>
+                  <Text style={styles.breakdownValue}>
+                    {statistics.closedInProgress + statistics.closedCompleted}
+                  </Text>
                 </View>
               </View>
             </View>
 
-            {/* Completion Rate */}
             {statistics.total > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Tasa de Finalización</Text>
+                <Text style={styles.sectionTitle}>Finalización</Text>
                 <View style={styles.progressCard}>
                   <View style={styles.progressHeader}>
                     <Text style={styles.progressLabel}>
-                      {Math.round((statistics.completed / statistics.total) * 100)}% Completadas
+                      {Math.round((statistics.completed / statistics.total) * 100)}%
                     </Text>
                     <Text style={styles.progressValue}>
                       {statistics.completed} / {statistics.total}
@@ -447,10 +569,9 @@ export default function StatisticsScreen() {
               </View>
             )}
 
-            {/* Gráfico de líneas (Line Graph) */}
             {chartData.length > 0 && (
               <View style={styles.section}>
-                <Text style={styles.sectionTitle}>Inspecciones por Día del Mes</Text>
+                <Text style={styles.sectionTitle}>Acumulado en el tiempo</Text>
                 <View style={styles.chartContainer}>
                   <View style={styles.chartWrapper}>
                     {(() => {
@@ -621,6 +742,8 @@ export default function StatisticsScreen() {
             <Text style={styles.emptyText}>No hay datos disponibles</Text>
           </View>
         )}
+          </>
+        )}
       </ScrollView>
     </View>
   );
@@ -629,12 +752,10 @@ export default function StatisticsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -642,7 +763,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -658,7 +779,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
   },
   content: {
     flex: 1,
@@ -722,16 +843,23 @@ const styles = StyleSheet.create({
     backgroundColor: '#3b82f6',
   },
   summaryNumber: {
-    fontSize: 48,
+    fontSize: 44,
     fontWeight: 'bold',
     color: '#fff',
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 4,
+    marginBottom: 2,
   },
   summaryLabel: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#dbeafe',
-    fontWeight: '500',
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  summarySubLabel: {
+    fontSize: 13,
+    color: '#bfdbfe',
+    marginTop: 2,
   },
   statusContainer: {
     flexDirection: 'row',
@@ -741,15 +869,15 @@ const styles = StyleSheet.create({
   statusCard: {
     flex: 1,
     borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
+    padding: 16,
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   statusHeader: {
     flexDirection: 'row',
@@ -757,7 +885,7 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   statusTitle: {
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     marginLeft: 8,
   },
@@ -786,14 +914,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   breakdownRow: {
     flexDirection: 'row',
@@ -833,14 +961,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -917,13 +1045,10 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '600',
   },
-  filterContainer: {
-    marginBottom: 20,
-  },
   filterLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#64748b',
     marginBottom: 10,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -933,39 +1058,18 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 8,
   },
-  comingSoonContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 60,
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    marginTop: 20,
-  },
-  comingSoonTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  comingSoonText: {
-    fontSize: 14,
-    color: '#6b7280',
-    textAlign: 'center',
-    lineHeight: 20,
-  },
   chartContainer: {
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   chartWrapper: {
     flexDirection: 'row',
@@ -1048,6 +1152,143 @@ const styles = StyleSheet.create({
   legendText: {
     fontSize: 14,
     color: '#6b7280',
+  },
+  tabRow: {
+    flexDirection: 'row',
+    backgroundColor: '#e2e8f0',
+    borderRadius: 12,
+    padding: 4,
+    marginBottom: 16,
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  tabButtonActive: {
+    backgroundColor: '#1d4ed8',
+  },
+  tabText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#64748b',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  pageSectionTitle: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#0f172a',
+    marginBottom: 4,
+  },
+  pageSectionDesc: {
+    fontSize: 13,
+    color: '#64748b',
+    lineHeight: 18,
+    marginBottom: 14,
+  },
+  controlCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    marginBottom: 16,
+  },
+  controlDivider: {
+    height: 1,
+    backgroundColor: '#e2e8f0',
+    marginVertical: 12,
+  },
+  passtSection: {
+    marginBottom: 8,
+  },
+  passtControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  passtYearLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  passtYearButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  passtYearBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    backgroundColor: '#f8fafc',
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+  },
+  passtYearBtnActive: {
+    backgroundColor: '#1d4ed8',
+    borderColor: '#1d4ed8',
+  },
+  passtYearBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  passtYearBtnTextActive: {
+    color: '#fff',
+  },
+  passtGoalRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  passtGoalTextCol: {
+    flex: 1,
+  },
+  passtGoalLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+  },
+  passtGoalHint: {
+    fontSize: 11,
+    color: '#94a3b8',
+    marginTop: 2,
+    lineHeight: 15,
+  },
+  passtGoalInput: {
+    minWidth: 64,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#1e3a8a',
+    textAlign: 'center',
+    backgroundColor: '#f8fafc',
+  },
+  downloadBtn: {
+    marginTop: 14,
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  downloadBtnDisabled: {
+    opacity: 0.7,
+  },
+  downloadBtnText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
 });
 

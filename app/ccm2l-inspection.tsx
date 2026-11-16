@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { storage } from '../utils/storage';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface FormItem {
   id: string;
@@ -186,7 +187,7 @@ export default function CCM2LInspectionScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
          {/* Header */}
-         <View style={[
+         <GradientHeader style={[
            styles.header,
            formId === 'pq-001' && styles.headerPQ
          ]}>
@@ -201,7 +202,7 @@ export default function CCM2LInspectionScreen() {
                 'Inspección de Seguridad'}
              </Text>
            </View>
-        </View>
+        </GradientHeader>
 
         <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
           {/* Información del template */}
@@ -375,22 +376,12 @@ export default function CCM2LInspectionScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
    header: {
-     backgroundColor: '#8b5cf6',
      padding: 20,
-     paddingTop: 60,
      flexDirection: 'row',
      alignItems: 'center',
-     shadowColor: '#000',
-     shadowOffset: {
-       width: 0,
-       height: 2,
-     },
-     shadowOpacity: 0.1,
-     shadowRadius: 4,
-     elevation: 3,
    },
    headerPQ: {
      backgroundColor: '#ef4444',
@@ -408,7 +399,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#e0e7ff',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   content: {
@@ -480,11 +471,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#d1d5db',
     backgroundColor: '#fff',
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   dropdownItem: {
     paddingHorizontal: 16,

@@ -30,9 +30,11 @@ export default function RootLayout() {
           <Stack.Screen name="create-form" options={{ headerShown: false }} />
           <Stack.Screen name="create-company" options={{ headerShown: false }} />
           <Stack.Screen name="inspection-types" options={{ headerShown: false }} />
-          <Stack.Screen name="otros-types" options={{ headerShown: false }} />
           <Stack.Screen name="ast-evaluation-form" options={{ headerShown: false }} />
           <Stack.Screen name="rals-form" options={{ headerShown: false }} />
+          <Stack.Screen name="visits" options={{ headerShown: false }} />
+          <Stack.Screen name="visit-form" options={{ headerShown: false }} />
+          <Stack.Screen name="visit-detail" options={{ headerShown: false }} />
           <Stack.Screen name="open-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="closed-inspections" options={{ headerShown: false }} />
           <Stack.Screen name="create-open-inspection" options={{ headerShown: false }} />
@@ -59,7 +61,7 @@ export default function RootLayout() {
         <Stack.Screen name="select-report-employees" options={{ headerShown: false }} />
         <Stack.Screen name="+not-found" />
       </Stack>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
     </ThemeProvider>
     </AuthProvider>
     </NetworkProvider>

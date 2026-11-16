@@ -18,6 +18,8 @@ import { useCompanies } from '../../hooks/useCompanies';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNetworkContext } from '../../contexts/NetworkContext';
 import { storage } from '../../utils/storage';
+import GradientHeader from '@/components/ui/GradientHeader';
+import { colors, radius, shadows } from '@/constants/theme';
 
 interface Company {
   id: string;
@@ -52,7 +54,7 @@ const INDUSTRY_COLORS: Record<string, string> = {
   retail: '#fca5a5',
   agricultura: '#4ade80',
   salud: '#a855f7',
-  tecnologia: '#6366f1',
+  tecnologia: '#2563eb',
   sinIndustria: '#6b7280'
 };
 
@@ -87,7 +89,7 @@ export default function ProceduresScreen() {
   const [selectedCategory, setSelectedCategory] = useState('todos');
   const [companies, setCompanies] = useState<Company[]>([]);
   const [industryOptions, setIndustryOptions] = useState<IndustryOption[]>([
-    { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' }
+    { id: 'todos', name: 'Todas las Industrias', color: '#2563eb' }
   ]);
   const [loadingCompanies, setLoadingCompanies] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -151,7 +153,7 @@ export default function ProceduresScreen() {
           }
         });
         setIndustryOptions([
-          { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+          { id: 'todos', name: 'Todas las Industrias', color: '#2563eb' },
           ...Array.from(uniqueIndustries.values())
         ]);
         setCompanies(adaptedCompanies);
@@ -177,7 +179,7 @@ export default function ProceduresScreen() {
       });
 
       setIndustryOptions([
-        { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+        { id: 'todos', name: 'Todas las Industrias', color: '#2563eb' },
         ...Array.from(uniqueIndustries.values())
       ]);
       setCompanies(adaptedCompanies);
@@ -197,7 +199,7 @@ export default function ProceduresScreen() {
         }
       });
       setIndustryOptions([
-        { id: 'todos', name: 'Todas las Industrias', color: '#6366f1' },
+        { id: 'todos', name: 'Todas las Industrias', color: '#2563eb' },
         ...Array.from(uniqueIndustries.values())
       ]);
       setCompanies(adaptedCompanies);
@@ -279,14 +281,14 @@ export default function ProceduresScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-              <View style={styles.header}>
+              <GradientHeader style={styles.header}>
           <View>
             <Text style={styles.headerTitle}>Empresas</Text>
             <Text style={styles.headerSubtitle}>
               Clientes y empresas con formularios asociados
             </Text>
           </View>
-        </View>
+        </GradientHeader>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
@@ -364,9 +366,9 @@ export default function ProceduresScreen() {
           )}
 
           {!loadingCompanies && (offlineBanner || errorMessage) && (
-            <View style={{ paddingVertical: 16, paddingHorizontal: 16, marginHorizontal: 16, marginBottom: 8, backgroundColor: offlineBanner ? '#fef3c7' : '#fee2e2', borderRadius: 8, alignItems: 'center' }}>
-              <Ionicons name={offlineBanner ? 'cloud-offline' : 'alert-circle'} size={24} color={offlineBanner ? '#92400e' : '#ef4444'} />
-              <Text style={{ marginTop: 8, color: offlineBanner ? '#92400e' : '#ef4444', textAlign: 'center', fontSize: 14 }}>{offlineBanner || errorMessage}</Text>
+            <View style={[styles.notice, offlineBanner ? styles.noticeOffline : styles.noticeError]}>
+              <Ionicons name={offlineBanner ? 'cloud-offline' : 'alert-circle'} size={20} color={offlineBanner ? '#b45309' : colors.danger} />
+              <Text style={[styles.noticeText, { color: offlineBanner ? '#92400e' : '#b91c1c' }]}>{offlineBanner || errorMessage}</Text>
             </View>
           )}
 
@@ -388,7 +390,7 @@ export default function ProceduresScreen() {
                       });
                     }}
                   >
-                    <Ionicons name="pencil" size={16} color="#fff" />
+                    <Ionicons name="pencil" size={16} color={colors.primary} />
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.deleteButton}
@@ -396,9 +398,9 @@ export default function ProceduresScreen() {
                     disabled={deletingId === company.id}
                   >
                     {deletingId === company.id ? (
-                      <ActivityIndicator size="small" color="#fff" />
+                      <ActivityIndicator size="small" color={colors.danger} />
                     ) : (
-                      <Ionicons name="trash" size={16} color="#fff" />
+                      <Ionicons name="trash" size={16} color={colors.danger} />
                     )}
                   </TouchableOpacity>
                 </>
@@ -408,11 +410,11 @@ export default function ProceduresScreen() {
                   <Ionicons 
                     name="business" 
                     size={24} 
-                    color={industryOptions.find(i => i.id === company.industryKey)?.color || '#6366f1'} 
+                    color={industryOptions.find(i => i.id === company.industryKey)?.color || '#2563eb'} 
                   />
                 </View>
                 <View style={styles.fileInfo}>
-                  <Text style={styles.fileName}>{company.name}</Text>
+                  <Text style={[styles.fileName, user?.role === 'manager' && styles.fileNameWithActions]}>{company.name}</Text>
                   <Text style={styles.companyName}>{company.industry} • {company.contactPerson}</Text>
                   <View style={styles.fileMeta}>
                     <Text style={styles.fileSize}>{company.formCount} formularios</Text>
@@ -492,7 +494,7 @@ export default function ProceduresScreen() {
                 <View style={styles.modalSection}>
                   <View style={styles.modalInfoRow}>
                     <View style={styles.modalInfoIcon}>
-                      <Ionicons name="business" size={20} color="#6366f1" />
+                      <Ionicons name="business" size={20} color="#2563eb" />
                     </View>
                     <View style={styles.modalInfoContent}>
                       <Text style={styles.modalInfoLabel}>Nombre de la Empresa</Text>
@@ -502,7 +504,7 @@ export default function ProceduresScreen() {
 
                   <View style={styles.modalInfoRow}>
                     <View style={styles.modalInfoIcon}>
-                      <Ionicons name="briefcase" size={20} color="#6366f1" />
+                      <Ionicons name="briefcase" size={20} color="#2563eb" />
                     </View>
                     <View style={styles.modalInfoContent}>
                       <Text style={styles.modalInfoLabel}>Industria</Text>
@@ -513,7 +515,7 @@ export default function ProceduresScreen() {
                   {selectedCompany.address && (
                     <View style={styles.modalInfoRow}>
                       <View style={styles.modalInfoIcon}>
-                        <Ionicons name="location" size={20} color="#6366f1" />
+                        <Ionicons name="location" size={20} color="#2563eb" />
                       </View>
                       <View style={styles.modalInfoContent}>
                         <Text style={styles.modalInfoLabel}>Dirección</Text>
@@ -531,7 +533,7 @@ export default function ProceduresScreen() {
                     {selectedCompany.contactPerson && (
                       <View style={styles.modalInfoRow}>
                         <View style={styles.modalInfoIcon}>
-                          <Ionicons name="person" size={20} color="#6366f1" />
+                          <Ionicons name="person" size={20} color="#2563eb" />
                         </View>
                         <View style={styles.modalInfoContent}>
                           <Text style={styles.modalInfoLabel}>Persona de Contacto</Text>
@@ -543,7 +545,7 @@ export default function ProceduresScreen() {
                     {selectedCompany.email && (
                       <View style={styles.modalInfoRow}>
                         <View style={styles.modalInfoIcon}>
-                          <Ionicons name="mail" size={20} color="#6366f1" />
+                          <Ionicons name="mail" size={20} color="#2563eb" />
                         </View>
                         <View style={styles.modalInfoContent}>
                           <Text style={styles.modalInfoLabel}>Email</Text>
@@ -555,7 +557,7 @@ export default function ProceduresScreen() {
                     {selectedCompany.phone && (
                       <View style={styles.modalInfoRow}>
                         <View style={styles.modalInfoIcon}>
-                          <Ionicons name="call" size={20} color="#6366f1" />
+                          <Ionicons name="call" size={20} color="#2563eb" />
                         </View>
                         <View style={styles.modalInfoContent}>
                           <Text style={styles.modalInfoLabel}>Teléfono</Text>
@@ -572,7 +574,7 @@ export default function ProceduresScreen() {
                   
                   <View style={styles.modalInfoRow}>
                     <View style={styles.modalInfoIcon}>
-                      <Ionicons name="document-text" size={20} color="#6366f1" />
+                      <Ionicons name="document-text" size={20} color="#2563eb" />
                     </View>
                     <View style={styles.modalInfoContent}>
                       <Text style={styles.modalInfoLabel}>Formularios</Text>
@@ -582,7 +584,7 @@ export default function ProceduresScreen() {
 
                   <View style={styles.modalInfoRow}>
                     <View style={styles.modalInfoIcon}>
-                      <Ionicons name="time" size={20} color="#6366f1" />
+                      <Ionicons name="time" size={20} color="#2563eb" />
                     </View>
                     <View style={styles.modalInfoContent}>
                       <Text style={styles.modalInfoLabel}>Última Actividad</Text>
@@ -619,51 +621,42 @@ export default function ProceduresScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#7dd3fc',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#e0f2fe',
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: 4,
   },
   content: {
     flex: 1,
   },
   searchContainer: {
-    backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingTop: 16,
   },
   searchInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f3f4f6',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    ...shadows.card,
   },
   searchIcon: {
     marginRight: 12,
@@ -674,10 +667,7 @@ const styles = StyleSheet.create({
     color: '#374151',
   },
   categoriesContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingVertical: 14,
   },
   categoriesScrollContent: {
     paddingHorizontal: 20,
@@ -685,73 +675,84 @@ const styles = StyleSheet.create({
   categoryButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    marginRight: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginRight: 10,
   },
   categoryButtonActive: {
-    backgroundColor: '#6366f1',
-    borderColor: '#6366f1',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   categoryText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   categoryTextActive: {
     color: '#fff',
   },
   filesContainer: {
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 4,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.3,
   },
   addButton: {
-    backgroundColor: '#3b82f6',
+    backgroundColor: colors.primary,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 25,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 9,
+    borderRadius: radius.pill,
   },
   addButtonText: {
     color: '#fff',
     fontSize: 14,
-    fontWeight: '600',
+    fontWeight: '700',
     marginLeft: 6,
   },
+  notice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    padding: 12,
+    marginBottom: 12,
+    borderRadius: radius.md,
+    borderWidth: 1,
+  },
+  noticeOffline: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#fde68a',
+  },
+  noticeError: {
+    backgroundColor: '#fef2f2',
+    borderColor: '#fecaca',
+  },
+  noticeText: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   fileCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
     position: 'relative',
   },
   fileCardHeader: {
@@ -761,24 +762,27 @@ const styles = StyleSheet.create({
   fileIconContainer: {
     width: 48,
     height: 48,
-    borderRadius: 24,
-    backgroundColor: '#f3f4f6',
+    borderRadius: radius.md,
+    backgroundColor: colors.primarySoft,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   fileInfo: {
     flex: 1,
   },
   fileName: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
+    fontWeight: '700',
+    color: colors.text,
     marginBottom: 4,
   },
+  fileNameWithActions: {
+    paddingRight: 76,
+  },
   companyName: {
-    fontSize: 14,
-    color: '#6b7280',
+    fontSize: 13,
+    color: colors.textSecondary,
     marginBottom: 4,
   },
   fileMeta: {
@@ -798,40 +802,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 12,
     right: 52,
-    backgroundColor: '#6366f1',
+    backgroundColor: colors.primarySoft,
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 3,
     zIndex: 10,
   },
   deleteButton: {
     position: 'absolute',
     top: 12,
     right: 12,
-    backgroundColor: '#ef4444',
+    backgroundColor: colors.dangerSoft,
     width: 32,
     height: 32,
-    borderRadius: 16,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 3,
     zIndex: 10,
   },
   emptyState: {
@@ -983,7 +971,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#6366f1',
+    backgroundColor: '#2563eb',
     paddingVertical: 16,
     borderRadius: 12,
     marginTop: 24,

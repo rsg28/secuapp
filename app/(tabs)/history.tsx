@@ -33,6 +33,37 @@ import { getIsOffline } from '../../utils/networkStore';
 import { processOfflineQueue } from '../../services/offlineSync';
 import { offlineQueue } from '../../utils/offlineQueue';
 import { storage } from '../../utils/storage';
+import GradientHeader from '@/components/ui/GradientHeader';
+import { colors, radius, shadows } from '@/constants/theme';
+
+const RALS_TIPO_LABELS: Record<string, string> = {
+  acto_subestandar: 'Acto subestándar',
+  condicion_subestandar: 'Condición subestándar',
+  sugerencia_recomendacion: 'Sugerencia',
+  felicitacion: 'Felicitación',
+};
+
+function formatRalsTiposSummary(raw: unknown): string {
+  if (raw == null || raw === '') return '';
+  let ids: string[] = [];
+  if (Array.isArray(raw)) ids = raw.map(String).filter(Boolean);
+  else if (typeof raw === 'string') {
+    const t = raw.trim();
+    if (t.startsWith('[')) {
+      try {
+        const a = JSON.parse(t) as unknown;
+        if (Array.isArray(a)) ids = a.map(String);
+        else ids = [raw];
+      } catch {
+        ids = [raw];
+      }
+    } else {
+      ids = [raw];
+    }
+  }
+  if (ids.length === 0) return '';
+  return ids.map((id) => RALS_TIPO_LABELS[id] || id).join(' · ');
+}
 
 interface HistoryItem {
   id: string;
@@ -93,7 +124,6 @@ export default function HistoryScreen() {
   const { getByInspectorId: getRalsReports, deleteReport: deleteRalsReport } = useRalsReports();
   
   const [selectedFilter, setSelectedFilter] = useState<'all' | 'abierto' | 'cerrado'>('all');
-  const [selectedOtrosFilter, setSelectedOtrosFilter] = useState<'all' | 'ast' | 'rals'>('all');
   const [selectedService, setSelectedService] = useState<Service | null>({
     id: 'inspecciones',
     name: 'Inspecciones',
@@ -158,7 +188,8 @@ export default function HistoryScreen() {
 
   const services: Service[] = [
     { id: 'inspecciones', name: 'Inspecciones', icon: 'clipboard', color: '#3b82f6' },
-    { id: 'otros', name: 'Otros', icon: 'apps', color: '#06b6d4' },
+    { id: 'ast', name: 'AST', icon: 'shield-checkmark', color: '#06b6d4' },
+    { id: 'rals', name: 'RALS', icon: 'people', color: '#22c55e' },
     { id: 'observaciones', name: 'Observaciones', icon: 'eye', color: '#10b981' },
     { id: 'auditoria', name: 'Auditoría', icon: 'document-text', color: '#8b5cf6' },
     { id: 'linea-base', name: 'Línea de Base', icon: 'bar-chart', color: '#f59e0b' },
@@ -215,8 +246,10 @@ export default function HistoryScreen() {
         }
         if (selectedService?.id === 'inspecciones') {
           loadInspections();
-        } else if (selectedService?.id === 'otros') {
-          loadOtros();
+        } else if (selectedService?.id === 'ast') {
+          loadAstHistory();
+        } else if (selectedService?.id === 'rals') {
+          loadRalsHistory();
         }
       };
       run();
@@ -341,73 +374,117 @@ export default function HistoryScreen() {
     }
   };
 
-  const loadOtros = async () => {
+  const mapAstToItems = (astData: any): HistoryItem[] =>
+    (astData?.data?.evaluations || []).map((e: any) => ({
+      id: e.id,
+      service: 'Evaluación AST',
+      serviceType: 'ast',
+      action: '',
+      timestamp: formatDate(e.created_at),
+      status: 'completed' as const,
+      details: `${e.razon_social || 'Sin razón social'} - ${e.calificacion || 'N/A'} (${e.puntaje_obtenido ?? 0} pts)`,
+      category: 'general' as const,
+      itemSubType: 'ast' as const,
+      createdAt: e.created_at,
+    }));
+
+  const mapRalsToItems = (ralsData: any): HistoryItem[] =>
+    (ralsData?.data?.reports || []).map((r: any) => ({
+      id: r.id,
+      service: 'Reporte RALS',
+      serviceType: 'rals',
+      action: '',
+      timestamp: formatDate(r.created_at),
+      status: 'completed' as const,
+      details: `${r.nombre || 'Sin nombre'} - ${formatRalsTiposSummary(r.tipo_observacion) || r.empresa || 'RALS'}`,
+      category: 'general' as const,
+      itemSubType: 'rals' as const,
+      createdAt: r.created_at,
+    }));
+
+  const loadAstHistory = async () => {
     if (!userIdStr) return;
-
-    const mapOtrosToItems = (astData: any, ralsData: any) => {
-      const astItems: HistoryItem[] = (astData?.data?.evaluations || []).map((e: any) => ({
-        id: e.id,
-        service: 'Evaluación AST',
-        serviceType: 'otros',
-        action: '',
-        timestamp: formatDate(e.created_at),
-        status: 'completed' as const,
-        details: `${e.razon_social || 'Sin razón social'} - ${e.calificacion || 'N/A'} (${e.puntaje_obtenido ?? 0} pts)`,
-        category: 'general' as const,
-        itemSubType: 'ast' as const,
-        createdAt: e.created_at
-      }));
-      const ralsItems: HistoryItem[] = (ralsData?.data?.reports || []).map((r: any) => ({
-        id: r.id,
-        service: 'Reporte RALS',
-        serviceType: 'otros',
-        action: '',
-        timestamp: formatDate(r.created_at),
-        status: 'completed' as const,
-        details: `${r.nombre || 'Sin nombre'} - ${r.tipo_observacion || r.empresa || 'RALS'}`,
-        category: 'general' as const,
-        itemSubType: 'rals' as const,
-        createdAt: r.created_at
-      }));
-      return [...astItems, ...ralsItems]
-        .sort((a, b) => new Date((b.createdAt || '')).getTime() - new Date((a.createdAt || '')).getTime());
-    };
-
     try {
       setLoading(true);
       setOfflineMessage(null);
-
       if (isOffline) {
         const offlineItems = await storage.loadOfflineItems().catch(() => []);
-        const ast = offlineItems.filter((i: any) => i.type === 'ast').map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
-        const rals = offlineItems.filter((i: any) => i.type === 'rals').map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
+        const ast = offlineItems
+          .filter((i: any) => i.type === 'ast')
+          .map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
         const astData = { data: { evaluations: ast } };
-        const ralsData = { data: { reports: rals } };
-        let allItems = mapOtrosToItems(astData, ralsData);
+        let allItems = mapAstToItems(astData);
         const pendingDeletes = await storage.getPendingDeletes();
-        allItems = allItems.filter((i) => !pendingDeletes.includes(i.id));
+        allItems = allItems
+          .filter((i) => !pendingDeletes.includes(i.id))
+          .sort((a, b) => new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime());
         setHistoryData(allItems);
         setOfflineMessage(allItems.length > 0 ? 'Sin conexión. Mostrando datos guardados.' : null);
         return;
       }
-
-      const [astData, ralsData] = await Promise.all([
-        getAstEvaluations(userIdStr, 1, 100),
-        getRalsReports(userIdStr, 1, 100)
-      ]);
-
-      let allItems = mapOtrosToItems(astData, ralsData);
+      const astData = await getAstEvaluations(userIdStr, 1, 100);
+      let allItems = mapAstToItems(astData);
       const pendingDeletes = await storage.getPendingDeletes();
-      allItems = allItems.filter((i) => !pendingDeletes.includes(i.id));
+      allItems = allItems
+        .filter((i) => !pendingDeletes.includes(i.id))
+        .sort((a, b) => new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime());
       setHistoryData(allItems);
     } catch (err: any) {
       const msg = err?.message || '';
       const offlineItems = await storage.loadOfflineItems().catch(() => []);
-      const ast = offlineItems.filter((i: any) => i.type === 'ast').map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
-      const rals = offlineItems.filter((i: any) => i.type === 'rals').map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
-      const astData = { data: { evaluations: ast } };
-      const ralsData = { data: { reports: rals } };
-      let allItems = mapOtrosToItems(astData, ralsData);
+      const ast = offlineItems
+        .filter((i: any) => i.type === 'ast')
+        .map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
+      let allItems = mapAstToItems({ data: { evaluations: ast } });
+      const pendingDeletes = await storage.getPendingDeletes();
+      allItems = allItems.filter((i) => !pendingDeletes.includes(i.id));
+      setHistoryData(allItems);
+      if (allItems.length > 0) {
+        setOfflineMessage('Sin conexión. Mostrando datos guardados.');
+      } else if (msg && (msg.includes('inválid') || msg.includes('UUID') || msg.includes('entrada'))) {
+        setOfflineMessage('No se pudo cargar el historial. Verifica tu sesión e intenta de nuevo.');
+      } else {
+        setOfflineMessage(null);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadRalsHistory = async () => {
+    if (!userIdStr) return;
+    try {
+      setLoading(true);
+      setOfflineMessage(null);
+      if (isOffline) {
+        const offlineItems = await storage.loadOfflineItems().catch(() => []);
+        const rals = offlineItems
+          .filter((i: any) => i.type === 'rals')
+          .map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
+        const ralsData = { data: { reports: rals } };
+        let allItems = mapRalsToItems(ralsData);
+        const pendingDeletes = await storage.getPendingDeletes();
+        allItems = allItems
+          .filter((i) => !pendingDeletes.includes(i.id))
+          .sort((a, b) => new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime());
+        setHistoryData(allItems);
+        setOfflineMessage(allItems.length > 0 ? 'Sin conexión. Mostrando datos guardados.' : null);
+        return;
+      }
+      const ralsData = await getRalsReports(userIdStr, 1, 100);
+      let allItems = mapRalsToItems(ralsData);
+      const pendingDeletes = await storage.getPendingDeletes();
+      allItems = allItems
+        .filter((i) => !pendingDeletes.includes(i.id))
+        .sort((a, b) => new Date((b as any).createdAt || '').getTime() - new Date((a as any).createdAt || '').getTime());
+      setHistoryData(allItems);
+    } catch (err: any) {
+      const msg = err?.message || '';
+      const offlineItems = await storage.loadOfflineItems().catch(() => []);
+      const rals = offlineItems
+        .filter((i: any) => i.type === 'rals')
+        .map((o: any) => ({ ...o, created_at: o.created_at || o.createdAt }));
+      let allItems = mapRalsToItems({ data: { reports: rals } });
       const pendingDeletes = await storage.getPendingDeletes();
       allItems = allItems.filter((i) => !pendingDeletes.includes(i.id));
       setHistoryData(allItems);
@@ -500,12 +577,7 @@ export default function HistoryScreen() {
     if (selectedFilter !== 'all' && selectedService?.id === 'inspecciones') {
       filtered = filtered.filter(item => item.category === selectedFilter);
     }
-    
-    // Aplicar filtros de tipo para "Otros" (AST/RALS)
-    if (selectedOtrosFilter !== 'all' && selectedService?.id === 'otros') {
-      filtered = filtered.filter(item => item.itemSubType === selectedOtrosFilter);
-    }
-    
+
     return filtered;
   };
 
@@ -513,11 +585,12 @@ export default function HistoryScreen() {
 
   // Solo mostrar filtros de categorías específicas para inspecciones
   const shouldShowCategoryFilters = !selectedService || selectedService.id === 'inspecciones';
-  // Mostrar filtros de tipo para "Otros"
-  const shouldShowOtrosFilters = selectedService?.id === 'otros';
+
+  const isAstOrRalsItem = (item: HistoryItem) =>
+    item.serviceType === 'ast' || item.serviceType === 'rals';
 
   const handleDeleteResponse = (item: HistoryItem) => {
-    const isOtros = item.serviceType === 'otros';
+    const isOtros = isAstOrRalsItem(item);
     if (isOtros) {
       setItemToDelete(item);
       setShowDeleteConfirm(true);
@@ -534,8 +607,14 @@ export default function HistoryScreen() {
     }
   };
 
+  const reloadCurrentServiceList = async () => {
+    if (selectedService?.id === 'ast') await loadAstHistory();
+    else if (selectedService?.id === 'rals') await loadRalsHistory();
+    else await loadInspections();
+  };
+
   const doDeleteItem = async (item: HistoryItem) => {
-    const isOtros = item.serviceType === 'otros';
+    const isOtros = isAstOrRalsItem(item);
     const isClosed = item.category === 'cerrado';
     try {
       setLoading(true);
@@ -560,8 +639,7 @@ export default function HistoryScreen() {
           await offlineQueue.add({ id: queueId, type: deleteType, payload: { id: item.id } });
           await storage.addPendingDelete(item.id);
         }
-        if (isOtros) await loadOtros();
-        else await loadInspections();
+        await reloadCurrentServiceList();
         setShowDeleteConfirm(false);
         setItemToDelete(null);
         return;
@@ -576,7 +654,7 @@ export default function HistoryScreen() {
           Alert.alert('Error', 'Tipo de registro no reconocido');
           return;
         }
-        await loadOtros();
+        await reloadCurrentServiceList();
       } else if (isClosed) {
         await deleteClosedResponse(item.id);
         await loadInspections();
@@ -753,11 +831,12 @@ export default function HistoryScreen() {
         throw new Error('No se encontró el token de autenticación. Inicia sesión nuevamente.');
       }
 
-      const isOtros = selectedItemForSend.serviceType === 'otros';
+      const isAstOrRalsSend =
+        selectedItemForSend.serviceType === 'ast' || selectedItemForSend.serviceType === 'rals';
       let endpoint = '';
       let bodyData: any = {};
 
-      if (isOtros) {
+      if (isAstOrRalsSend) {
         // Para AST y RALS
         const type = selectedItemForSend.itemSubType; // 'ast' o 'rals'
         endpoint = type === 'ast' 
@@ -812,10 +891,9 @@ export default function HistoryScreen() {
     
     // Resetear filtros al cambiar de servicio
     setSelectedFilter('all');
-    setSelectedOtrosFilter('all');
     
-    // Mostrar popup "Trabajando en ello" solo para servicios no implementados (no inspecciones ni otros)
-    if (service.id !== 'inspecciones' && service.id !== 'otros') {
+    // Mostrar popup "Trabajando en ello" solo para servicios no implementados
+    if (!['inspecciones', 'ast', 'rals'].includes(service.id)) {
       setShowWorkingModal(true);
     }
   };
@@ -823,19 +901,19 @@ export default function HistoryScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={[styles.header, { paddingHorizontal: responsive.horizontalPadding, paddingTop: responsive.headerPaddingTop }]}>
+      <GradientHeader style={[styles.header, { paddingHorizontal: responsive.horizontalPadding, paddingTop: responsive.headerPaddingTop }]}>
         <View>
           <Text style={[styles.headerTitle, { fontSize: responsive.headerTitleSize }]}>Historial</Text>
           <Text style={[styles.headerSubtitle, { fontSize: responsive.headerSubtitleSize }]}>
             Registro de actividades de inspección
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       {offlineMessage && (
-        <View style={{ paddingVertical: 12, paddingHorizontal: 16, marginHorizontal: responsive.horizontalPadding, marginBottom: 8, backgroundColor: '#fef3c7', borderRadius: 8, flexDirection: 'row', alignItems: 'center' }}>
-          <Ionicons name="cloud-offline" size={22} color="#92400e" style={{ marginRight: 8 }} />
-          <Text style={{ flex: 1, color: '#92400e', fontSize: 14 }}>{offlineMessage}</Text>
+        <View style={[styles.offlineNotice, { marginHorizontal: responsive.horizontalPadding }]}>
+          <Ionicons name="cloud-offline" size={20} color="#b45309" style={{ marginRight: 10 }} />
+          <Text style={{ flex: 1, color: '#92400e', fontSize: 13, fontWeight: '500' }}>{offlineMessage}</Text>
         </View>
       )}
 
@@ -846,7 +924,7 @@ export default function HistoryScreen() {
       >
         {/* Selector de Servicio */}
         <View style={[styles.serviceSelectorContainer, { paddingHorizontal: responsive.horizontalPadding, paddingVertical: responsive.sectionPadding }]}>
-          <Text style={[styles.serviceSelectorLabel, { fontSize: responsive.baseText }]}>Servicio:</Text>
+          <Text style={[styles.serviceSelectorLabel, { fontSize: responsive.smallText }]}>Servicio</Text>
           <TouchableOpacity 
             style={[styles.serviceSelectorButton, { paddingHorizontal: responsive.serviceButtonPaddingHorizontal, paddingVertical: responsive.actionButtonPadding }]}
             onPress={() => setShowServiceModal(true)}
@@ -944,89 +1022,21 @@ export default function HistoryScreen() {
           </View>
         )}
 
-        {/* Filtros para Otros (AST/RALS) */}
-        {shouldShowOtrosFilters && (
-          <View style={[styles.filtersContainer, { paddingVertical: responsive.sectionPadding * 0.6 }]}>
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={[styles.filtersScrollContent, { paddingHorizontal: responsive.horizontalPadding }]}
-            >
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
-                  selectedOtrosFilter === 'all' && styles.filterButtonActive
-                ]}
-                onPress={() => setSelectedOtrosFilter('all')}
-              >
-                <Text style={[
-                  styles.filterText,
-                  { fontSize: responsive.smallText },
-                  selectedOtrosFilter === 'all' && styles.filterTextActive
-                ]}>
-                  Todos
-                </Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
-                  selectedOtrosFilter === 'ast' && styles.filterButtonActive
-                ]}
-                onPress={() => setSelectedOtrosFilter('ast')}
-              >
-                <Ionicons 
-                  name="document-text" 
-                  size={Math.max(14, responsive.smallText + 2)} 
-                  color={selectedOtrosFilter === 'ast' ? '#fff' : '#06b6d4'} 
-                />
-                <Text style={[
-                  styles.filterText,
-                  { fontSize: responsive.smallText },
-                  selectedOtrosFilter === 'ast' && styles.filterTextActive
-                ]}>
-                  AST
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.filterButton,
-                  { paddingHorizontal: responsive.chipPaddingHorizontal, paddingVertical: responsive.chipPaddingVertical },
-                  selectedOtrosFilter === 'rals' && styles.filterButtonActive
-                ]}
-                onPress={() => setSelectedOtrosFilter('rals')}
-              >
-                <Ionicons 
-                  name="shield-checkmark" 
-                  size={Math.max(14, responsive.smallText + 2)} 
-                  color={selectedOtrosFilter === 'rals' ? '#fff' : '#10b981'} 
-                />
-                <Text style={[
-                  styles.filterText,
-                  { fontSize: responsive.smallText },
-                  selectedOtrosFilter === 'rals' && styles.filterTextActive
-                ]}>
-                  RALS
-                </Text>
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
-        )}
-
         {/* Lista de Historial */}
         <View style={[styles.historyContainer, { paddingHorizontal: responsive.horizontalPadding, paddingTop: responsive.sectionPadding }]}>
-          <Text style={[styles.sectionTitle, { fontSize: Math.max(18, width * 0.05), marginBottom: responsive.sectionPadding * 0.65 }]}>
+          <Text style={[styles.sectionTitle, { marginBottom: responsive.sectionPadding * 0.65 }]}>
             {selectedService ? `${selectedService.name} - ` : ''}Actividades Recientes ({filteredHistory.length})
           </Text>
           
           {loading && (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#8b5cf6" />
+              <ActivityIndicator size="large" color={colors.primary} />
               <Text style={[styles.loadingText, { fontSize: responsive.baseText }]}>
-                {selectedService?.id === 'otros' ? 'Cargando...' : 'Cargando inspecciones...'}
+                {selectedService?.id === 'ast'
+                  ? 'Cargando evaluaciones AST...'
+                  : selectedService?.id === 'rals'
+                    ? 'Cargando reportes RALS...'
+                    : 'Cargando inspecciones...'}
               </Text>
             </View>
           )}
@@ -1035,21 +1045,19 @@ export default function HistoryScreen() {
             <View style={styles.emptyContainer}>
               <Ionicons name="document-outline" size={64} color="#d1d5db" />
               <Text style={[styles.emptyText, { fontSize: responsive.baseText + 1 }]}>
-                {selectedService?.id === 'otros'
-                  ? selectedOtrosFilter === 'ast'
-                    ? 'No hay evaluaciones AST'
-                    : selectedOtrosFilter === 'rals'
-                      ? 'No hay reportes RALS'
-                      : 'No hay evaluaciones AST ni reportes RALS'
-                  : selectedFilter === 'all'
-                    ? 'No hay inspecciones registradas'
-                    : `No hay inspecciones de tipo "${selectedFilter === 'abierto' ? 'Abierto' : 'Cerrado'}"`}
+                {selectedService?.id === 'ast'
+                  ? 'No hay evaluaciones AST'
+                  : selectedService?.id === 'rals'
+                    ? 'No hay reportes RALS'
+                    : selectedFilter === 'all'
+                      ? 'No hay inspecciones registradas'
+                      : `No hay inspecciones de tipo "${selectedFilter === 'abierto' ? 'Abierto' : 'Cerrado'}"`}
               </Text>
             </View>
           )}
           
           {!loading && filteredHistory.map((item) => {
-            const isOtros = item.serviceType === 'otros';
+            const isOtros = isAstOrRalsItem(item);
             const isInspection = !isOtros;
             return (
               <TouchableOpacity 
@@ -1271,7 +1279,7 @@ export default function HistoryScreen() {
           <View style={styles.sendModalContent}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { fontSize: responsive.modalTitleSize }]}>
-                {selectedItemForSend?.serviceType === 'otros' 
+                {selectedItemForSend?.serviceType === 'ast' || selectedItemForSend?.serviceType === 'rals'
                   ? `Enviar ${selectedItemForSend?.itemSubType === 'ast' ? 'Evaluación AST' : 'Reporte RALS'}`
                   : 'Enviar Inspección'}
               </Text>
@@ -1378,55 +1386,58 @@ export default function HistoryScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#8b5cf6',
     padding: 20,
-    paddingTop: 60,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#e9d5ff',
-    marginTop: 2,
+    color: 'rgba(255,255,255,0.78)',
+    marginTop: 4,
+  },
+  offlineNotice: {
+    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    backgroundColor: '#fffbeb',
+    borderWidth: 1,
+    borderColor: '#fde68a',
+    borderRadius: radius.md,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   content: {
     flex: 1,
   },
   serviceSelectorContainer: {
-    backgroundColor: '#fff',
     padding: 20,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingBottom: 4,
   },
   serviceSelectorLabel: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: 12,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 10,
   },
   serviceSelectorButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#f9fafb',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
+    borderColor: colors.border,
+    ...shadows.card,
   },
   serviceSelectorContent: {
     flexDirection: 'row',
@@ -1445,10 +1456,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   filtersContainer: {
-    backgroundColor: '#fff',
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
+    paddingVertical: 12,
   },
   filtersScrollContent: {
     paddingHorizontal: 20,
@@ -1458,20 +1466,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     paddingVertical: 8,
-    borderRadius: 20,
+    borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: '#e5e7eb',
-    backgroundColor: '#fff',
-    marginRight: 12,
+    borderColor: colors.border,
+    backgroundColor: colors.surface,
+    marginRight: 10,
   },
   filterButtonActive: {
-    backgroundColor: '#8b5cf6',
-    borderColor: '#8b5cf6',
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   filterText: {
     fontSize: 14,
-    fontWeight: '500',
-    color: '#374151',
+    fontWeight: '600',
+    color: colors.textSecondary,
     marginLeft: 6,
   },
   filterTextActive: {
@@ -1481,24 +1489,20 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.3,
     marginBottom: 16,
   },
   historyCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
     marginBottom: 12,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
   historyCardHeader: {
     flexDirection: 'row',
@@ -1620,14 +1624,14 @@ const styles = StyleSheet.create({
     width: '90%',
     maxWidth: 400,
     maxHeight: '70%',
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   modalHeader: {
     flexDirection: 'row',

@@ -1,8 +1,12 @@
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import SuccessToast from '@/components/SuccessToast';
+import GradientHeader from '@/components/ui/GradientHeader';
+import { colors, radius, shadows } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
-import React from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import { Href, router, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+    Platform,
     ScrollView,
     StyleSheet,
     Text,
@@ -10,135 +14,137 @@ import {
     View,
 } from 'react-native';
 
+type IoniconName = keyof typeof Ionicons.glyphMap;
 
+const SERVICES: { key: string; title: string; description: string; icon: IoniconName; color: string; bg: string; route: Href }[] = [
+  {
+    key: 'visits',
+    title: 'Visitas',
+    description: 'Agenda de supervisiones con registro de llegada, salida y firma',
+    icon: 'calendar',
+    color: colors.primary,
+    bg: colors.primarySoft,
+    route: '/visits',
+  },
+  {
+    key: 'inspections',
+    title: 'Inspecciones',
+    description: 'Inspecciones de seguridad en áreas de trabajo',
+    icon: 'clipboard',
+    color: colors.teal,
+    bg: colors.tealSoft,
+    route: '/inspection-types',
+  },
+  {
+    key: 'ast',
+    title: 'AST',
+    description: 'Evaluación del Análisis de Seguridad del Trabajo',
+    icon: 'shield-checkmark',
+    color: colors.success,
+    bg: colors.successSoft,
+    route: '/ast-evaluation-form',
+  },
+  {
+    key: 'rals',
+    title: 'RALS',
+    description: 'Reporte de Actividades de Liderazgo de Seguridad',
+    icon: 'people',
+    color: colors.warning,
+    bg: colors.warningSoft,
+    route: '/rals-form',
+  },
+];
+
+const COMING_SOON: { key: string; title: string; description: string; icon: IoniconName }[] = [
+  { key: 'observations', title: 'Observaciones', description: 'Observaciones de comportamiento seguro en el trabajo', icon: 'eye-outline' },
+  { key: 'audit', title: 'Auditoría', description: 'Auditorías de cumplimiento de seguridad', icon: 'document-text-outline' },
+  { key: 'baseline', title: 'Línea de Base', description: 'Establecimiento de estándares de seguridad', icon: 'bar-chart-outline' },
+  { key: 'monitoring', title: 'Monitoreo', description: 'Monitoreo continuo de indicadores de seguridad', icon: 'pulse-outline' },
+];
 
 export default function ServiciosScreen() {
-  const handleOpenInspections = () => {
-    router.push('/inspection-types');
-  };
+  const params = useLocalSearchParams<{ saved?: string }>();
+  const [showSavedToast, setShowSavedToast] = useState(false);
 
-  const handleOtros = () => {
-    router.push('/otros-types');
-  };
+  useEffect(() => {
+    if (params.saved === 'ast' || params.saved === 'rals') {
+      setShowSavedToast(true);
+    }
+  }, [params.saved]);
+
+  const handleToastHide = useCallback(() => {
+    setShowSavedToast(false);
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        if (Platform.OS === 'web' && typeof document !== 'undefined' && document.activeElement) {
+          (document.activeElement as HTMLElement).blur();
+        }
+      };
+    }, [])
+  );
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#fff" />
-        </TouchableOpacity>
-        <View>
-          <Text style={styles.headerTitle}>Servicios</Text>
-          <Text style={styles.headerSubtitle}>
-            Catálogo de servicios de seguridad y salud en el trabajo
-          </Text>
+      <SuccessToast
+        visible={showSavedToast}
+        title="Respuesta guardada"
+        message="La respuesta fue guardada correctamente"
+        onHide={handleToastHide}
+        duration={3500}
+      />
+      <GradientHeader>
+        <Text style={styles.headerTitle}>Servicios</Text>
+        <Text style={styles.headerSubtitle}>
+          Catálogo de servicios de seguridad y salud en el trabajo
+        </Text>
+      </GradientHeader>
+
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <Text style={styles.sectionTitle}>Disponibles</Text>
+        {SERVICES.map((service) => (
+          <TouchableOpacity
+            key={service.key}
+            style={styles.serviceCard}
+            onPress={() => router.push(service.route)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.iconTile, { backgroundColor: service.bg }]}>
+              <Ionicons name={service.icon} size={26} color={service.color} />
+            </View>
+            <View style={styles.cardInfo}>
+              <Text style={styles.cardTitle}>{service.title}</Text>
+              <Text style={styles.cardDescription}>{service.description}</Text>
+            </View>
+            <View style={styles.chevron}>
+              <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        ))}
+
+        <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Próximamente</Text>
+        <View style={styles.soonCard}>
+          {COMING_SOON.map((item, index) => (
+            <View
+              key={item.key}
+              style={[styles.soonRow, index > 0 && styles.soonDivider]}
+              accessibilityLabel={`${item.title} próximamente`}
+            >
+              <View style={styles.soonIcon}>
+                <Ionicons name={item.icon} size={20} color={colors.textMuted} />
+              </View>
+              <View style={styles.cardInfo}>
+                <Text style={styles.soonTitle}>{item.title}</Text>
+                <Text style={styles.soonDescription}>{item.description}</Text>
+              </View>
+              <View style={styles.soonBadge}>
+                <Text style={styles.soonBadgeText}>Pronto</Text>
+              </View>
+            </View>
+          ))}
         </View>
-      </View>
-
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        {/* Inspecciones Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleOpenInspections}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <IconSymbol name="list.clipboard.fill" size={32} color="#3b82f6" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Inspecciones</Text>
-              <Text style={styles.cardDescription}>
-                Inspecciones de seguridad en áreas de trabajo
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-        </TouchableOpacity>
-
-        {/* Observaciones Card */}
-        <View style={[styles.inspectionCard, styles.disabledCard]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <IconSymbol name="eye.fill" size={32} color="#9ca3af" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Observaciones</Text>
-              <Text style={styles.cardDescription}>
-                Observaciones de comportamiento seguro en el trabajo
-              </Text>
-              <Text style={styles.cardWorking}>Trabajando en ello</Text>
-            </View>
-            <Ionicons name="construct" size={24} color="#9ca3af" />
-          </View>
-        </View>
-
-        {/* Auditoría Card */}
-        <View style={[styles.inspectionCard, styles.disabledCard]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <Ionicons name="document-text" size={32} color="#9ca3af" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Auditoría</Text>
-              <Text style={styles.cardDescription}>
-                Auditorías de cumplimiento de seguridad
-              </Text>
-              <Text style={styles.cardWorking}>Trabajando en ello</Text>
-            </View>
-            <Ionicons name="construct" size={24} color="#9ca3af" />
-          </View>
-        </View>
-
-        {/* Línea de Base Card */}
-        <View style={[styles.inspectionCard, styles.disabledCard]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <IconSymbol name="chart.bar.fill" size={32} color="#9ca3af" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Línea de Base</Text>
-              <Text style={styles.cardDescription}>
-                Establecimiento de estándares de seguridad
-              </Text>
-              <Text style={styles.cardWorking}>Trabajando en ello</Text>
-            </View>
-            <Ionicons name="construct" size={24} color="#9ca3af" />
-          </View>
-        </View>
-
-        {/* Monitoreo Card */}
-        <View style={[styles.inspectionCard, styles.disabledCard]}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <Ionicons name="trending-up" size={32} color="#9ca3af" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Monitoreo</Text>
-              <Text style={styles.cardDescription}>
-                Monitoreo continuo de indicadores de seguridad
-              </Text>
-              <Text style={styles.cardWorking}>Trabajando en ello</Text>
-            </View>
-            <Ionicons name="construct" size={24} color="#9ca3af" />
-          </View>
-        </View>
-
-        {/* Otros Card */}
-        <TouchableOpacity style={styles.inspectionCard} onPress={handleOtros}>
-          <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <Ionicons name="ellipsis-horizontal" size={32} color="#6b7280" />
-            </View>
-            <View style={styles.cardInfo}>
-              <Text style={styles.cardTitle}>Otros</Text>
-              <Text style={styles.cardDescription}>
-                Otros servicios y herramientas adicionales
-              </Text>
-            </View>
-            <Ionicons name="chevron-forward" size={24} color="#9ca3af" />
-          </View>
-        </TouchableOpacity>
-
-        {/* Espacio para el bottom tab */}
-        <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
@@ -147,99 +153,126 @@ export default function ServiciosScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
-  },
-  header: {
-    backgroundColor: '#7dd3fc',
-    padding: 20,
-    paddingTop: 60,
-    flexDirection: 'row',
-    justifyContent: 'flex-start',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  backButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
+    backgroundColor: colors.background,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: 26,
+    fontWeight: '800',
     color: '#fff',
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#e0f2fe',
-    marginTop: 2,
+    color: colors.onPrimaryMuted,
+    marginTop: 4,
   },
   content: {
     flex: 1,
-    paddingBottom: 20,
   },
-  inspectionCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
+  scrollContent: {
     padding: 20,
-    marginHorizontal: 20,
-    marginTop: 20,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    paddingBottom: 140,
   },
-  disabledCard: {
-    backgroundColor: '#f9fafb',
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.textSecondary,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+    marginBottom: 12,
   },
-  cardHeader: {
+  sectionSpacing: {
+    marginTop: 16,
+  },
+  serviceCard: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
-  cardIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#f3f4f6',
+  iconTile: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
+    marginRight: 14,
   },
   cardInfo: {
     flex: 1,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 2,
   },
   cardDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
-    lineHeight: 20,
+    fontSize: 13,
+    color: colors.textSecondary,
+    lineHeight: 18,
   },
-  cardWorking: {
+  chevron: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+  },
+  soonCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 16,
+  },
+  soonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 14,
+  },
+  soonDivider: {
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+  },
+  soonIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 14,
+  },
+  soonTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
+  },
+  soonDescription: {
     fontSize: 12,
-    color: '#9ca3af',
-    fontStyle: 'italic',
+    color: colors.textMuted,
+    marginTop: 2,
   },
-  bottomSpacing: {
-    height: 100,
+  soonBadge: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginLeft: 8,
+  },
+  soonBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.textMuted,
   },
 });

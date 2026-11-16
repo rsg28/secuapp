@@ -14,6 +14,7 @@ import {
   View,
 } from 'react-native';
 import { useNetworkContext } from '../contexts/NetworkContext';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -110,13 +111,13 @@ export default function ForgotPasswordScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()} disabled={loading}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Recuperar contraseña</Text>
         <View style={styles.headerSpacer} />
-      </View>
+      </GradientHeader>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -237,15 +238,13 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: '#f4f6fb' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 56,
     paddingBottom: 16,
-    backgroundColor: '#0ea5e9',
   },
   backButton: { padding: 8 },
   headerTitle: { fontSize: 18, fontWeight: '600', color: '#fff' },
@@ -276,7 +275,7 @@ const styles = StyleSheet.create({
   },
   errorText: { fontSize: 14, color: '#dc2626', marginBottom: 12 },
   primaryButton: {
-    backgroundColor: '#0ea5e9',
+    backgroundColor: '#2563eb',
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
@@ -289,5 +288,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 12,
   },
-  secondaryButtonText: { fontSize: 15, color: '#0ea5e9', fontWeight: '600' },
+  secondaryButtonText: { fontSize: 15, color: '#2563eb', fontWeight: '600' },
 });

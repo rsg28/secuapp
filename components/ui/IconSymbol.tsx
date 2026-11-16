@@ -47,6 +47,15 @@ const MAPPING = {
   'ellipsis': 'more-horiz',
   'magnifyingglass': 'search',
   'people.fill': 'people',
+  'chevron.left': 'chevron-left',
+  'info.circle': 'info-outline',
+  'pencil': 'edit',
+  'clock.fill': 'schedule',
+  'lock.fill': 'lock',
+  'bell.fill': 'notifications',
+  'questionmark.circle.fill': 'help',
+  'rectangle.portrait.and.arrow.right': 'logout',
+  'person.circle.fill': 'account-circle',
 } as IconMapping;
 
 /**

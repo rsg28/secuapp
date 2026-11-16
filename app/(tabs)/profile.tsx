@@ -1,4 +1,6 @@
 import { IconSymbol } from '@/components/ui/IconSymbol';
+import { colors, radius, shadows } from '@/constants/theme';
+import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
@@ -18,6 +20,7 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionResponses } from '../../hooks/useClosedInspectionResponses';
 import { useOpenInspectionResponses } from '../../hooks/useOpenInspectionResponses';
 import { useImageUpload } from '../../hooks/useImageUpload';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const API_BASE_URL = 'https://www.securg.xyz/api/v1';
 
@@ -243,7 +246,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <View style={styles.profileImageContainer}>
           {user.profile_image_url ? (
             <Image 
@@ -275,7 +278,7 @@ export default function ProfileScreen() {
         <Text style={styles.userDepartment}>
           {user.company || 'Departamento de Seguridad'}
         </Text>
-      </View>
+      </GradientHeader>
 
       {/* User Information */}
       <View style={styles.section}>
@@ -368,34 +371,42 @@ export default function ProfileScreen() {
         <View style={styles.settingsCard}>
           <TouchableOpacity style={styles.settingItem} onPress={handleEditProfile}>
             <View style={styles.settingLeft}>
-              <IconSymbol name="pencil" size={20} color="#6b7280" />
+              <View style={styles.settingIcon}>
+                <Ionicons name="create-outline" size={18} color={colors.textSecondary} />
+              </View>
               <Text style={styles.settingText}>Editar Perfil</Text>
             </View>
-            <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.settingItem} onPress={handleChangePassword}>
             <View style={styles.settingLeft}>
-              <IconSymbol name="lock.fill" size={20} color="#6b7280" />
+              <View style={styles.settingIcon}>
+                <Ionicons name="lock-closed-outline" size={18} color={colors.textSecondary} />
+              </View>
               <Text style={styles.settingText}>Cambiar Contraseña</Text>
             </View>
-            <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
           
           <TouchableOpacity style={styles.settingItem} onPress={handleNotifications}>
             <View style={styles.settingLeft}>
-              <IconSymbol name="bell.fill" size={20} color="#6b7280" />
+              <View style={styles.settingIcon}>
+                <Ionicons name="notifications-outline" size={18} color={colors.textSecondary} />
+              </View>
               <Text style={styles.settingText}>Notificaciones</Text>
             </View>
-            <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
           
-          <TouchableOpacity style={styles.settingItem} onPress={handleHelp}>
+          <TouchableOpacity style={[styles.settingItem, styles.settingItemLast]} onPress={handleHelp}>
             <View style={styles.settingLeft}>
-              <IconSymbol name="questionmark.circle.fill" size={20} color="#6b7280" />
+              <View style={styles.settingIcon}>
+                <Ionicons name="help-circle-outline" size={18} color={colors.textSecondary} />
+              </View>
               <Text style={styles.settingText}>Ayuda y Soporte</Text>
             </View>
-            <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
           </TouchableOpacity>
         </View>
       </View>
@@ -407,26 +418,32 @@ export default function ProfileScreen() {
           <View style={styles.settingsCard}>
             <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/employees')}>
               <View style={styles.settingLeft}>
-                <IconSymbol name="people.fill" size={20} color="#1e40af" />
-                <Text style={styles.settingText}>Gestión de Empleados</Text>
+                <View style={[styles.settingIcon, styles.settingIconPrimary]}>
+                  <Ionicons name="people" size={18} color={colors.primary} />
+                </View>
+                <Text style={styles.settingText}>Administración de Usuarios</Text>
               </View>
-              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
             
             <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/search-inspections')}>
               <View style={styles.settingLeft}>
-                <IconSymbol name="magnifyingglass" size={20} color="#1e40af" />
+                <View style={[styles.settingIcon, styles.settingIconPrimary]}>
+                  <Ionicons name="search" size={18} color={colors.primary} />
+                </View>
                 <Text style={styles.settingText}>Búsqueda de Inspecciones</Text>
               </View>
-              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.settingItem} onPress={() => router.push('/generate-reports')}>
+            <TouchableOpacity style={[styles.settingItem, styles.settingItemLast]} onPress={() => router.push('/generate-reports')}>
               <View style={styles.settingLeft}>
-                <IconSymbol name="document-text" size={20} color="#1e40af" />
+                <View style={[styles.settingIcon, styles.settingIconPrimary]}>
+                  <Ionicons name="document-text" size={18} color={colors.primary} />
+                </View>
                 <Text style={styles.settingText}>Generar Reportes</Text>
               </View>
-              <IconSymbol name="chevron.right" size={16} color="#9ca3af" />
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
             </TouchableOpacity>
           </View>
         </View>
@@ -439,7 +456,7 @@ export default function ProfileScreen() {
           onPress={handleLogout}
           activeOpacity={0.7}
         >
-          <IconSymbol name="rectangle.portrait.and.arrow.right" size={24} color="#fff" />
+          <Ionicons name="log-out-outline" size={22} color={colors.danger} />
           <Text style={styles.logoutButtonText}>Cerrar Sesión</Text>
         </TouchableOpacity>
       </View>
@@ -456,12 +473,10 @@ export default function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#7dd3fc',
     padding: 30,
-    paddingTop: 60,
     alignItems: 'center',
   },
   profileImageContainer: {
@@ -499,34 +514,31 @@ const styles = StyleSheet.create({
   },
   userPosition: {
     fontSize: 16,
-    color: '#e0f2fe',
+    color: '#dbeafe',
     marginBottom: 2,
   },
   userDepartment: {
     fontSize: 14,
-    color: '#e0f2fe',
+    color: '#dbeafe',
   },
   section: {
     padding: 20,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 16,
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.3,
+    marginBottom: 12,
   },
   infoCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
   infoItem: {
     flexDirection: 'row',
@@ -538,8 +550,8 @@ const styles = StyleSheet.create({
   infoIcon: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: '#f3f4f6',
+    borderRadius: 12,
+    backgroundColor: colors.surfaceMuted,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -558,55 +570,60 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   settingsCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   settingItem: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#f3f4f6',
+    borderBottomColor: colors.border,
+  },
+  settingItemLast: {
+    borderBottomWidth: 0,
   },
   settingLeft: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
+  },
+  settingIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceMuted,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  settingIconPrimary: {
+    backgroundColor: colors.primarySoft,
   },
   settingText: {
-    fontSize: 16,
-    color: '#1f2937',
+    fontSize: 15,
+    fontWeight: '500',
+    color: colors.text,
     marginLeft: 12,
   },
   logoutButton: {
-    backgroundColor: '#ef4444',
-    borderRadius: 12,
-    padding: 16,
+    backgroundColor: colors.dangerSoft,
+    borderRadius: radius.md,
+    padding: 15,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#ef4444',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
+    borderWidth: 1,
+    borderColor: '#fecaca',
   },
   logoutButtonText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: colors.danger,
+    fontSize: 16,
+    fontWeight: '700',
     marginLeft: 8,
   },
   footer: {
@@ -624,17 +641,12 @@ const styles = StyleSheet.create({
     color: '#9ca3af',
   },
   commentCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
   },
   commentLabel: {
     fontSize: 14,
@@ -679,20 +691,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   statsButton: {
-    backgroundColor: '#3b82f6',
-    borderRadius: 12,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
     padding: 20,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    shadowColor: '#3b82f6',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
+    ...shadows.raised,
   },
   statsButtonContent: {
     flexDirection: 'row',

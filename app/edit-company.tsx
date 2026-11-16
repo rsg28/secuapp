@@ -18,6 +18,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../contexts/AuthContext';
 import { useCompanies } from '../hooks/useCompanies';
 import { useImageUpload } from '../hooks/useImageUpload';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 interface CompanyData {
   name: string;
@@ -302,7 +303,7 @@ export default function EditCompanyScreen() {
       <>
         <Stack.Screen options={{ headerShown: false }} />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#6366f1" />
+          <ActivityIndicator size="large" color="#2563eb" />
           <Text style={styles.loadingText}>Cargando empresa...</Text>
         </View>
       </>
@@ -316,9 +317,9 @@ export default function EditCompanyScreen() {
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#1f2937" />
+          <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Editar Empresa</Text>
         <TouchableOpacity
@@ -332,7 +333,7 @@ export default function EditCompanyScreen() {
             <Ionicons name="checkmark" size={20} color="#fff" />
           )}
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Información básica de la empresa */}
@@ -388,7 +389,7 @@ export default function EditCompanyScreen() {
                       {industry}
                     </Text>
                     {companyData.industry === industry && (
-                      <Ionicons name="checkmark" size={20} color="#6366f1" />
+                      <Ionicons name="checkmark" size={20} color="#2563eb" />
                     )}
                   </TouchableOpacity>
                 ))}
@@ -498,7 +499,7 @@ export default function EditCompanyScreen() {
                   onPress={handlePickImage}
                   disabled={uploadingImage}
                 >
-                  <Ionicons name="images" size={20} color="#6366f1" />
+                  <Ionicons name="images" size={20} color="#2563eb" />
                   <Text style={styles.imageUploadButtonText}>Galería</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
@@ -506,7 +507,7 @@ export default function EditCompanyScreen() {
                   onPress={handleTakePhoto}
                   disabled={uploadingImage}
                 >
-                  <Ionicons name="camera" size={20} color="#6366f1" />
+                  <Ionicons name="camera" size={20} color="#2563eb" />
                   <Text style={styles.imageUploadButtonText}>Cámara</Text>
                 </TouchableOpacity>
               </View>
@@ -524,7 +525,7 @@ export default function EditCompanyScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f9fafb',
+    backgroundColor: '#f4f6fb',
   },
   loadingContainer: {
     flex: 1,
@@ -542,11 +543,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 16,
-    backgroundColor: '#fff',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e5e7eb',
   },
   backButton: {
     padding: 8,
@@ -554,13 +551,13 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#1f2937',
+    color: '#fff',
     flex: 1,
     textAlign: 'center',
     marginHorizontal: 16,
   },
   saveButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 8,
@@ -649,7 +646,7 @@ const styles = StyleSheet.create({
     color: '#1f2937',
   },
   dropdownItemTextSelected: {
-    color: '#6366f1',
+    color: '#2563eb',
     fontWeight: '500',
   },
   imageUploadContainer: {
@@ -682,7 +679,7 @@ const styles = StyleSheet.create({
   },
   imageUploadButtonText: {
     fontSize: 16,
-    color: '#6366f1',
+    color: '#2563eb',
     fontWeight: '500',
   },
   imagePreviewContainer: {
@@ -712,7 +709,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   changeButton: {
-    backgroundColor: '#6366f1',
+    backgroundColor: '#2563eb',
   },
   removeButton: {
     backgroundColor: '#ef4444',

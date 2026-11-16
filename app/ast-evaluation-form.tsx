@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
 import { useAstEvaluations } from '../hooks/useAstEvaluations';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 // Preguntas 1-5: 0 = No Cumple, 1 = Si Cumple
 // Preguntas 6-8: 0 = No Cumple, 1 = Cumple Parcialmente, 2 = Cumple Totalmente
@@ -200,7 +201,7 @@ export default function ASTEvaluationFormScreen() {
       } else {
         // Modo creación: crear nueva
         await createAstEvaluation(payload);
-        router.replace('/otros-types?saved=ast');
+        router.replace('/(tabs)/explore?saved=ast');
       }
       return true;
     } catch (err: any) {
@@ -232,7 +233,7 @@ export default function ASTEvaluationFormScreen() {
               if (hasFormData()) {
                 saveForm();
               } else {
-                router.replace('/otros-types');
+                router.replace('/(tabs)/explore');
               }
             }
           }
@@ -248,7 +249,7 @@ export default function ASTEvaluationFormScreen() {
       keyboardVerticalOffset={Platform.OS === 'ios' ? 64 : 0}
     >
       {/* Header - estructura Nueva Respuesta, colores AST */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack} disabled={saving || loadingData}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -269,7 +270,7 @@ export default function ASTEvaluationFormScreen() {
             <Ionicons name="checkmark" size={24} color="#fff" />
           )}
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       {loadingData ? (
         <View style={styles.loadingContainer}>
@@ -558,24 +559,17 @@ export default function ASTEvaluationFormScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc' },
+  container: { flex: 1, backgroundColor: '#f4f6fb' },
   header: {
-    backgroundColor: '#7dd3fc',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: { marginRight: 16 },
   headerContent: { flex: 1 },
   checkButton: { marginLeft: 16, padding: 12, minWidth: 44, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  headerSubtitle: { fontSize: 14, color: '#e0f2fe', marginTop: 2 },
+  headerSubtitle: { fontSize: 14, color: 'rgba(255,255,255,0.78)', marginTop: 2 },
   tabsContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -590,9 +584,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 2,
     borderBottomColor: 'transparent',
   },
-  activeTab: { borderBottomColor: '#0ea5e9' },
+  activeTab: { borderBottomColor: '#2563eb' },
   tabText: { fontSize: 16, fontWeight: '500', color: '#6b7280' },
-  activeTabText: { color: '#0284c7', fontWeight: '600' },
+  activeTabText: { color: '#2563eb', fontWeight: '700' },
   content: { flex: 1 },
   scrollContent: { flexGrow: 1, paddingBottom: 20 },
   section: {
@@ -625,11 +619,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   questionCategory: { fontSize: 12, fontWeight: '600', color: '#6b7280', marginBottom: 6 },
   questionText: { fontSize: 15, color: '#1f2937', lineHeight: 22, marginBottom: 12 },
@@ -653,7 +647,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#fff',
   },
-  optBtnSelected: { borderColor: '#0ea5e9', backgroundColor: '#e0f2fe' },
+  optBtnSelected: { borderColor: '#2563eb', backgroundColor: '#dbeafe' },
   optText: { fontSize: 14, fontWeight: '600', color: '#6b7280' },
   optTextSmall: { fontSize: 16, fontWeight: '700', color: '#6b7280' },
   optSubtext: { fontSize: 10, color: '#9ca3af', marginTop: 2 },

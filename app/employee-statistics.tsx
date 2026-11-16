@@ -18,6 +18,7 @@ import { useClosedTemplateItems } from '../hooks/useClosedTemplateItems';
 import { useOpenTemplateItems } from '../hooks/useOpenTemplateItems';
 import { useClosedInspectionResponseItems } from '../hooks/useClosedInspectionResponseItems';
 import { useOpenInspectionResponseItems } from '../hooks/useOpenInspectionResponseItems';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 type TimeFilter = 'week' | 'month' | 'year' | 'all';
 
@@ -232,7 +233,7 @@ export default function EmployeeStatisticsScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -245,7 +246,7 @@ export default function EmployeeStatisticsScreen() {
             {employeeEmail}
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       <ScrollView 
         style={styles.content} 
@@ -404,7 +405,7 @@ export default function EmployeeStatisticsScreen() {
 
                 <View style={styles.breakdownRow}>
                   <View style={styles.breakdownLeft}>
-                    <IconSymbol name="document-text" size={20} color="#22c55e" />
+                    <IconSymbol name="doc.text.fill" size={20} color="#22c55e" />
                     <Text style={styles.breakdownLabel}>Checklist (Cerradas)</Text>
                   </View>
                   <View style={styles.breakdownRight}>
@@ -622,12 +623,10 @@ export default function EmployeeStatisticsScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -635,7 +634,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -651,7 +650,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
     marginBottom: 2,
   },
   headerEmail: {
@@ -740,14 +739,14 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: 16,
     padding: 20,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   statusHeader: {
     flexDirection: 'row',
@@ -784,14 +783,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   breakdownRow: {
     flexDirection: 'row',
@@ -831,14 +830,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   progressHeader: {
     flexDirection: 'row',
@@ -956,14 +955,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   chartWrapper: {
     flexDirection: 'row',

@@ -30,6 +30,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getIsOffline } from '../utils/networkStore';
 import { storage } from '../utils/storage';
 import { copyImageToPersistentStorage } from '../utils/imageStorage';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 /** True if the URL is a local path (file://, content://, or device path). Never send these to the API. */
 const isLocalImageUri = (uri: string | null | undefined): boolean => {
@@ -1544,7 +1545,7 @@ export default function EditExistingResponseScreen() {
   if (loading) {
     return (
       <View style={styles.container}>
-        <View style={styles.header}>
+        <GradientHeader style={styles.header}>
           <TouchableOpacity 
             style={styles.backButton} 
             onPress={() => {
@@ -1557,7 +1558,7 @@ export default function EditExistingResponseScreen() {
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle}>Cargando...</Text>
           </View>
-        </View>
+        </GradientHeader>
         <View style={styles.loadingContainer}>
           <Text style={styles.loadingText}>Cargando respuesta...</Text>
         </View>
@@ -1571,7 +1572,7 @@ export default function EditExistingResponseScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity 
           style={styles.backButton} 
           onPress={() => {
@@ -1623,7 +1624,7 @@ export default function EditExistingResponseScreen() {
             <Ionicons name="checkmark" size={24} color="#fff" />
           )}
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       {usingLocalData ? (
         <View style={styles.localDataBanner}>
@@ -2021,7 +2022,7 @@ export default function EditExistingResponseScreen() {
                               style={[
                                 styles.responseButton,
                                 isSelected && styles.responseButtonSelected,
-                                isSelected && { backgroundColor: '#6366f1' }
+                                isSelected && { backgroundColor: '#2563eb' }
                               ]}
                               onPress={() => {
                                 if (item.question_type === 'multiple_choice') {
@@ -2154,7 +2155,7 @@ export default function EditExistingResponseScreen() {
                               style={[
                                 styles.responseButton,
                                 isSelected && styles.responseButtonSelected,
-                                isSelected && { backgroundColor: '#6366f1' }
+                                isSelected && { backgroundColor: '#2563eb' }
                               ]}
                               onPress={() => {
                                 if (item.question_type === 'multiple_choice') {
@@ -2274,7 +2275,7 @@ export default function EditExistingResponseScreen() {
 
             {loadingTeam ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color="#6366f1" />
+                <ActivityIndicator size="large" color="#2563eb" />
                 <Text style={styles.loadingText}>Cargando equipo...</Text>
               </View>
             ) : (
@@ -2332,7 +2333,7 @@ export default function EditExistingResponseScreen() {
                   style={styles.addMemberButton}
                   onPress={addTeamMember}
                 >
-                  <Ionicons name="add-circle-outline" size={24} color="#6366f1" />
+                  <Ionicons name="add-circle-outline" size={24} color="#2563eb" />
                   <Text style={styles.addMemberButtonText}>Agregar otro miembro</Text>
                 </TouchableOpacity>
 
@@ -2349,22 +2350,12 @@ export default function EditExistingResponseScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#3b82f6',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
   backButton: {
     marginRight: 16,
@@ -2385,7 +2376,7 @@ const styles = StyleSheet.create({
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#dbeafe',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
   },
   localDataBanner: {
@@ -2677,14 +2668,14 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     margin: 20,
     marginTop: 20,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   saveButtonDisabled: {
     backgroundColor: '#9ca3af',
@@ -2714,7 +2705,7 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   activeTab: {
-    borderBottomColor: '#6366f1',
+    borderBottomColor: '#2563eb',
   },
   tabText: {
     fontSize: 16,
@@ -2722,7 +2713,7 @@ const styles = StyleSheet.create({
     color: '#6b7280',
   },
   activeTabText: {
-    color: '#6366f1',
+    color: '#2563eb',
     fontWeight: '600',
   },
   // Equipo section styles
@@ -2794,14 +2785,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: '#6366f1',
+    borderColor: '#2563eb',
     borderStyle: 'dashed',
     marginBottom: 20,
   },
   addMemberButtonText: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#6366f1',
+    color: '#2563eb',
     marginLeft: 8,
   },
   imageSection: {

@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 const { width } = Dimensions.get('window');
 
@@ -43,7 +44,7 @@ export default function InspectionTypesScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
@@ -53,14 +54,14 @@ export default function InspectionTypesScreen() {
             Selecciona el tipo de inspección que deseas revisar
           </Text>
         </View>
-      </View>
+      </GradientHeader>
 
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         {/* Open Inspections Card */}
         <TouchableOpacity style={styles.inspectionCard} onPress={handleOpenInspections}>
           <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <IconSymbol name="list.clipboard.fill" size={32} color="#3b82f6" />
+            <View style={[styles.cardIconContainer, { backgroundColor: '#eff6ff' }]}>
+              <IconSymbol name="list.clipboard.fill" size={28} color="#2563eb" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Inspecciones Abiertas</Text>
@@ -75,8 +76,8 @@ export default function InspectionTypesScreen() {
         {/* Closed Inspections Card */}
         <TouchableOpacity style={styles.inspectionCard} onPress={handleClosedInspections}>
           <View style={styles.cardHeader}>
-            <View style={styles.cardIconContainer}>
-              <Ionicons name="document-text" size={32} color="#22c55e" />
+            <View style={[styles.cardIconContainer, { backgroundColor: '#dcfce7' }]}>
+              <Ionicons name="document-text" size={28} color="#16a34a" />
             </View>
             <View style={styles.cardInfo}>
               <Text style={styles.cardTitle}>Checklist</Text>
@@ -98,12 +99,10 @@ export default function InspectionTypesScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#7dd3fc',
     padding: 20,
-    paddingTop: 60,
     flexDirection: 'row',
     alignItems: 'center',
   },
@@ -111,7 +110,7 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 16,
@@ -121,13 +120,14 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     fontSize: 24,
-    fontWeight: 'bold',
+    fontWeight: '800',
     color: '#fff',
     marginBottom: 4,
+    letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#e0f2fe',
+    color: 'rgba(255,255,255,0.78)',
   },
   content: {
     flex: 1,
@@ -136,26 +136,28 @@ const styles = StyleSheet.create({
   },
   inspectionCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 20,
-    shadowColor: '#000',
+    borderRadius: 18,
+    padding: 18,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: '#e5e9f2',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 4,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   cardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   cardIconContainer: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    width: 56,
+    height: 56,
+    borderRadius: 16,
     backgroundColor: '#f3f4f6',
     alignItems: 'center',
     justifyContent: 'center',
@@ -165,16 +167,15 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 4,
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#0f172a',
+    marginBottom: 2,
   },
   cardDescription: {
-    fontSize: 14,
-    color: '#6b7280',
-    marginBottom: 8,
-    lineHeight: 20,
+    fontSize: 13,
+    color: '#475569',
+    lineHeight: 18,
   },
   bottomSpacing: {
     height: 100,

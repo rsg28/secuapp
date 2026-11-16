@@ -10,6 +10,7 @@ import {
     TouchableOpacity,
     View,
 } from 'react-native';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 export default function EstresTermicoMonitoringScreen() {
   const router = useRouter();
@@ -123,9 +124,9 @@ export default function EstresTermicoMonitoringScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
+          <Ionicons name="arrow-back" size={24} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerContent}>
           <Text style={styles.headerTitle}>Estrés Térmico por Calor</Text>
@@ -134,7 +135,7 @@ export default function EstresTermicoMonitoringScreen() {
         <TouchableOpacity onPress={handleSave} style={styles.saveButton}>
           <Ionicons name="checkmark" size={24} color="#fff" />
         </TouchableOpacity>
-      </View>
+      </GradientHeader>
 
       <ScrollView style={styles.content}>
         {/* Datos del empleador y del monitoreo */}
@@ -730,31 +731,20 @@ export default function EstresTermicoMonitoringScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   backButton: {
     marginRight: 16,
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f1f5f9',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -764,30 +754,22 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 20,
     fontWeight: '700',
-    color: '#0f172a',
+    color: '#fff',
     letterSpacing: -0.3,
   },
   headerSubtitle: {
     fontSize: 14,
-    color: '#64748b',
+    color: 'rgba(255,255,255,0.78)',
     marginTop: 2,
     fontWeight: '500',
   },
   saveButton: {
-    backgroundColor: '#f97316',
+    backgroundColor: 'rgba(255,255,255,0.16)',
     width: 44,
     height: 44,
     borderRadius: 22,
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#f97316',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 6,
   },
   content: {
     flex: 1,
@@ -800,14 +782,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 20,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#f1f5f9',
   },

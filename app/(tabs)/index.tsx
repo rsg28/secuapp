@@ -1,11 +1,12 @@
-import { IconSymbol } from '@/components/ui/IconSymbol';
+import GradientHeader from '@/components/ui/GradientHeader';
+import { colors, radius, shadows } from '@/constants/theme';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
-import { router } from 'expo-router';
-import React, { useState, useEffect } from 'react';
+import { Href, router } from 'expo-router';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Alert,
-    Dimensions,
     Image,
     KeyboardAvoidingView,
     Linking,
@@ -21,8 +22,56 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useClosedInspectionTemplates } from '../../hooks/useClosedInspectionTemplates';
 import { useOpenInspectionTemplates } from '../../hooks/useOpenInspectionTemplates';
+import {
+    getCachedVisits,
+    listVisits,
+    todayISO,
+    Visit,
+    VISIT_STATUS_COLORS,
+    VISIT_STATUS_LABELS,
+} from '../../services/visits';
 
-const { width } = Dimensions.get('window');
+type IoniconName = keyof typeof Ionicons.glyphMap;
+
+const QUICK_ACTIONS: { key: string; title: string; subtitle: string; icon: IoniconName; color: string; bg: string; route: Href }[] = [
+  { key: 'visit', title: 'Nueva visita', subtitle: 'Programar supervisión', icon: 'add-circle', color: colors.primary, bg: colors.primarySoft, route: '/visit-form' },
+  { key: 'inspections', title: 'Inspecciones', subtitle: 'Abiertas y checklist', icon: 'clipboard', color: colors.teal, bg: colors.tealSoft, route: '/inspection-types' },
+  { key: 'ast', title: 'AST', subtitle: 'Análisis de seguridad', icon: 'shield-checkmark', color: colors.success, bg: colors.successSoft, route: '/ast-evaluation-form' },
+  { key: 'rals', title: 'RALS', subtitle: 'Liderazgo en seguridad', icon: 'people', color: colors.warning, bg: colors.warningSoft, route: '/rals-form' },
+];
+
+const COMING_SOON: { label: string; icon: IoniconName }[] = [
+  { label: 'Observaciones', icon: 'eye-outline' },
+  { label: 'Auditorías', icon: 'document-text-outline' },
+  { label: 'Línea base', icon: 'bar-chart-outline' },
+  { label: 'Monitoreo', icon: 'pulse-outline' },
+  { label: 'Reportar incidente', icon: 'warning-outline' },
+];
+
+const VISITS_REFRESH_MS = 60_000;
+const TITLE_RE = /^(dr|dra|ing|lic|sr|sra)\.?$/i;
+
+function nameParts(fullName?: string) {
+  return (fullName ?? '').trim().split(/\s+/).filter((p) => p && !TITLE_RE.test(p));
+}
+
+function greeting() {
+  const hour = new Date().getHours();
+  if (hour < 12) return 'Buenos días';
+  if (hour < 19) return 'Buenas tardes';
+  return 'Buenas noches';
+}
+
+function todayLabel() {
+  const label = new Date().toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long' });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function shortDate(date: string) {
+  const [y, m, d] = date.split('-').map(Number);
+  if (!y || !m || !d) return date;
+  return new Date(y, m - 1, d).toLocaleDateString('es-PE', { day: 'numeric', month: 'short' }).replace('.', '');
+}
 
 export default function DashboardScreen() {
   const { user } = useAuth();
@@ -38,6 +87,9 @@ export default function DashboardScreen() {
   // State para el total de templates
   const [totalTemplates, setTotalTemplates] = useState<number>(0);
   const [loadingTemplates, setLoadingTemplates] = useState<boolean>(true);
+
+  const [visits, setVisits] = useState<Visit[]>([]);
+  const lastVisitsFetch = useRef(0);
 
   const handleTakePhoto = async () => {
     try {
@@ -161,102 +213,187 @@ export default function DashboardScreen() {
     };
   }, [user?.id]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!user?.id) return;
+      const userId = user.id;
+      let active = true;
+
+      getCachedVisits(userId)
+        .then((cached) => {
+          if (active) setVisits(cached);
+        })
+        .catch(() => {});
+
+      if (Date.now() - lastVisitsFetch.current > VISITS_REFRESH_MS) {
+        lastVisitsFetch.current = Date.now();
+        listVisits(userId)
+          .then(({ visits: fresh }) => {
+            if (active) setVisits(fresh);
+          })
+          .catch(() => {});
+      }
+
+      return () => {
+        active = false;
+      };
+    }, [user?.id])
+  );
+
+  const summary = useMemo(() => {
+    const today = todayISO();
+    const month = today.slice(0, 7);
+    const mine = visits.filter((v) => v.inspector_id === user?.id);
+    const open = mine.filter((v) => v.status === 'programada' || v.status === 'en_curso');
+    const next =
+      open.find((v) => v.status === 'en_curso') ??
+      open.find((v) => v.status === 'programada' && v.scheduled_date >= today) ??
+      null;
+    return {
+      todayCount: open.filter((v) => v.scheduled_date === today).length,
+      pending: open.length,
+      completedThisMonth: mine.filter((v) => v.status === 'completada' && v.scheduled_date.startsWith(month)).length,
+      next,
+      nextIsToday: next?.scheduled_date === today,
+    };
+  }, [visits, user?.id]);
+
+  const names = nameParts(user?.fullName);
+  const firstName = names[0] ?? 'Supervisor';
+  const initials = ((names[0]?.[0] ?? '') + (names[1]?.[0] ?? '')).toUpperCase() || 'S';
+  const next = summary.next;
+
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      {/* Header */}
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.welcomeText}>¡Bienvenido, Supervisor!</Text>
-          <Text style={styles.dateText}>
-            {new Date().toLocaleDateString('es-ES', {
-              weekday: 'long',
-              year: 'numeric',
-              month: 'long',
-              day: 'numeric',
-            })}
-          </Text>
-        </View>
-        <View style={styles.profileIcon}>
-          <IconSymbol name="person.circle.fill" size={40} color="#fff" />
-        </View>
-      </View>
-
-      {/* Stats Cards */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statsRow}>
-          <TouchableOpacity 
-            style={[styles.statCard, styles.blueCard]}
-            onPress={() => router.push('/inspection-types')}
-          >
-            <IconSymbol name="list.clipboard.fill" size={24} color="#3b82f6" />
-            <Text style={styles.statNumber}>
-              {loadingTemplates ? '...' : totalTemplates}
+    <View style={styles.container}>
+    <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+      <GradientHeader style={styles.header}>
+        <View style={styles.headerRow}>
+          <View style={styles.headerContent}>
+            <Text style={styles.dateText}>{todayLabel()}</Text>
+            <Text style={styles.welcomeText}>
+              {greeting()}, {firstName}
             </Text>
-            <Text style={styles.statLabel}>Inspecciones</Text>
-            <Text style={styles.statSubtext}>Templates</Text>
+            <Text style={styles.headerSubtitle}>Seguridad y Salud en el Trabajo</Text>
+          </View>
+          <TouchableOpacity
+            style={styles.avatar}
+            onPress={() => router.push('/(tabs)/profile')}
+            accessibilityLabel="Ver perfil"
+          >
+            {user?.profile_image_url ? (
+              <Image source={{ uri: user.profile_image_url }} style={styles.avatarImage} />
+            ) : (
+              <Text style={styles.avatarText}>{initials}</Text>
+            )}
           </TouchableOpacity>
-          <View style={[styles.statCard, styles.inactiveCard]} accessibilityLabel="Observaciones próximamente">
-            <IconSymbol name="eye.fill" size={24} color="#9ca3af" />
-            <Text style={styles.statNumberDisabled}>Pronto</Text>
-            <Text style={styles.statLabelDisabled}>Observaciones</Text>
-            <Text style={styles.statSubtextDisabled}>Trabajando en ello</Text>
-          </View>
         </View>
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, styles.inactiveCard]} accessibilityLabel="Auditorías próximamente">
-            <Ionicons name="document-text" size={24} color="#9ca3af" />
-            <Text style={styles.statNumberDisabled}>Pronto</Text>
-            <Text style={styles.statLabelDisabled}>Auditorías</Text>
-            <Text style={styles.statSubtextDisabled}>Trabajando en ello</Text>
-          </View>
-          <View style={[styles.statCard, styles.inactiveCard]} accessibilityLabel="Línea Base próximamente">
-            <IconSymbol name="chart.bar.fill" size={24} color="#9ca3af" />
-            <Text style={styles.statNumberDisabled}>Pronto</Text>
-            <Text style={styles.statLabelDisabled}>Línea Base</Text>
-            <Text style={styles.statSubtextDisabled}>Trabajando en ello</Text>
-          </View>
-        </View>
-        <View style={styles.statsRow}>
-          <View style={[styles.statCard, styles.inactiveCard]} accessibilityLabel="Monitoreo próximamente">
-            <Ionicons name="trending-up" size={24} color="#9ca3af" />
-            <Text style={styles.statNumberDisabled}>Pronto</Text>
-            <Text style={styles.statLabelDisabled}>Monitoreo</Text>
-            <Text style={styles.statSubtextDisabled}>Trabajando en ello</Text>
-          </View>
-        </View>
-      </View>
+      </GradientHeader>
 
-      {/* Quick Actions */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-        <View style={styles.quickActions}>
-          <TouchableOpacity 
-            style={styles.actionButton}
-            onPress={() => router.push('/(tabs)/explore')}
-          >
-            <Ionicons name="grid" size={24} color="#3b82f6" />
-            <Text style={styles.actionText}>Ver Servicios</Text>
-          </TouchableOpacity>
-          <View
-            style={[styles.actionButton, styles.disabledActionButton]}
-            accessibilityLabel="Tomar foto próximamente"
-          >
-            <IconSymbol name="camera.fill" size={24} color="#9ca3af" />
-            <Text style={styles.actionTextDisabled}>
-              Tomar Foto
-              {'\n'}Trabajando en ello
+      {/* Agenda del día */}
+      <View style={styles.todayCard}>
+        <View style={styles.todayHeader}>
+          <View style={[styles.iconTile, { backgroundColor: colors.primarySoft }]}>
+            <Ionicons name="calendar" size={20} color={colors.primary} />
+          </View>
+          <View style={styles.flex}>
+            <Text style={styles.cardTitle}>Visitas de hoy</Text>
+            <Text style={styles.cardSubtitle}>
+              {summary.todayCount === 0
+                ? 'No tienes visitas para hoy'
+                : `${summary.todayCount} visita${summary.todayCount === 1 ? '' : 's'} en tu agenda`}
             </Text>
           </View>
-          <View style={[styles.actionButton, styles.disabledActionButton]}>
-            <IconSymbol name="exclamationmark.triangle.fill" size={24} color="#9ca3af" />
-            <Text style={styles.actionTextDisabled}>Reportar Incidente
-              {'\n'}Trabajando en ello</Text>
-          </View>
+          <Text style={styles.todayCount}>{summary.todayCount}</Text>
         </View>
+
+        {next ? (
+          <TouchableOpacity
+            style={styles.nextVisit}
+            onPress={() => router.push({ pathname: '/visit-detail', params: { id: next.id } })}
+            activeOpacity={0.8}
+          >
+            <View style={styles.nextWhen}>
+              <Text style={styles.nextWhenTop}>
+                {next.status === 'en_curso' ? 'Ahora' : summary.nextIsToday ? 'Hoy' : shortDate(next.scheduled_date)}
+              </Text>
+              <Text style={styles.nextWhenBottom}>{next.scheduled_time ?? '—'}</Text>
+            </View>
+            <View style={styles.flex}>
+              <Text style={styles.nextCompany} numberOfLines={1}>
+                {next.company_name || 'Empresa'}
+              </Text>
+              <Text style={styles.nextPurpose} numberOfLines={1}>
+                {next.purpose}
+              </Text>
+            </View>
+            <View style={[styles.statusPill, { backgroundColor: VISIT_STATUS_COLORS[next.status].bg }]}>
+              <Text style={[styles.statusPillText, { color: VISIT_STATUS_COLORS[next.status].fg }]}>
+                {VISIT_STATUS_LABELS[next.status]}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ) : null}
+
+        <TouchableOpacity style={styles.primaryButton} onPress={() => router.push('/visits')} activeOpacity={0.85}>
+          <Text style={styles.primaryButtonText}>Ver agenda</Text>
+          <Ionicons name="arrow-forward" size={18} color="#fff" />
+        </TouchableOpacity>
       </View>
 
-      {/* Bottom spacing for tabs */}
-      <View style={styles.bottomSpacing} />
+      {/* Resumen */}
+      <View style={styles.statsRow}>
+        <View style={styles.statTile}>
+          <View style={[styles.statIcon, { backgroundColor: colors.warningSoft }]}>
+            <Ionicons name="time" size={16} color={colors.warning} />
+          </View>
+          <Text style={styles.statValue}>{summary.pending}</Text>
+          <Text style={styles.statLabel}>Pendientes</Text>
+        </View>
+        <View style={styles.statTile}>
+          <View style={[styles.statIcon, { backgroundColor: colors.successSoft }]}>
+            <Ionicons name="checkmark-done" size={16} color={colors.success} />
+          </View>
+          <Text style={styles.statValue}>{summary.completedThisMonth}</Text>
+          <Text style={styles.statLabel}>Hechas este mes</Text>
+        </View>
+        <TouchableOpacity style={styles.statTile} onPress={() => router.push('/inspection-types')} activeOpacity={0.8}>
+          <View style={[styles.statIcon, { backgroundColor: colors.violetSoft }]}>
+            <Ionicons name="clipboard" size={16} color={colors.violet} />
+          </View>
+          <Text style={styles.statValue}>{loadingTemplates ? '…' : totalTemplates}</Text>
+          <Text style={styles.statLabel}>Plantillas</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Accesos rápidos */}
+      <Text style={styles.sectionTitle}>Accesos rápidos</Text>
+      <View style={styles.grid}>
+        {QUICK_ACTIONS.map((action) => (
+          <TouchableOpacity
+            key={action.key}
+            style={styles.actionTile}
+            onPress={() => router.push(action.route)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.iconTile, { backgroundColor: action.bg }]}>
+              <Ionicons name={action.icon} size={22} color={action.color} />
+            </View>
+            <Text style={styles.actionTitle}>{action.title}</Text>
+            <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {/* Próximamente */}
+      <Text style={styles.sectionTitle}>Próximamente</Text>
+      <View style={styles.soonWrap}>
+        {COMING_SOON.map((item) => (
+          <View key={item.label} style={styles.soonChip} accessibilityLabel={`${item.label} próximamente`}>
+            <Ionicons name={item.icon} size={14} color={colors.textMuted} />
+            <Text style={styles.soonText}>{item.label}</Text>
+          </View>
+        ))}
+      </View>
 
       {/* Modal para foto y envío por WhatsApp */}
       <Modal
@@ -334,213 +471,288 @@ export default function DashboardScreen() {
             </ScrollView>
           </View>
         </KeyboardAvoidingView>
-              </Modal>
-
+      </Modal>
     </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: colors.background,
+  },
+  scrollContent: {
+    paddingBottom: 120,
+  },
+  flex: {
+    flex: 1,
   },
   header: {
-    backgroundColor: '#7dd3fc',
-    padding: 20,
-    paddingTop: 60,
+    paddingBottom: 64,
+  },
+  headerRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
   },
   headerContent: {
     flex: 1,
   },
-  welcomeText: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginBottom: 4,
-  },
   dateText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.onPrimaryMuted,
+    marginBottom: 6,
+  },
+  welcomeText: {
+    fontSize: 26,
+    fontWeight: '800',
+    color: '#fff',
+    letterSpacing: -0.5,
+  },
+  headerSubtitle: {
     fontSize: 14,
-    color: '#e0f2fe',
+    color: colors.onPrimaryMuted,
+    marginTop: 4,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    marginLeft: 16,
+    backgroundColor: colors.glass,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.35)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  avatarText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  todayCard: {
+    marginTop: -44,
+    marginHorizontal: 20,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: 18,
+    ...shadows.raised,
+  },
+  todayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  iconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  cardSubtitle: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  todayCount: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: colors.primary,
+    letterSpacing: -1,
+  },
+  nextVisit: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 16,
+    padding: 12,
+    borderRadius: radius.lg,
+    backgroundColor: colors.surfaceMuted,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  nextWhen: {
+    width: 60,
+    paddingVertical: 8,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+  },
+  nextWhenTop: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: colors.onPrimaryMuted,
     textTransform: 'capitalize',
   },
-  profileIcon: {
-    marginLeft: 16,
+  nextWhenBottom: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#fff',
+    marginTop: 1,
   },
-  statsContainer: {
-    padding: 20,
-    paddingBottom: 0,
+  nextCompany: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  nextPurpose: {
+    fontSize: 13,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  statusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: radius.pill,
+  },
+  statusPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  primaryButton: {
+    marginTop: 16,
+    height: 48,
+    borderRadius: radius.md,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  primaryButtonText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
   },
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 16,
+    gap: 12,
+    marginHorizontal: 20,
+    marginTop: 16,
   },
-  statCard: {
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 20,
-    alignItems: 'center',
+  statTile: {
     flex: 1,
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: colors.border,
   },
-  greenCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#22c55e',
+  statIcon: {
+    width: 30,
+    height: 30,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  yellowCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#f59e0b',
-  },
-  blueCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#3b82f6',
-  },
-  redCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#ef4444',
-  },
-  purpleCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#8b5cf6',
-  },
-  orangeCard: {
-    borderLeftWidth: 4,
-    borderLeftColor: '#f97316',
-  },
-  inactiveCard: {
-    backgroundColor: '#f9fafb',
-    borderLeftWidth: 4,
-    borderLeftColor: '#cbd5f5',
-  },
-  statNumber: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginTop: 8,
-  },
-  statNumberDisabled: {
+  statValue: {
     fontSize: 22,
-    fontWeight: '600',
-    color: '#9ca3af',
-    marginTop: 8,
+    fontWeight: '800',
+    color: colors.text,
+    marginTop: 10,
+    letterSpacing: -0.5,
   },
   statLabel: {
     fontSize: 12,
-    color: '#6b7280',
-    marginTop: 4,
-  },
-  statLabelDisabled: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  statSubtext: {
-    fontSize: 10,
-    color: '#9ca3af',
+    color: colors.textSecondary,
     marginTop: 2,
-    textAlign: 'center',
-  },
-  statSubtextDisabled: {
-    fontSize: 10,
-    color: '#cbd5e1',
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  section: {
-    padding: 20,
-    paddingTop: 0,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 16,
+    fontSize: 17,
+    fontWeight: '800',
+    color: colors.text,
+    marginHorizontal: 20,
+    marginTop: 28,
+    marginBottom: 12,
+    letterSpacing: -0.3,
   },
-  quickActions: {
+  grid: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 12,
+    marginHorizontal: 20,
   },
-  actionButton: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
+  actionTile: {
+    flexBasis: '47%',
+    flexGrow: 1,
+    backgroundColor: colors.surface,
+    borderRadius: radius.lg,
     padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+    ...shadows.card,
+  },
+  actionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 12,
+  },
+  actionSubtitle: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    marginTop: 2,
+  },
+  soonWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginHorizontal: 20,
+  },
+  soonChip: {
+    flexDirection: 'row',
     alignItems: 'center',
-    flex: 1,
-    marginHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderStyle: 'dashed',
   },
-  actionText: {
-    fontSize: 12,
-    color: '#374151',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  disabledActionButton: {
-    backgroundColor: '#f3f4f6',
-  },
-  actionTextDisabled: {
-    fontSize: 12,
-    color: '#9ca3af',
-    marginTop: 8,
-    textAlign: 'center',
-  },
-  bottomSpacing: {
-    height: 100,
+  soonText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.textMuted,
   },
   // Modal styles
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(15, 23, 42, 0.55)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   modalContent: {
-    backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 28,
+    backgroundColor: colors.surface,
+    borderRadius: radius.xl,
+    padding: 8,
     width: '90%',
     maxWidth: 400,
     maxHeight: '80%',
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 4,
-    },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 8,
+    ...shadows.raised,
   },
   modalScrollContent: {
-    padding: 24,
+    padding: 20,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#1f2937',
-    marginBottom: 24,
+    fontSize: 20,
+    fontWeight: '800',
+    color: colors.text,
+    marginBottom: 20,
     textAlign: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
   },
   photoPreview: {
     alignItems: 'center',
@@ -549,25 +761,25 @@ const styles = StyleSheet.create({
   photoViewer: {
     width: 200,
     height: 150,
-    borderRadius: 8,
+    borderRadius: radius.md,
   },
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 16,
   },
   inputLabel: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#374151',
+    color: colors.textSecondary,
     marginBottom: 8,
   },
   textInput: {
     borderWidth: 1,
-    borderColor: '#d1d5db',
-    borderRadius: 8,
+    borderColor: colors.border,
+    borderRadius: radius.md,
     padding: 12,
     fontSize: 16,
-    color: '#1f2937',
-    backgroundColor: '#fff',
+    color: colors.text,
+    backgroundColor: colors.surfaceMuted,
   },
   textArea: {
     height: 80,
@@ -576,32 +788,32 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: 'row',
     gap: 12,
-    marginTop: 20,
+    marginTop: 8,
   },
   modalButtonCancel: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceMuted,
     borderWidth: 1,
-    borderColor: '#d1d5db',
+    borderColor: colors.border,
     alignItems: 'center',
   },
   modalButtonSend: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
-    backgroundColor: '#10b981',
+    paddingVertical: 13,
+    borderRadius: radius.md,
+    backgroundColor: '#16a34a',
     alignItems: 'center',
   },
   modalButtonTextCancel: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: '#6b7280',
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.textSecondary,
   },
   modalButtonTextSend: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#fff',
   },
-  // Estilos para indicador de empresa
 });

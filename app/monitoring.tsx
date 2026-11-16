@@ -10,6 +10,7 @@ import {
     View,
 } from 'react-native';
 import { useAuth } from '../contexts/AuthContext';
+import GradientHeader from '@/components/ui/GradientHeader';
 
 export default function MonitoringScreen() {
   const router = useRouter();
@@ -174,9 +175,9 @@ export default function MonitoringScreen() {
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <GradientHeader style={styles.header}>
         <Text style={styles.headerTitle}>Monitoreo</Text>
-      </View>
+      </GradientHeader>
 
       {/* Contenido */}
       <ScrollView style={styles.content}>
@@ -207,33 +208,22 @@ export default function MonitoringScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f8fafc',
+    backgroundColor: '#f4f6fb',
   },
   header: {
-    backgroundColor: '#fff',
     paddingHorizontal: 20,
-    paddingTop: 60,
     paddingBottom: 20,
-    borderBottomWidth: 0,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
   },
   headerTitle: {
     fontSize: 32,
     fontWeight: '800',
-    color: '#0f172a',
+    color: '#fff',
     marginBottom: 6,
     letterSpacing: -0.5,
   },
   headerSubtitle: {
     fontSize: 16,
-    color: '#64748b',
+    color: 'rgba(255,255,255,0.78)',
     fontWeight: '500',
   },
   content: {
@@ -249,14 +239,14 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 20,
     marginBottom: 30,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 4,
     },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.06,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: 2,
     borderWidth: 1,
     borderColor: '#f1f5f9',
   },
@@ -272,14 +262,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
-    shadowColor: '#000',
+    shadowColor: '#0f172a',
     shadowOffset: {
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.15,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 2,
   },
   templateInfo: {
     flex: 1,
